@@ -26,6 +26,11 @@ type Config struct {
 	// UpdatesStaleThreshold is how old the apt cache may be before the
 	// Updates.Stale flag is set.
 	UpdatesStaleThreshold time.Duration
+	// DistroInfoEnabled toggles whether Snapshot.System.Distribution is
+	// populated.
+	DistroInfoEnabled bool
+	// PiModelEnabled toggles whether Snapshot.System.PiModel is populated.
+	PiModelEnabled bool
 }
 
 // History is the collected time series for every metric, keyed by
@@ -171,6 +176,12 @@ func (c *Collector) History() History {
 
 func (c *Collector) collectSysInfo() {
 	info := c.sysInfo.Collect()
+	if !c.cfg.DistroInfoEnabled {
+		info.Distribution = ""
+	}
+	if !c.cfg.PiModelEnabled {
+		info.PiModel = ""
+	}
 	count, err := c.cpu.CoreCount()
 	if err != nil {
 		c.log.Warn("could not determine CPU core count", "error", err)

@@ -19,6 +19,8 @@ func newTestCollector() *Collector {
 		HistoryCapacity:       10,
 		NetworkEnabled:        true,
 		UpdatesStaleThreshold: time.Hour,
+		DistroInfoEnabled:     true,
+		PiModelEnabled:        true,
 	}, nil)
 }
 
@@ -55,6 +57,29 @@ func TestCollector_FastTick_BuildsHistory(t *testing.T) {
 	}
 	if len(hist.Load1) != 2 {
 		t.Fatalf("expected 2 load1 history points after 2 ticks, got %d", len(hist.Load1))
+	}
+}
+
+func TestCollector_CollectSysInfo_TogglesDistroAndPiModel(t *testing.T) {
+	c := New(Config{
+		FastInterval:      time.Second,
+		SlowInterval:      time.Minute,
+		HistoryCapacity:   10,
+		DistroInfoEnabled: false,
+		PiModelEnabled:    false,
+	}, nil)
+
+	c.collectSysInfo()
+
+	snap := c.Snapshot()
+	if snap.System.Distribution != "" {
+		t.Fatalf("expected Distribution to be cleared when disabled, got %q", snap.System.Distribution)
+	}
+	if snap.System.PiModel != "" {
+		t.Fatalf("expected PiModel to be cleared when disabled, got %q", snap.System.PiModel)
+	}
+	if snap.System.KernelVersion == "" {
+		t.Fatal("expected KernelVersion to remain populated regardless of toggles")
 	}
 }
 
