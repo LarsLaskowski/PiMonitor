@@ -1,0 +1,54 @@
+# Example PiMonitor configuration. Copy to /etc/pimonitor/config.yaml and
+# adjust as needed. Any key you omit falls back to its built-in default -
+# see internal/config/config.go for the full list of defaults.
+
+# Address the web dashboard and REST API listen on.
+listen_addr: ":8080"
+
+# debug, info, warn, or error.
+log_level: "info"
+
+# How often live metrics (CPU, load average, temperature, memory/swap,
+# disk, network) are sampled.
+poll_interval_seconds: 5
+
+# How often available apt updates are checked. This only reads the
+# existing apt cache (`apt list --upgradable`) - it never refreshes it.
+# The cache itself is refreshed by the separate pimonitor-apt-update.timer
+# systemd unit, which runs with root privileges.
+updates_check_minutes: 15
+
+# How old the apt cache may be (in minutes) before the dashboard flags the
+# update count as possibly stale. Should be a small multiple of the
+# apt-update timer's interval (default: every 6 hours).
+updates_stale_threshold_minutes: 720
+
+# How much in-memory history to retain for sparklines, in minutes. Not
+# persisted across restarts.
+history_window_minutes: 60
+
+# Whether to collect and display network interface throughput.
+network_enabled: true
+
+# Whether to show the OS distribution / Raspberry Pi model in the
+# dashboard.
+distro_info_enabled: true
+pi_model_enabled: true
+
+# If set, all /api/v1/... requests must include this value as either
+# "Authorization: Bearer <api_key>" or "X-Api-Key: <api_key>". Leave empty
+# (the default) to allow unauthenticated access on a trusted LAN. Set this
+# before exposing the API to other systems (e.g. openHAB).
+api_key: ""
+
+# Color-coding thresholds for the dashboard (and the load-average gauge
+# scale, which uses the CPU thresholds relative to core count).
+thresholds:
+  temperature_warn_c: 60
+  temperature_crit_c: 75
+  cpu_warn_percent: 80
+  cpu_crit_percent: 95
+  disk_warn_percent: 80
+  disk_crit_percent: 95
+  swap_warn_percent: 50
+  swap_crit_percent: 90

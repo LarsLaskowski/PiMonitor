@@ -1,0 +1,10 @@
+[Unit]
+Description=Refresh apt package cache for PiMonitor's update check
+Documentation=https://github.com/larslaskowski/pimonitor
+
+[Service]
+Type=oneshot
+# Runs as root (the default for a systemd service with no User= override).
+# This is the only part of PiMonitor that touches apt with write intent;
+# the main pimonitor.service never runs this itself and never needs root.
+ExecStart=/usr/bin/apt-get update

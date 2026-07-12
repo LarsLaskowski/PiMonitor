@@ -1,0 +1,10 @@
+[Unit]
+Description=Periodically refresh apt package cache for PiMonitor's update check
+
+[Timer]
+OnBootSec=10min
+OnUnitActiveSec=6h
+Persistent=true
+
+[Install]
+WantedBy=timers.target
