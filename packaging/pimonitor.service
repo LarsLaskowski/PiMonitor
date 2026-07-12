@@ -1,0 +1,29 @@
+[Unit]
+Description=PiMonitor system monitoring dashboard
+Documentation=https://github.com/larslaskowski/pimonitor
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pimonitor
+Group=pimonitor
+ExecStart=/usr/local/bin/pimonitor -config /etc/pimonitor/config.yaml
+Restart=on-failure
+RestartSec=5
+
+# Hardening. PiMonitor only ever reads world-readable files under /proc,
+# /sys/class/thermal, /etc/os-release, and the apt cache under
+# /var/lib/apt/lists/ (via `apt list --upgradable`), plus binds a TCP
+# listener - it needs no elevated privileges or filesystem write access.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+CapabilityBoundingSet=
+
+[Install]
+WantedBy=multi-user.target

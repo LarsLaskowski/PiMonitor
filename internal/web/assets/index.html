@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PiMonitor</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🖥️</text></svg>">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <h1>🖥️ PiMonitor</h1>
+  <div class="subtitle" id="header-subtitle">Loading&hellip;</div>
+</header>
+
+<main>
+  <!-- Column 1: identity & maintenance -->
+  <div class="column">
+    <section class="card accent-system" id="card-system">
+      <h2><span class="card-icon">🖥️</span> System</h2>
+      <div class="kv-row"><span class="kv-key">Model</span><span class="kv-val" id="sys-model">&ndash;</span></div>
+      <div class="kv-row"><span class="kv-key">Distribution</span><span class="kv-val" id="sys-distro">&ndash;</span></div>
+      <div class="kv-row"><span class="kv-key">Kernel</span><span class="kv-val" id="sys-kernel">&ndash;</span></div>
+    </section>
+
+    <section class="card accent-updates" id="card-updates">
+      <h2><span class="card-icon">📦</span> Updates</h2>
+      <div class="metric-value" id="updates-count">&ndash;</div>
+      <div class="metric-sub" id="updates-checked"></div>
+      <span class="stale-badge hidden" id="updates-stale">cache may be outdated</span>
+      <button type="button" class="updates-button hidden" id="updates-show">Show all updates</button>
+    </section>
+
+    <section class="card accent-uptime" id="card-uptime">
+      <h2><span class="card-icon">⏱️</span> Uptime</h2>
+      <div class="kv-row"><span class="kv-key">Raspberry Pi time</span><span class="kv-val" id="pi-time">&ndash;</span></div>
+      <div class="kv-row"><span class="kv-key">Uptime</span><span class="kv-val" id="uptime-value">&ndash;</span></div>
+    </section>
+  </div>
+
+  <!-- Column 2: load & thermals -->
+  <div class="column">
+    <section class="card accent-cpu" id="card-cpu">
+      <h2><span class="card-icon">⚡</span> CPU Usage</h2>
+      <div class="metric-value" id="cpu-overall">&ndash;</div>
+      <div class="metric-sub" id="cpu-info"></div>
+      <div class="metric-sub" id="cpu-per-core"></div>
+      <canvas class="sparkline" id="cpu-sparkline"></canvas>
+    </section>
+
+    <section class="card accent-load" id="card-load">
+      <h2><span class="card-icon">🚦</span> Load Average</h2>
+      <div class="gauge-row">
+        <div class="gauge">
+          <canvas id="gauge-load1"></canvas>
+          <div class="gauge-value" id="load1-value">&ndash;</div>
+          <div class="gauge-label">1 min</div>
+        </div>
+        <div class="gauge">
+          <canvas id="gauge-load5"></canvas>
+          <div class="gauge-value" id="load5-value">&ndash;</div>
+          <div class="gauge-label">5 min</div>
+        </div>
+        <div class="gauge">
+          <canvas id="gauge-load15"></canvas>
+          <div class="gauge-value" id="load15-value">&ndash;</div>
+          <div class="gauge-label">15 min</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="card accent-temperature" id="card-temperature">
+      <h2><span class="card-icon">🌡️</span> Temperature</h2>
+      <div class="metric-value" id="temp-value">&ndash;</div>
+      <div class="metric-sub" id="temp-gpu"></div>
+      <canvas class="sparkline" id="temp-sparkline"></canvas>
+    </section>
+  </div>
+
+  <!-- Column 3: memory, storage & network -->
+  <div class="column">
+    <section class="card accent-memory" id="card-memory">
+      <h2><span class="card-icon">🧠</span> Memory &amp; Swap</h2>
+      <div class="bar-row">
+        <div class="bar-label">
+          <span class="bar-name">RAM</span>
+          <span class="bar-pct" id="mem-pct">&ndash;</span>
+        </div>
+        <div class="bar-track"><div class="bar-fill" id="mem-bar"></div></div>
+      </div>
+      <div class="bar-row">
+        <div class="bar-label">
+          <span class="bar-name">Swap</span>
+          <span class="bar-pct" id="swap-pct">&ndash;</span>
+        </div>
+        <div class="bar-track"><div class="bar-fill" id="swap-bar"></div></div>
+      </div>
+    </section>
+
+    <section class="card accent-disks" id="card-disks">
+      <h2><span class="card-icon">💽</span> Filesystems</h2>
+      <div id="disks-list"></div>
+    </section>
+
+    <section class="card accent-network hidden" id="card-network">
+      <h2><span class="card-icon">🌐</span> Network</h2>
+      <div id="network-list"></div>
+    </section>
+  </div>
+</main>
+
+<footer>PiMonitor &middot; <a href="/api/v1/metrics">/api/v1/metrics</a></footer>
+
+<div class="modal-backdrop hidden" id="updates-modal">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="updates-modal-title">
+    <div class="modal-header">
+      <h3 id="updates-modal-title">Available updates</h3>
+      <button type="button" class="modal-close" id="updates-modal-close" aria-label="Close">&times;</button>
+    </div>
+    <div class="modal-body">
+      <table class="updates-table">
+        <thead>
+          <tr><th>Package</th><th>Current</th><th>New</th></tr>
+        </thead>
+        <tbody id="updates-table-body"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script src="chart.js"></script>
+<script src="gauge.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

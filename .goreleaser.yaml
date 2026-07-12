@@ -1,0 +1,42 @@
+version: 2
+
+project_name: pimonitor
+
+builds:
+  - id: pimonitor
+    main: ./cmd/pimonitor
+    binary: pimonitor
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - arm
+      - arm64
+    goarm:
+      - "6"
+    ldflags:
+      - -s -w -X main.version={{.Version}}
+
+archives:
+  - id: pimonitor
+    formats: [tar.gz]
+    files:
+      - packaging/pimonitor.service
+      - packaging/pimonitor-apt-update.service
+      - packaging/pimonitor-apt-update.timer
+      - packaging/install.sh
+      - packaging/pimonitor.example.yaml
+      - README.md
+      - LICENSE.md
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  disable: false
+
+release:
+  github:
+    owner: larslaskowski
+    name: pimonitor
