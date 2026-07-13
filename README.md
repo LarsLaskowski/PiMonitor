@@ -23,8 +23,9 @@ automation systems like openHAB). Runs as a systemd service.
 - **Uptime** - device clock and time since boot
 - **Available apt updates** - count and package list, with a staleness
   indicator for the underlying apt cache
-- Short in-memory history (default: last 60 minutes) for sparklines - no
-  database, nothing persisted across restarts
+- Short metric history (default: last 60 minutes) for sparklines,
+  periodically snapshotted to a compact binary file so it survives
+  restarts and reboots - no database
 - **Light/dark theme toggle** - follows the OS setting by default, with a
   manual override remembered in the browser
 - A versioned REST API (`/api/v1/...`) for third-party consumers, with

@@ -18,6 +18,12 @@ func TestDefault(t *testing.T) {
 	if cfg.APIKey != "" {
 		t.Fatal("expected APIKey to default to empty (no auth)")
 	}
+	if !cfg.HistoryPersistEnabled {
+		t.Fatal("expected HistoryPersistEnabled to default to true")
+	}
+	if cfg.DataDir != "/var/lib/pimonitor" {
+		t.Fatalf("DataDir = %q, want /var/lib/pimonitor", cfg.DataDir)
+	}
 }
 
 func TestDurationHelpers(t *testing.T) {
@@ -38,6 +44,9 @@ func TestDurationHelpers(t *testing.T) {
 	}
 	if got, want := cfg.HistoryCapacity(), 720; got != want {
 		t.Fatalf("HistoryCapacity = %d, want %d", got, want)
+	}
+	if cfg.HistoryWindow() != time.Hour {
+		t.Fatalf("HistoryWindow = %v, want 1h", cfg.HistoryWindow())
 	}
 }
 
@@ -165,6 +174,7 @@ func TestValidate_RejectsBadValues(t *testing.T) {
 		{"zero updates check", func(c *Config) { c.UpdatesCheckMinutes = 0 }},
 		{"negative updates stale threshold", func(c *Config) { c.UpdatesStaleThresholdMinutes = -1 }},
 		{"zero history window", func(c *Config) { c.HistoryWindowMinutes = 0 }},
+		{"persistence enabled with empty data dir", func(c *Config) { c.HistoryPersistEnabled = true; c.DataDir = "" }},
 		{"empty listen addr", func(c *Config) { c.ListenAddr = "" }},
 		{"unknown log level", func(c *Config) { c.LogLevel = "verbose" }},
 		{"negative temperature warn", func(c *Config) { c.Thresholds.TemperatureWarnC = -1 }},
@@ -189,6 +199,9 @@ func TestValidate_AcceptsValidEdgeCases(t *testing.T) {
 	// Warn equal to crit and a zero stale threshold are both allowed.
 	cfg.Thresholds.TemperatureWarnC = cfg.Thresholds.TemperatureCritC
 	cfg.UpdatesStaleThresholdMinutes = 0
+	// An empty data_dir is fine as long as persistence is disabled.
+	cfg.HistoryPersistEnabled = false
+	cfg.DataDir = ""
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("Validate() rejected a valid edge-case config: %v", err)
 	}

@@ -23,9 +23,20 @@ updates_check_minutes: 15
 # apt-update timer's interval (default: every 6 hours).
 updates_stale_threshold_minutes: 720
 
-# How much in-memory history to retain for sparklines, in minutes. Not
-# persisted across restarts.
+# How much history to retain for sparklines, in minutes.
 history_window_minutes: 60
+
+# Whether to periodically snapshot metric history to disk so sparklines
+# survive service restarts and reboots. History is flushed on the update
+# check interval and on clean shutdown; on startup, points older than
+# history_window_minutes are discarded.
+history_persist_enabled: true
+
+# Directory the history snapshot (history.bin) is written to. Must be
+# writable by the service user; the systemd unit creates and allows
+# /var/lib/pimonitor via StateDirectory=/ReadWritePaths=, so change both
+# if you change this.
+data_dir: "/var/lib/pimonitor"
 
 # Whether to collect and display network interface throughput.
 network_enabled: true

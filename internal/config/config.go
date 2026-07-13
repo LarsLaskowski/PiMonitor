@@ -33,6 +33,8 @@ type Config struct {
 	UpdatesCheckMinutes          float64    `yaml:"updates_check_minutes"`
 	UpdatesStaleThresholdMinutes float64    `yaml:"updates_stale_threshold_minutes"`
 	HistoryWindowMinutes         float64    `yaml:"history_window_minutes"`
+	HistoryPersistEnabled        bool       `yaml:"history_persist_enabled"`
+	DataDir                      string     `yaml:"data_dir"`
 	NetworkEnabled               bool       `yaml:"network_enabled"`
 	DistroInfoEnabled            bool       `yaml:"distro_info_enabled"`
 	PiModelEnabled               bool       `yaml:"pi_model_enabled"`
@@ -49,6 +51,8 @@ func Default() Config {
 		UpdatesCheckMinutes:          15,
 		UpdatesStaleThresholdMinutes: 12 * 60,
 		HistoryWindowMinutes:         60,
+		HistoryPersistEnabled:        true,
+		DataDir:                      "/var/lib/pimonitor",
 		NetworkEnabled:               true,
 		DistroInfoEnabled:            true,
 		PiModelEnabled:               true,
@@ -81,6 +85,13 @@ func (c Config) SlowInterval() time.Duration {
 // flagged as stale.
 func (c Config) UpdatesStaleThreshold() time.Duration {
 	return time.Duration(c.UpdatesStaleThresholdMinutes * float64(time.Minute))
+}
+
+// HistoryWindow is the rolling window of history retained per metric
+// time series; when persistence is enabled, restored points older than
+// this are dropped on load.
+func (c Config) HistoryWindow() time.Duration {
+	return time.Duration(c.HistoryWindowMinutes * float64(time.Minute))
 }
 
 // HistoryCapacity is the number of samples retained per metric time series
@@ -121,6 +132,9 @@ func (c Config) Validate() error {
 	}
 	if c.HistoryWindowMinutes <= 0 {
 		return fmt.Errorf("history_window_minutes must be > 0 (got %v)", c.HistoryWindowMinutes)
+	}
+	if c.HistoryPersistEnabled && c.DataDir == "" {
+		return fmt.Errorf("data_dir must not be empty when history_persist_enabled is true")
 	}
 	if c.ListenAddr == "" {
 		return fmt.Errorf("listen_addr must not be empty")

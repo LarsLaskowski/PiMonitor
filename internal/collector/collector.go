@@ -31,6 +31,14 @@ type Config struct {
 	DistroInfoEnabled bool
 	// PiModelEnabled toggles whether Snapshot.System.PiModel is populated.
 	PiModelEnabled bool
+	// PersistPath is the file metric history is periodically snapshotted
+	// to and restored from at startup, so sparklines survive restarts.
+	// Empty disables persistence.
+	PersistPath string
+	// HistoryWindow bounds how far back restored history may reach:
+	// persisted points older than this are dropped on load. Zero disables
+	// trimming.
+	HistoryWindow time.Duration
 }
 
 // History is the collected time series for every metric, keyed by
@@ -113,6 +121,7 @@ func New(cfg Config, log *slog.Logger) *Collector {
 // FastInterval/SlowInterval until ctx is canceled. Intended to be run in
 // its own goroutine.
 func (c *Collector) Run(ctx context.Context) {
+	c.loadHistory()
 	c.collectSysInfo()
 	c.fastTick(ctx)
 	c.slowTick(ctx)
@@ -131,11 +140,15 @@ func (c *Collector) Run(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
+			// Final flush so a clean shutdown (e.g. reboot for updates)
+			// loses at most the points since the last fast tick.
+			c.persistHistory()
 			return
 		case <-fastTicker.C:
 			c.fastTick(ctx)
 		case <-slowTicker.C:
 			c.slowTick(ctx)
+			c.persistHistory()
 		}
 	}
 }

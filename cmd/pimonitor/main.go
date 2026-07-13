@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -41,7 +42,7 @@ func run(args []string) error {
 
 	log := newLogger(cfg.LogLevel)
 
-	coll := collector.New(collector.Config{
+	collCfg := collector.Config{
 		FastInterval:          cfg.FastInterval(),
 		SlowInterval:          cfg.SlowInterval(),
 		HistoryCapacity:       cfg.HistoryCapacity(),
@@ -49,7 +50,12 @@ func run(args []string) error {
 		UpdatesStaleThreshold: cfg.UpdatesStaleThreshold(),
 		DistroInfoEnabled:     cfg.DistroInfoEnabled,
 		PiModelEnabled:        cfg.PiModelEnabled,
-	}, log)
+		HistoryWindow:         cfg.HistoryWindow(),
+	}
+	if cfg.HistoryPersistEnabled {
+		collCfg.PersistPath = filepath.Join(cfg.DataDir, "history.bin")
+	}
+	coll := collector.New(collCfg, log)
 
 	staticHandler, err := web.Handler()
 	if err != nil {
@@ -78,7 +84,11 @@ func run(args []string) error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	go coll.Run(ctx)
+	collDone := make(chan struct{})
+	go func() {
+		coll.Run(ctx)
+		close(collDone)
+	}()
 
 	serveErr := make(chan error, 1)
 	go func() {
@@ -96,6 +106,12 @@ func run(args []string) error {
 		defer cancel()
 		if err := server.Shutdown(shutdownCtx); err != nil {
 			return fmt.Errorf("graceful shutdown: %w", err)
+		}
+		// Wait for the collector to finish its final history flush before
+		// the process exits.
+		select {
+		case <-collDone:
+		case <-shutdownCtx.Done():
 		}
 		return nil
 	case err := <-serveErr:
