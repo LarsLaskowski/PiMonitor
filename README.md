@@ -141,7 +141,11 @@ an absolute path like `/home/pi/Downloads/pimonitor`.
 This creates an unprivileged `pimonitor` system user, installs the binary
 to `/usr/local/bin/pimonitor`, writes a default config to
 `/etc/pimonitor/config.yaml` (if one doesn't already exist), installs the
-two systemd units, and enables/starts both. See
+two systemd units, and enables/starts both. Because the config file may
+contain the `api_key` secret, the installer keeps it readable only by root
+and the `pimonitor` group (`/etc/pimonitor` is `750 root:pimonitor`, the
+config file `640 root:pimonitor`) — re-running `install.sh` also tightens
+the permissions of an existing config without touching its content. See
 [`packaging/pimonitor.example.yaml`](packaging/pimonitor.example.yaml) for
 every configuration option.
 
