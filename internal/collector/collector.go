@@ -117,9 +117,15 @@ func (c *Collector) Run(ctx context.Context) {
 	c.fastTick(ctx)
 	c.slowTick(ctx)
 
-	fastTicker := time.NewTicker(c.cfg.FastInterval)
+	// Defense in depth: a non-positive interval panics time.NewTicker.
+	// config.Validate rejects such values at startup, but clamp here too so
+	// no future caller can crash the collector.
+	fastInterval := c.clampInterval(c.cfg.FastInterval, "FastInterval")
+	slowInterval := c.clampInterval(c.cfg.SlowInterval, "SlowInterval")
+
+	fastTicker := time.NewTicker(fastInterval)
 	defer fastTicker.Stop()
-	slowTicker := time.NewTicker(c.cfg.SlowInterval)
+	slowTicker := time.NewTicker(slowInterval)
 	defer slowTicker.Stop()
 
 	for {
@@ -132,6 +138,17 @@ func (c *Collector) Run(ctx context.Context) {
 			c.slowTick(ctx)
 		}
 	}
+}
+
+// clampInterval guards against a non-positive tick interval, which would
+// panic time.NewTicker. It substitutes a safe 1s minimum and logs a warning
+// naming the offending field.
+func (c *Collector) clampInterval(d time.Duration, name string) time.Duration {
+	if d <= 0 {
+		c.log.Warn("non-positive tick interval clamped to 1s", "field", name, "got", d)
+		return time.Second
+	}
+	return d
 }
 
 // Snapshot returns a copy of the most recently collected metrics.
