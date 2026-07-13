@@ -106,6 +106,64 @@ journalctl -u pimonitor -f
 
 The dashboard is then available at `http://<pi-address>:8080/`.
 
+## Updating
+
+PiMonitor is distributed as a single binary, so upgrading is a matter of
+replacing that binary and restarting the service. `install.sh` is safe to
+re-run for this purpose: it overwrites the binary and the systemd units but
+leaves an existing `/etc/pimonitor/config.yaml` untouched.
+
+1. **Get the new version.** Either download the binary (or release tarball)
+   for your architecture from the
+   [Releases](https://github.com/larslaskowski/pimonitor/releases) page, or
+   pull the latest source and cross-compile it (`make build-arm64` /
+   `make build-arm`).
+
+2. **Re-run the installer** with the updated packaging directory and the new
+   binary:
+
+   ```sh
+   sudo ./packaging/install.sh path/to/pimonitor-arm64
+   ```
+
+   This replaces `/usr/local/bin/pimonitor`, refreshes the systemd units, and
+   runs `systemctl daemon-reload`. Your configuration is preserved.
+
+3. **Restart the service** so the running process picks up the new binary.
+   `install.sh` starts the units but does not restart an already-running
+   service, so do it explicitly:
+
+   ```sh
+   sudo systemctl restart pimonitor.service
+   ```
+
+   If the `pimonitor-apt-update.timer` or its service unit changed, also run
+   `sudo systemctl restart pimonitor-apt-update.timer`.
+
+4. **Verify** the new version is running:
+
+   ```sh
+   pimonitor -version
+   systemctl status pimonitor.service
+   journalctl -u pimonitor -n 20
+   ```
+
+Because nothing is persisted across restarts (the in-memory history is
+rebuilt from scratch), the sparklines will simply start empty again after an
+update — there is no database to migrate.
+
+**New configuration options:** upgrades never modify your existing
+`config.yaml`. When a release adds settings, compare your file against the
+current
+[`packaging/pimonitor.example.yaml`](packaging/pimonitor.example.yaml) and
+copy over any new keys you want to use. All settings have sensible defaults,
+so a config from an older version keeps working unchanged.
+
+**REST API compatibility:** the `/api/v1/...` contract is stable across
+updates — a breaking change to an endpoint's JSON shape ships as
+`/api/v2/...` instead, so existing integrations (e.g. openHAB) keep working
+after an upgrade. See [`docs/API.md`](docs/API.md).
+
 ## REST API
 
 See [`docs/API.md`](docs/API.md) for the full contract, including an
