@@ -94,6 +94,19 @@ Notes:
 - `system.cpu_model` is best-effort: it is empty on kernels whose
   `/proc/cpuinfo` omits a `model name` field (common on some Raspberry Pi
   kernels).
+- `disks[].used_percent` follows `df`'s semantics: it is computed as
+  `used / (used + available)`, where `available` counts only blocks
+  writable by unprivileged processes. Blocks reserved for root (typically
+  5% on ext4) therefore count as used capacity, and the value reaches 100
+  when services can no longer write — matching `df`'s `Use%` rather than a
+  raw `used / total` ratio (which would still read ~95% on a full ext4
+  filesystem). `total_bytes` and `used_bytes` remain the raw filesystem
+  totals, so `used_percent` can slightly exceed
+  `used_bytes / total_bytes * 100`.
+- `disks` contains at most one entry per mountpoint (the filesystem
+  actually visible at that path when a mountpoint is overmounted), and
+  network filesystems (NFS, CIFS/SMB, SSHFS, ...) are excluded — only
+  local storage is reported.
 - `network` entries are sorted by interface name.
 - `gpu_temperature` is only present if `vcgencmd` is installed and
   responded successfully; otherwise the field is omitted.
