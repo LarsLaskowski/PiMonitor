@@ -66,7 +66,8 @@ extract the fields you need (e.g. via JSONPath in openHAB's HTTP binding).
   "system": {
     "kernel_version": "6.6.31+rpt-rpi-v8",
     "distribution": "Raspberry Pi OS Bookworm (Debian 12)",
-    "pi_model": "Raspberry Pi 4 Model B Rev 1.4"
+    "pi_model": "Raspberry Pi 4 Model B Rev 1.4",
+    "cpu_model": "ARMv8 Processor rev 1 (v8l)"
   },
   "updates": {
     "count": 3,
@@ -90,6 +91,10 @@ Notes:
 - `timestamp` is the Pi's own clock at collection time (useful as the
   displayed device time), and `uptime_seconds` is the time elapsed since
   boot.
+- `system.cpu_model` is best-effort: it is empty on kernels whose
+  `/proc/cpuinfo` omits a `model name` field (common on some Raspberry Pi
+  kernels).
+- `network` entries are sorted by interface name.
 - `gpu_temperature` is only present if `vcgencmd` is installed and
   responded successfully; otherwise the field is omitted.
 - `network` is omitted entirely when network monitoring is disabled

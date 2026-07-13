@@ -67,6 +67,7 @@ type SystemInfo struct {
 	KernelVersion string `json:"kernel_version"`
 	Distribution  string `json:"distribution"`
 	PiModel       string `json:"pi_model"`
+	CPUModel      string `json:"cpu_model"`
 }
 
 // PackageUpdate is a single upgradable apt package.

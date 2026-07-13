@@ -121,6 +121,29 @@ func piModel(deviceTreePath, cpuinfoFallbackPath string) string {
 	return ""
 }
 
+// cpuModel returns a human-readable CPU model string from /proc/cpuinfo's
+// "model name" field (first occurrence). This field is present on x86 and
+// many ARM kernels but not guaranteed on every Raspberry Pi kernel, in
+// which case an empty string is returned and the caller shows just the
+// core count.
+func cpuModel(cpuinfoPath string) string {
+	data, err := os.ReadFile(cpuinfoPath)
+	if err != nil {
+		return ""
+	}
+	scanner := bufio.NewScanner(strings.NewReader(string(data)))
+	for scanner.Scan() {
+		key, val, ok := strings.Cut(scanner.Text(), ":")
+		if !ok {
+			continue
+		}
+		if strings.TrimSpace(key) == "model name" {
+			return strings.TrimSpace(val)
+		}
+	}
+	return ""
+}
+
 // SysInfoCollector reads system identity information that only changes on
 // reboot/OS upgrade, so it is collected once rather than on every tick.
 type SysInfoCollector struct {
@@ -139,13 +162,14 @@ func NewSysInfoCollector() *SysInfoCollector {
 	}
 }
 
-// Collect returns the current kernel version, distribution, and Pi model.
-// Any individual value that cannot be determined is left as an empty
-// string rather than causing an error.
+// Collect returns the current kernel version, distribution, Pi model, and
+// CPU model. Any individual value that cannot be determined is left as an
+// empty string rather than causing an error.
 func (c *SysInfoCollector) Collect() SystemInfo {
 	return SystemInfo{
 		KernelVersion: kernelRelease(),
 		Distribution:  distributionName(c.osReleasePath),
 		PiModel:       piModel(c.deviceTreeModelPath, c.cpuinfoPath),
+		CPUModel:      cpuModel(c.cpuinfoPath),
 	}
 }

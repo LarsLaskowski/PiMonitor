@@ -4,11 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>PiMonitor</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🖥️</text></svg>">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 <header>
-  <h1>🍓 PiMonitor</h1>
+  <h1>🖥️ PiMonitor</h1>
   <div class="subtitle" id="header-subtitle">Loading&hellip;</div>
 </header>
 
@@ -27,7 +28,7 @@
       <div class="metric-value" id="updates-count">&ndash;</div>
       <div class="metric-sub" id="updates-checked"></div>
       <span class="stale-badge hidden" id="updates-stale">cache may be outdated</span>
-      <ul class="updates-list hidden" id="updates-list"></ul>
+      <button type="button" class="updates-button hidden" id="updates-show">Show all updates</button>
     </section>
 
     <section class="card accent-uptime" id="card-uptime">
@@ -42,6 +43,7 @@
     <section class="card accent-cpu" id="card-cpu">
       <h2><span class="card-icon">⚡</span> CPU Usage</h2>
       <div class="metric-value" id="cpu-overall">&ndash;</div>
+      <div class="metric-sub" id="cpu-info"></div>
       <div class="metric-sub" id="cpu-per-core"></div>
       <canvas class="sparkline" id="cpu-sparkline"></canvas>
     </section>
@@ -108,6 +110,23 @@
 </main>
 
 <footer>PiMonitor &middot; <a href="/api/v1/metrics">/api/v1/metrics</a></footer>
+
+<div class="modal-backdrop hidden" id="updates-modal">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="updates-modal-title">
+    <div class="modal-header">
+      <h3 id="updates-modal-title">Available updates</h3>
+      <button type="button" class="modal-close" id="updates-modal-close" aria-label="Close">&times;</button>
+    </div>
+    <div class="modal-body">
+      <table class="updates-table">
+        <thead>
+          <tr><th>Package</th><th>Current</th><th>New</th></tr>
+        </thead>
+        <tbody id="updates-table-body"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
 
 <script src="chart.js"></script>
 <script src="gauge.js"></script>

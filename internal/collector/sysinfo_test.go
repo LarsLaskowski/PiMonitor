@@ -73,6 +73,30 @@ func TestPiModel_NoSourceAvailable(t *testing.T) {
 	}
 }
 
+func TestCPUModel_FromCPUInfo(t *testing.T) {
+	dir := t.TempDir()
+	cpuinfo := "processor\t: 0\nmodel name\t: ARMv8 Processor rev 1 (v8l)\nBogoMIPS\t: 108.00\n"
+	path := writeTempFile(t, dir, "cpuinfo", cpuinfo)
+	if got := cpuModel(path); got != "ARMv8 Processor rev 1 (v8l)" {
+		t.Fatalf("cpuModel = %q", got)
+	}
+}
+
+func TestCPUModel_MissingField(t *testing.T) {
+	dir := t.TempDir()
+	// Some Raspberry Pi kernels omit "model name" entirely.
+	path := writeTempFile(t, dir, "cpuinfo", "processor\t: 0\nHardware\t: BCM2835\n")
+	if got := cpuModel(path); got != "" {
+		t.Fatalf("expected empty string when model name is absent, got %q", got)
+	}
+}
+
+func TestCPUModel_MissingFile(t *testing.T) {
+	if got := cpuModel(filepath.Join(t.TempDir(), "nope")); got != "" {
+		t.Fatalf("expected empty string for missing cpuinfo, got %q", got)
+	}
+}
+
 func TestKernelRelease_NonEmpty(t *testing.T) {
 	// This exercises the real syscall.Uname on the test host; it should
 	// always succeed on Linux and return a non-empty release string.

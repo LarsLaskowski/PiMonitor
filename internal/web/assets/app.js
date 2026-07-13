@@ -14,6 +14,7 @@
     },
   };
   let lastCPUCount = 1;
+  let latestPackages = [];
 
   function levelClass(value, warn, crit) {
     if (value >= crit) return 'metric-crit';
@@ -48,13 +49,15 @@
     const days = Math.floor(s / 86400);
     const hours = Math.floor((s % 86400) / 3600);
     const mins = Math.floor((s % 3600) / 60);
-    const secs = s % 60;
     const parts = [];
     if (days) parts.push(days + 'd');
     if (hours || days) parts.push(hours + 'h');
     parts.push(mins + 'm');
-    parts.push(secs + 's');
     return parts.join(' ');
+  }
+
+  function fmtClock(date) {
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   }
 
   async function fetchJSON(path) {
@@ -79,7 +82,7 @@
 
     // Uptime (Pi clock comes from the snapshot timestamp, which is set on
     // the Pi at collection time, not from the viewing browser's clock).
-    setText('pi-time', new Date(snap.timestamp).toLocaleTimeString());
+    setText('pi-time', fmtClock(new Date(snap.timestamp)));
     setText('uptime-value', fmtUptime(snap.uptime_seconds));
 
     // CPU
@@ -89,7 +92,11 @@
     if (snap.cpu.per_core_percent && snap.cpu.per_core_percent.length) {
       setText('cpu-per-core', snap.cpu.per_core_percent.map((v, i) => 'C' + i + ': ' + v.toFixed(0) + '%').join('  '));
     }
-    lastCPUCount = snap.cpu_count || snap.cpu.per_core_percent.length || 1;
+    lastCPUCount = snap.cpu_count || (snap.cpu.per_core_percent || []).length || 1;
+
+    // CPU details: core count plus model name where the kernel exposes it.
+    const cpuModel = snap.system && snap.system.cpu_model;
+    setText('cpu-info', lastCPUCount + (lastCPUCount === 1 ? ' core' : ' cores') + (cpuModel ? ' · ' + cpuModel : ''));
 
     // Load average gauges
     renderGauge('gauge-load1', 'load1-value', snap.load_average.load1);
@@ -107,9 +114,13 @@
     }
     setText('temp-gpu', snap.gpu_temperature ? 'GPU: ' + snap.gpu_temperature.celsius.toFixed(1) + ' °C' : '');
 
-    // Memory & swap
-    renderBar('mem-bar', 'mem-pct', snap.memory.used_percent, t.disk_warn_percent, t.disk_crit_percent);
-    renderBar('swap-bar', 'swap-pct', snap.swap.used_percent, t.swap_warn_percent, t.swap_crit_percent);
+    // Memory & swap (show absolute sizes alongside the percentage, like
+    // the filesystem rows).
+    const memUsed = Math.max(0, (snap.memory.total_bytes || 0) - (snap.memory.available_bytes || 0));
+    renderBar('mem-bar', 'mem-pct', snap.memory.used_percent, t.disk_warn_percent, t.disk_crit_percent,
+      fmtBytes(memUsed) + ' / ' + fmtBytes(snap.memory.total_bytes));
+    renderBar('swap-bar', 'swap-pct', snap.swap.used_percent, t.swap_warn_percent, t.swap_crit_percent,
+      fmtBytes(snap.swap.used_bytes) + ' / ' + fmtBytes(snap.swap.total_bytes));
 
     // Disks
     renderList('disks-list', (snap.disks || []), d =>
@@ -145,18 +156,56 @@
       setText('updates-checked', 'Checked ' + new Date(snap.updates.checked_at).toLocaleTimeString());
     }
     document.getElementById('updates-stale').classList.toggle('hidden', !snap.updates.stale);
-    const list = document.getElementById('updates-list');
-    list.innerHTML = '';
-    if (snap.updates.packages && snap.updates.packages.length) {
-      list.classList.remove('hidden');
-      snap.updates.packages.forEach(p => {
-        const li = document.createElement('li');
-        li.textContent = p.name + ': ' + p.old_version + ' → ' + p.new_version;
-        list.appendChild(li);
-      });
-    } else {
-      list.classList.add('hidden');
+
+    latestPackages = (snap.updates.packages || []);
+    const showBtn = document.getElementById('updates-show');
+    showBtn.classList.toggle('hidden', latestPackages.length === 0);
+    showBtn.textContent = latestPackages.length === 1
+      ? 'Show 1 update' : 'Show all ' + latestPackages.length + ' updates';
+    // Keep the open modal's contents in sync with fresh data.
+    if (!document.getElementById('updates-modal').classList.contains('hidden')) {
+      renderUpdatesTable();
     }
+  }
+
+  function renderUpdatesTable() {
+    const body = document.getElementById('updates-table-body');
+    body.innerHTML = '';
+    latestPackages.forEach(p => {
+      const tr = document.createElement('tr');
+      const name = document.createElement('td');
+      name.className = 'pkg-name';
+      name.textContent = p.name;
+      const oldV = document.createElement('td');
+      oldV.className = 'pkg-old';
+      oldV.textContent = p.old_version || '–';
+      const newV = document.createElement('td');
+      newV.className = 'pkg-new';
+      newV.textContent = p.new_version || '–';
+      tr.append(name, oldV, newV);
+      body.appendChild(tr);
+    });
+  }
+
+  function openUpdatesModal() {
+    renderUpdatesTable();
+    document.getElementById('updates-modal').classList.remove('hidden');
+  }
+
+  function closeUpdatesModal() {
+    document.getElementById('updates-modal').classList.add('hidden');
+  }
+
+  function wireUpdatesModal() {
+    document.getElementById('updates-show').addEventListener('click', openUpdatesModal);
+    document.getElementById('updates-modal-close').addEventListener('click', closeUpdatesModal);
+    document.getElementById('updates-modal').addEventListener('click', e => {
+      // Close when clicking the backdrop, but not the dialog itself.
+      if (e.target === e.currentTarget) closeUpdatesModal();
+    });
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape') closeUpdatesModal();
+    });
   }
 
   function renderGauge(canvasId, valueId, value) {
@@ -166,12 +215,12 @@
     setText(valueId, value.toFixed(2));
   }
 
-  function renderBar(barId, pctId, value, warn, crit) {
+  function renderBar(barId, pctId, value, warn, crit, subText) {
     const cls = levelClass(value, warn, crit);
     const bar = document.getElementById(barId);
     bar.style.width = Math.min(value, 100).toFixed(1) + '%';
     bar.className = 'bar-fill ' + cls;
-    setText(pctId, value.toFixed(1) + ' %');
+    setText(pctId, value.toFixed(1) + ' %' + (subText ? ' · ' + subText : ''));
   }
 
   function barRow(name, pct, warn, crit, subText) {
@@ -223,6 +272,7 @@
   }
 
   async function main() {
+    wireUpdatesModal();
     await loadConfig();
     const intervalMs = Math.max(1, config.poll_interval_seconds) * 1000;
 

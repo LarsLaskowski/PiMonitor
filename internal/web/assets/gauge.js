@@ -19,9 +19,18 @@ function drawGauge(canvas, value, max, colorClass) {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, cssWidth, cssHeight);
 
+  const lineWidth = 8;
+  const margin = 4;
   const cx = cssWidth / 2;
-  const cy = cssHeight - 6;
-  const radius = Math.min(cssWidth / 2, cssHeight) - 8;
+  const cy = cssHeight - margin - lineWidth / 2;
+  // The radius must fit both horizontally (half the width) and vertically
+  // (the full height above the baseline), always leaving room for the
+  // stroke's half-width plus a small margin, so the top of the arc is
+  // never clipped even when the canvas is much wider than it is tall.
+  const radius = Math.max(
+    4,
+    Math.min(cssWidth / 2 - lineWidth / 2 - margin, cy - lineWidth / 2 - margin),
+  );
   const startAngle = Math.PI; // left (9 o'clock)
   const endAngle = 2 * Math.PI; // right (3 o'clock), via the top
 
@@ -32,7 +41,7 @@ function drawGauge(canvas, value, max, colorClass) {
   // Background track (full top semicircle).
   ctx.beginPath();
   ctx.arc(cx, cy, radius, startAngle, endAngle, false);
-  ctx.lineWidth = 8;
+  ctx.lineWidth = lineWidth;
   ctx.strokeStyle = trackColor;
   ctx.lineCap = 'round';
   ctx.stroke();
@@ -42,7 +51,7 @@ function drawGauge(canvas, value, max, colorClass) {
 
   ctx.beginPath();
   ctx.arc(cx, cy, radius, startAngle, startAngle + Math.PI * clamped, false);
-  ctx.lineWidth = 8;
+  ctx.lineWidth = lineWidth;
   ctx.strokeStyle = fillColor;
   ctx.lineCap = 'round';
   ctx.stroke();

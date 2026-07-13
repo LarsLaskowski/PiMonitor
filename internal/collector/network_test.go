@@ -17,6 +17,55 @@ const netDevFixture2 = `Inter-|   Receive                                       
   eth0: 15000      100    0    0    0     0          0         0     7000       40    0    0    0     0       0          0
 `
 
+const netDevMultiFixture1 = `Inter-|   Receive                                                |  Transmit
+ face |bytes    packets errs drop fifo frame compressed multicast|bytes    packets errs drop fifo colls carrier compressed
+    lo:  1000       10    0    0    0     0          0         0     1000       10    0    0    0     0       0          0
+  wlan0: 1000       10    0    0    0     0          0         0     1000       10    0    0    0     0       0          0
+  eth0:  1000       10    0    0    0     0          0         0     1000       10    0    0    0     0       0          0
+tailscale0: 1000     10    0    0    0     0          0         0     1000       10    0    0    0     0       0          0
+`
+
+const netDevMultiFixture2 = `Inter-|   Receive                                                |  Transmit
+ face |bytes    packets errs drop fifo frame compressed multicast|bytes    packets errs drop fifo colls carrier compressed
+    lo:  2000       20    0    0    0     0          0         0     2000       20    0    0    0     0       0          0
+  wlan0: 2000       20    0    0    0     0          0         0     2000       20    0    0    0     0       0          0
+  eth0:  2000       20    0    0    0     0          0         0     2000       20    0    0    0     0       0          0
+tailscale0: 2000     20    0    0    0     0          0         0     2000       20    0    0    0     0       0          0
+`
+
+func TestNetworkCollector_Collect_SortedByName(t *testing.T) {
+	dir := t.TempDir()
+	path := writeTempFile(t, dir, "net_dev", netDevMultiFixture1)
+
+	fakeNow := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	c := &NetworkCollector{path: path, now: func() time.Time { return fakeNow }}
+
+	if _, err := c.Collect(); err != nil {
+		t.Fatalf("first Collect: %v", err)
+	}
+	overwriteTempFile(t, path, netDevMultiFixture2)
+	fakeNow = fakeNow.Add(time.Second)
+
+	ifaces, err := c.Collect()
+	if err != nil {
+		t.Fatalf("second Collect: %v", err)
+	}
+
+	got := make([]string, len(ifaces))
+	for i, n := range ifaces {
+		got[i] = n.Name
+	}
+	want := []string{"eth0", "tailscale0", "wlan0"} // lo excluded, alphabetical
+	if len(got) != len(want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("interface order = %v, want %v", got, want)
+		}
+	}
+}
+
 func TestParseNetDev(t *testing.T) {
 	counters, err := parseNetDev(netDevFixture1)
 	if err != nil {

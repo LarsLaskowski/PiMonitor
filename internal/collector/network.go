@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -113,6 +114,12 @@ func (c *NetworkCollector) Collect() ([]NetworkInterface, error) {
 
 	c.prev = cur
 	c.prevTime = now
+
+	// Sort by interface name so the API response (and therefore the UI)
+	// has a stable order rather than reflecting random map iteration.
+	sort.Slice(ifaces, func(i, j int) bool {
+		return ifaces[i].Name < ifaces[j].Name
+	})
 
 	return ifaces, nil
 }
