@@ -42,6 +42,21 @@
     return fmtBytes(v) + '/s';
   }
 
+  function fmtUptime(seconds) {
+    if (seconds === undefined || seconds === null) return '–';
+    const s = Math.floor(seconds);
+    const days = Math.floor(s / 86400);
+    const hours = Math.floor((s % 86400) / 3600);
+    const mins = Math.floor((s % 3600) / 60);
+    const secs = s % 60;
+    const parts = [];
+    if (days) parts.push(days + 'd');
+    if (hours || days) parts.push(hours + 'h');
+    parts.push(mins + 'm');
+    parts.push(secs + 's');
+    return parts.join(' ');
+  }
+
   async function fetchJSON(path) {
     const res = await fetch(path);
     if (!res.ok) throw new Error(path + ': HTTP ' + res.status);
@@ -61,6 +76,11 @@
 
     document.getElementById('header-subtitle').textContent =
       'Last updated ' + new Date(snap.timestamp).toLocaleTimeString();
+
+    // Uptime (Pi clock comes from the snapshot timestamp, which is set on
+    // the Pi at collection time, not from the viewing browser's clock).
+    setText('pi-time', new Date(snap.timestamp).toLocaleTimeString());
+    setText('uptime-value', fmtUptime(snap.uptime_seconds));
 
     // CPU
     setText('cpu-overall', snap.cpu.overall_percent.toFixed(1) + ' %');

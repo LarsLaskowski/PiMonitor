@@ -8,97 +8,103 @@
 </head>
 <body>
 <header>
-  <h1>PiMonitor</h1>
+  <h1>🍓 PiMonitor</h1>
   <div class="subtitle" id="header-subtitle">Loading&hellip;</div>
 </header>
 
 <main>
-  <section class="card" id="card-system">
-    <h2>System</h2>
-    <div class="bar-row">
-      <div class="bar-label"><span class="bar-name">Kernel</span></div>
-      <div class="text-tile-value" id="sys-kernel">&ndash;</div>
-    </div>
-    <div class="bar-row">
-      <div class="bar-label"><span class="bar-name">Distribution</span></div>
-      <div class="text-tile-value" id="sys-distro">&ndash;</div>
-    </div>
-    <div class="bar-row">
-      <div class="bar-label"><span class="bar-name">Model</span></div>
-      <div class="text-tile-value" id="sys-model">&ndash;</div>
-    </div>
-  </section>
+  <!-- Column 1: identity & maintenance -->
+  <div class="column">
+    <section class="card accent-system" id="card-system">
+      <h2><span class="card-icon">🖥️</span> System</h2>
+      <div class="kv-row"><span class="kv-key">Model</span><span class="kv-val" id="sys-model">&ndash;</span></div>
+      <div class="kv-row"><span class="kv-key">Distribution</span><span class="kv-val" id="sys-distro">&ndash;</span></div>
+      <div class="kv-row"><span class="kv-key">Kernel</span><span class="kv-val" id="sys-kernel">&ndash;</span></div>
+    </section>
 
-  <section class="card" id="card-updates">
-    <h2>Updates</h2>
-    <div class="metric-value" id="updates-count">&ndash;</div>
-    <div class="metric-sub" id="updates-checked"></div>
-    <span class="stale-badge hidden" id="updates-stale">cache may be outdated</span>
-    <ul class="updates-list hidden" id="updates-list"></ul>
-  </section>
+    <section class="card accent-updates" id="card-updates">
+      <h2><span class="card-icon">📦</span> Updates</h2>
+      <div class="metric-value" id="updates-count">&ndash;</div>
+      <div class="metric-sub" id="updates-checked"></div>
+      <span class="stale-badge hidden" id="updates-stale">cache may be outdated</span>
+      <ul class="updates-list hidden" id="updates-list"></ul>
+    </section>
 
-  <section class="card" id="card-cpu">
-    <h2>CPU Usage</h2>
-    <div class="metric-value" id="cpu-overall">&ndash;</div>
-    <div class="metric-sub" id="cpu-per-core"></div>
-    <canvas class="sparkline" id="cpu-sparkline"></canvas>
-  </section>
+    <section class="card accent-uptime" id="card-uptime">
+      <h2><span class="card-icon">⏱️</span> Uptime</h2>
+      <div class="kv-row"><span class="kv-key">Raspberry Pi time</span><span class="kv-val" id="pi-time">&ndash;</span></div>
+      <div class="kv-row"><span class="kv-key">Uptime</span><span class="kv-val" id="uptime-value">&ndash;</span></div>
+    </section>
+  </div>
 
-  <section class="card" id="card-load">
-    <h2>Load Average</h2>
-    <div class="gauge-row">
-      <div class="gauge">
-        <canvas id="gauge-load1"></canvas>
-        <div class="gauge-value" id="load1-value">&ndash;</div>
-        <div class="gauge-label">1 min</div>
+  <!-- Column 2: load & thermals -->
+  <div class="column">
+    <section class="card accent-cpu" id="card-cpu">
+      <h2><span class="card-icon">⚡</span> CPU Usage</h2>
+      <div class="metric-value" id="cpu-overall">&ndash;</div>
+      <div class="metric-sub" id="cpu-per-core"></div>
+      <canvas class="sparkline" id="cpu-sparkline"></canvas>
+    </section>
+
+    <section class="card accent-load" id="card-load">
+      <h2><span class="card-icon">🚦</span> Load Average</h2>
+      <div class="gauge-row">
+        <div class="gauge">
+          <canvas id="gauge-load1"></canvas>
+          <div class="gauge-value" id="load1-value">&ndash;</div>
+          <div class="gauge-label">1 min</div>
+        </div>
+        <div class="gauge">
+          <canvas id="gauge-load5"></canvas>
+          <div class="gauge-value" id="load5-value">&ndash;</div>
+          <div class="gauge-label">5 min</div>
+        </div>
+        <div class="gauge">
+          <canvas id="gauge-load15"></canvas>
+          <div class="gauge-value" id="load15-value">&ndash;</div>
+          <div class="gauge-label">15 min</div>
+        </div>
       </div>
-      <div class="gauge">
-        <canvas id="gauge-load5"></canvas>
-        <div class="gauge-value" id="load5-value">&ndash;</div>
-        <div class="gauge-label">5 min</div>
-      </div>
-      <div class="gauge">
-        <canvas id="gauge-load15"></canvas>
-        <div class="gauge-value" id="load15-value">&ndash;</div>
-        <div class="gauge-label">15 min</div>
-      </div>
-    </div>
-  </section>
+    </section>
 
-  <section class="card" id="card-temperature">
-    <h2>Temperature</h2>
-    <div class="metric-value" id="temp-value">&ndash;</div>
-    <div class="metric-sub" id="temp-gpu"></div>
-    <canvas class="sparkline" id="temp-sparkline"></canvas>
-  </section>
+    <section class="card accent-temperature" id="card-temperature">
+      <h2><span class="card-icon">🌡️</span> Temperature</h2>
+      <div class="metric-value" id="temp-value">&ndash;</div>
+      <div class="metric-sub" id="temp-gpu"></div>
+      <canvas class="sparkline" id="temp-sparkline"></canvas>
+    </section>
+  </div>
 
-  <section class="card" id="card-memory">
-    <h2>Memory &amp; Swap</h2>
-    <div class="bar-row">
-      <div class="bar-label">
-        <span class="bar-name">RAM</span>
-        <span class="bar-pct" id="mem-pct">&ndash;</span>
+  <!-- Column 3: memory, storage & network -->
+  <div class="column">
+    <section class="card accent-memory" id="card-memory">
+      <h2><span class="card-icon">🧠</span> Memory &amp; Swap</h2>
+      <div class="bar-row">
+        <div class="bar-label">
+          <span class="bar-name">RAM</span>
+          <span class="bar-pct" id="mem-pct">&ndash;</span>
+        </div>
+        <div class="bar-track"><div class="bar-fill" id="mem-bar"></div></div>
       </div>
-      <div class="bar-track"><div class="bar-fill" id="mem-bar"></div></div>
-    </div>
-    <div class="bar-row">
-      <div class="bar-label">
-        <span class="bar-name">Swap</span>
-        <span class="bar-pct" id="swap-pct">&ndash;</span>
+      <div class="bar-row">
+        <div class="bar-label">
+          <span class="bar-name">Swap</span>
+          <span class="bar-pct" id="swap-pct">&ndash;</span>
+        </div>
+        <div class="bar-track"><div class="bar-fill" id="swap-bar"></div></div>
       </div>
-      <div class="bar-track"><div class="bar-fill" id="swap-bar"></div></div>
-    </div>
-  </section>
+    </section>
 
-  <section class="card" id="card-disks">
-    <h2>Filesystems</h2>
-    <div id="disks-list"></div>
-  </section>
+    <section class="card accent-disks" id="card-disks">
+      <h2><span class="card-icon">💽</span> Filesystems</h2>
+      <div id="disks-list"></div>
+    </section>
 
-  <section class="card hidden" id="card-network">
-    <h2>Network</h2>
-    <div id="network-list"></div>
-  </section>
+    <section class="card accent-network hidden" id="card-network">
+      <h2><span class="card-icon">🌐</span> Network</h2>
+      <div id="network-list"></div>
+    </section>
+  </div>
 </main>
 
 <footer>PiMonitor &middot; <a href="/api/v1/metrics">/api/v1/metrics</a></footer>

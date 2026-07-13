@@ -37,6 +37,7 @@ extract the fields you need (e.g. via JSONPath in openHAB's HTTP binding).
 ```json
 {
   "timestamp": "2026-07-12T18:32:00Z",
+  "uptime_seconds": 372014.5,
   "cpu": {
     "overall_percent": 12.4,
     "per_core_percent": [10.1, 14.8, 11.2, 13.5]
@@ -86,6 +87,9 @@ extract the fields you need (e.g. via JSONPath in openHAB's HTTP binding).
 
 Notes:
 
+- `timestamp` is the Pi's own clock at collection time (useful as the
+  displayed device time), and `uptime_seconds` is the time elapsed since
+  boot.
 - `gpu_temperature` is only present if `vcgencmd` is installed and
   responded successfully; otherwise the field is omitted.
 - `network` is omitted entirely when network monitoring is disabled

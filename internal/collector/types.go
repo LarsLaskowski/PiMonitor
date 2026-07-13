@@ -91,6 +91,7 @@ type Updates struct {
 // Snapshot is the full set of current metric values.
 type Snapshot struct {
 	Timestamp      time.Time          `json:"timestamp"`
+	UptimeSeconds  float64            `json:"uptime_seconds"`
 	CPU            CPUUsage           `json:"cpu"`
 	Load           LoadAverage        `json:"load_average"`
 	CPUCount       int                `json:"cpu_count"`

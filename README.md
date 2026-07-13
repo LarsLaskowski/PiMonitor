@@ -20,6 +20,7 @@ automation systems like openHAB). Runs as a systemd service.
 - **Network throughput** per interface (optional, can be disabled)
 - **System identity** - kernel version, OS distribution, Raspberry Pi
   model
+- **Uptime** - device clock and time since boot
 - **Available apt updates** - count and package list, with a staleness
   indicator for the underlying apt cache
 - Short in-memory history (default: last 60 minutes) for sparklines - no

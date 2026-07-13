@@ -61,6 +61,7 @@ type Collector struct {
 	temp    *TemperatureCollector
 	sysInfo *SysInfoCollector
 	updates *UpdatesCollector
+	uptime  *UptimeCollector
 
 	log *slog.Logger
 
@@ -93,6 +94,7 @@ func New(cfg Config, log *slog.Logger) *Collector {
 		temp:     NewTemperatureCollector(),
 		sysInfo:  NewSysInfoCollector(),
 		updates:  NewUpdatesCollector(cfg.UpdatesStaleThreshold),
+		uptime:   NewUptimeCollector(),
 		log:      log,
 		cpuHist:  NewRingBuffer[HistoryPoint](cfg.HistoryCapacity),
 		l1Hist:   NewRingBuffer[HistoryPoint](cfg.HistoryCapacity),
@@ -223,11 +225,16 @@ func (c *Collector) fastTick(ctx context.Context) {
 			c.log.Warn("network collection failed", "error", err)
 		}
 	}
+	uptimeSecs, err := c.uptime.Collect()
+	if err != nil {
+		c.log.Warn("uptime collection failed", "error", err)
+	}
 
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	c.latest.Timestamp = now
+	c.latest.UptimeSeconds = uptimeSecs
 	c.latest.CPU = cpuUsage
 	c.latest.Load = load
 	c.latest.Temperature = temp
