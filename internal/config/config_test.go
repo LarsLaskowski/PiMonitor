@@ -149,6 +149,76 @@ func TestLoad_APIKeyOverride(t *testing.T) {
 	}
 }
 
+func TestValidate_DefaultIsValid(t *testing.T) {
+	if err := Default().Validate(); err != nil {
+		t.Fatalf("Default() must pass Validate(): %v", err)
+	}
+}
+
+func TestValidate_RejectsBadValues(t *testing.T) {
+	tests := []struct {
+		name   string
+		mutate func(*Config)
+	}{
+		{"zero poll interval", func(c *Config) { c.PollIntervalSeconds = 0 }},
+		{"negative poll interval", func(c *Config) { c.PollIntervalSeconds = -1 }},
+		{"zero updates check", func(c *Config) { c.UpdatesCheckMinutes = 0 }},
+		{"negative updates stale threshold", func(c *Config) { c.UpdatesStaleThresholdMinutes = -1 }},
+		{"zero history window", func(c *Config) { c.HistoryWindowMinutes = 0 }},
+		{"empty listen addr", func(c *Config) { c.ListenAddr = "" }},
+		{"unknown log level", func(c *Config) { c.LogLevel = "verbose" }},
+		{"negative temperature warn", func(c *Config) { c.Thresholds.TemperatureWarnC = -1 }},
+		{"temperature warn above crit", func(c *Config) { c.Thresholds.TemperatureWarnC = 90 }},
+		{"cpu warn above crit", func(c *Config) { c.Thresholds.CPUWarnPercent = 99 }},
+		{"disk warn above crit", func(c *Config) { c.Thresholds.DiskWarnPercent = 99 }},
+		{"swap warn above crit", func(c *Config) { c.Thresholds.SwapWarnPercent = 99 }},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := Default()
+			tt.mutate(&cfg)
+			if err := cfg.Validate(); err == nil {
+				t.Fatalf("Validate() accepted invalid config (%s)", tt.name)
+			}
+		})
+	}
+}
+
+func TestValidate_AcceptsValidEdgeCases(t *testing.T) {
+	cfg := Default()
+	// Warn equal to crit and a zero stale threshold are both allowed.
+	cfg.Thresholds.TemperatureWarnC = cfg.Thresholds.TemperatureCritC
+	cfg.UpdatesStaleThresholdMinutes = 0
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Validate() rejected a valid edge-case config: %v", err)
+	}
+}
+
+func TestLoad_RejectsZeroPollInterval(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	writeFile(t, path, "poll_interval_seconds: 0\n")
+
+	_, err := Load([]string{"-config", path})
+	if err == nil {
+		t.Fatal("expected Load to reject poll_interval_seconds: 0")
+	}
+}
+
+func TestLoad_VersionFlagSkipsValidation(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	writeFile(t, path, "poll_interval_seconds: 0\n")
+
+	result, err := Load([]string{"-config", path, "-version"})
+	if err != nil {
+		t.Fatalf("expected -version to bypass validation, got: %v", err)
+	}
+	if !result.VersionRequested {
+		t.Fatal("expected VersionRequested to be true")
+	}
+}
+
 func writeFile(t *testing.T, path, content string) {
 	t.Helper()
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {

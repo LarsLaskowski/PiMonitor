@@ -96,6 +96,70 @@ func (c Config) HistoryCapacity() int {
 	return capacity
 }
 
+// validLogLevels are the log levels newLogger understands; any other value
+// silently falls back to info, so we reject it here instead.
+var validLogLevels = map[string]bool{
+	"debug": true,
+	"info":  true,
+	"warn":  true,
+	"error": true,
+}
+
+// Validate checks the resolved configuration for values that would crash the
+// service (e.g. a zero poll interval panics time.NewTicker) or silently make
+// it misbehave. It returns a descriptive error for the first violation so a
+// daemon fails fast at startup rather than later at runtime.
+func (c Config) Validate() error {
+	if c.PollIntervalSeconds <= 0 {
+		return fmt.Errorf("poll_interval_seconds must be > 0 (got %v)", c.PollIntervalSeconds)
+	}
+	if c.UpdatesCheckMinutes <= 0 {
+		return fmt.Errorf("updates_check_minutes must be > 0 (got %v)", c.UpdatesCheckMinutes)
+	}
+	if c.UpdatesStaleThresholdMinutes < 0 {
+		return fmt.Errorf("updates_stale_threshold_minutes must be >= 0 (got %v)", c.UpdatesStaleThresholdMinutes)
+	}
+	if c.HistoryWindowMinutes <= 0 {
+		return fmt.Errorf("history_window_minutes must be > 0 (got %v)", c.HistoryWindowMinutes)
+	}
+	if c.ListenAddr == "" {
+		return fmt.Errorf("listen_addr must not be empty")
+	}
+	if !validLogLevels[c.LogLevel] {
+		return fmt.Errorf("log_level must be one of debug, info, warn, error (got %q)", c.LogLevel)
+	}
+	if err := c.Thresholds.validate(); err != nil {
+		return err
+	}
+	return nil
+}
+
+// validate checks that every threshold is non-negative and that each warn
+// cutoff does not exceed its critical counterpart.
+func (t Thresholds) validate() error {
+	pairs := []struct {
+		name       string
+		warn, crit float64
+	}{
+		{"temperature", t.TemperatureWarnC, t.TemperatureCritC},
+		{"cpu", t.CPUWarnPercent, t.CPUCritPercent},
+		{"disk", t.DiskWarnPercent, t.DiskCritPercent},
+		{"swap", t.SwapWarnPercent, t.SwapCritPercent},
+	}
+	for _, p := range pairs {
+		if p.warn < 0 {
+			return fmt.Errorf("thresholds.%s_warn must be >= 0 (got %v)", p.name, p.warn)
+		}
+		if p.crit < 0 {
+			return fmt.Errorf("thresholds.%s_crit must be >= 0 (got %v)", p.name, p.crit)
+		}
+		if p.warn > p.crit {
+			return fmt.Errorf("thresholds.%s_warn (%v) must be <= %s_crit (%v)", p.name, p.warn, p.name, p.crit)
+		}
+	}
+	return nil
+}
+
 // loadYAMLFile merges the YAML file at path into cfg. Only keys present in
 // the file override cfg's existing (default) values; absent keys are left
 // untouched, since yaml.Unmarshal only writes fields it finds in the
@@ -150,5 +214,15 @@ func Load(args []string) (Result, error) {
 		cfg.APIKey = *apiKey
 	}
 
-	return Result{Config: cfg, VersionRequested: *showVersion}, nil
+	// A -version request short-circuits before validation so `pimonitor
+	// -version` still works even against an otherwise invalid config.
+	if *showVersion {
+		return Result{Config: cfg, VersionRequested: true}, nil
+	}
+
+	if err := cfg.Validate(); err != nil {
+		return Result{}, err
+	}
+
+	return Result{Config: cfg, VersionRequested: false}, nil
 }
