@@ -83,7 +83,7 @@ func New(metrics MetricsProvider, cfg Config, staticHandler http.Handler, log *s
 
 	s.httpServer = &http.Server{
 		Addr:         cfg.ListenAddr,
-		Handler:      s.withLogging(mux),
+		Handler:      s.withLogging(s.withSecurityHeaders(mux)),
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 10 * time.Second,
 		IdleTimeout:  60 * time.Second,
