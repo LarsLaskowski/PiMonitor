@@ -49,12 +49,19 @@ if ! id -u pimonitor >/dev/null 2>&1; then
 fi
 
 echo "Installing configuration..."
+# The config file may contain the api_key secret, so keep the directory and
+# file readable only by root and the pimonitor service user (the 'pimonitor'
+# group is created by useradd above).
 mkdir -p /etc/pimonitor
+chown root:pimonitor /etc/pimonitor
+chmod 750 /etc/pimonitor
 if [[ ! -f /etc/pimonitor/config.yaml ]]; then
-  install -m 644 "$SCRIPT_DIR/pimonitor.example.yaml" /etc/pimonitor/config.yaml
+  install -m 640 -o root -g pimonitor "$SCRIPT_DIR/pimonitor.example.yaml" /etc/pimonitor/config.yaml
   echo "  wrote default config to /etc/pimonitor/config.yaml"
 else
   echo "  /etc/pimonitor/config.yaml already exists, leaving it untouched"
+  chown root:pimonitor /etc/pimonitor/config.yaml
+  chmod 640 /etc/pimonitor/config.yaml
 fi
 
 echo "Installing systemd units..."

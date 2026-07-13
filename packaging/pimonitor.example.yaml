@@ -39,6 +39,11 @@ pi_model_enabled: true
 # "Authorization: Bearer <api_key>" or "X-Api-Key: <api_key>". Leave empty
 # (the default) to allow unauthenticated access on a trusted LAN. Set this
 # before exposing the API to other systems (e.g. openHAB).
+# Because this is a secret, install.sh keeps /etc/pimonitor/config.yaml
+# readable only by root and the 'pimonitor' group (mode 640). If you copy
+# the config manually, apply the same permissions:
+#   sudo chown root:pimonitor /etc/pimonitor/config.yaml
+#   sudo chmod 640 /etc/pimonitor/config.yaml
 api_key: ""
 
 # Color-coding thresholds for the dashboard (and the load-average gauge
