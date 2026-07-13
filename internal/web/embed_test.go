@@ -31,7 +31,7 @@ func TestHandler_ServesStaticAssets(t *testing.T) {
 		t.Fatalf("Handler: %v", err)
 	}
 
-	for _, path := range []string{"/style.css", "/app.js", "/chart.js", "/gauge.js"} {
+	for _, path := range []string{"/style.css", "/app.js", "/chart.js", "/gauge.js", "/theme-init.js"} {
 		req := httptest.NewRequest(http.MethodGet, path, nil)
 		rec := httptest.NewRecorder()
 		h.ServeHTTP(rec, req)
@@ -55,10 +55,19 @@ func TestHandler_ServesThemeToggle(t *testing.T) {
 	if !strings.Contains(body, `id="theme-toggle"`) {
 		t.Errorf("expected index.html to contain the theme toggle button")
 	}
+	// The pre-paint theme script is an external file (inline scripts are
+	// blocked by the Content-Security-Policy) and must load in <head>.
+	if !strings.Contains(body, `<script src="theme-init.js"></script>`) {
+		t.Errorf("expected index.html to load theme-init.js")
+	}
+
 	// The pre-paint script must key persistence off the same localStorage key
 	// app.js uses, so a stored choice survives a reload without a flash.
-	if !strings.Contains(body, "pimonitor-theme") {
-		t.Errorf("expected index.html to reference the pimonitor-theme storage key")
+	req = httptest.NewRequest(http.MethodGet, "/theme-init.js", nil)
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if !strings.Contains(rec.Body.String(), "pimonitor-theme") {
+		t.Errorf("expected theme-init.js to reference the pimonitor-theme storage key")
 	}
 }
 

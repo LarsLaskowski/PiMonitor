@@ -24,6 +24,24 @@ func (s *Server) withLogging(next http.Handler) http.Handler {
 	})
 }
 
+// withSecurityHeaders sets standard security response headers on every
+// response. The CSP is strict because the dashboard is fully self-contained:
+// all scripts and styles are same-origin files and the favicon is a data:
+// URI (hence the data: allowance for img-src). frame-ancestors 'none' plus
+// X-Frame-Options DENY prevent the dashboard from being framed
+// (clickjacking); the latter covers older browsers without CSP2 support.
+func (s *Server) withSecurityHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		h := w.Header()
+		h.Set("Content-Security-Policy",
+			"default-src 'self'; img-src 'self' data:; script-src 'self'; style-src 'self'; frame-ancestors 'none'")
+		h.Set("X-Content-Type-Options", "nosniff")
+		h.Set("X-Frame-Options", "DENY")
+		h.Set("Referrer-Policy", "no-referrer")
+		next.ServeHTTP(w, r)
+	})
+}
+
 // withAPIKey requires a matching bearer token or X-Api-Key header when
 // cfg.APIKey is set. When cfg.APIKey is empty (the default), all requests
 // are allowed, keeping the common case (dashboard on a trusted LAN)

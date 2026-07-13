@@ -6,19 +6,7 @@
 <title>PiMonitor</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🖥️</text></svg>">
 <link rel="stylesheet" href="style.css">
-<script>
-  // Apply a previously chosen theme before the first paint to avoid a flash
-  // of the wrong palette. With no stored choice we leave `data-theme` unset
-  // so the CSS `prefers-color-scheme` default takes over.
-  (function () {
-    try {
-      var stored = localStorage.getItem('pimonitor-theme');
-      if (stored === 'light' || stored === 'dark') {
-        document.documentElement.setAttribute('data-theme', stored);
-      }
-    } catch (e) {}
-  })();
-</script>
+<script src="theme-init.js"></script>
 </head>
 <body>
 <header>
