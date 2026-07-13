@@ -1,6 +1,8 @@
 package httpapi
 
 import (
+	"crypto/sha256"
+	"crypto/subtle"
 	"net/http"
 	"strings"
 	"time"
@@ -32,7 +34,12 @@ func (s *Server) withAPIKey(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
-		if providedAPIKey(r) == s.cfg.APIKey {
+		// Hash both keys so the comparison runs in constant time over a
+		// fixed length, leaking neither key bytes nor the configured
+		// key's length through response timing.
+		provided := sha256.Sum256([]byte(providedAPIKey(r)))
+		expected := sha256.Sum256([]byte(s.cfg.APIKey))
+		if subtle.ConstantTimeCompare(provided[:], expected[:]) == 1 {
 			next.ServeHTTP(w, r)
 			return
 		}
