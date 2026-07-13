@@ -135,10 +135,18 @@
       renderList('network-list', snap.network, n => {
         const row = document.createElement('div');
         row.className = 'bar-row';
-        row.innerHTML =
-          '<div class="bar-label"><span class="bar-name">' + n.name + '</span>' +
-          '<span class="bar-pct">↓ ' + fmtBytesPerSec(n.rx_bytes_per_sec) +
-          ' ↑ ' + fmtBytesPerSec(n.tx_bytes_per_sec) + '</span></div>';
+        const label = document.createElement('div');
+        label.className = 'bar-label';
+        const name = document.createElement('span');
+        name.className = 'bar-name';
+        name.textContent = n.name;
+        const rates = document.createElement('span');
+        rates.className = 'bar-pct';
+        rates.textContent =
+          '↓ ' + fmtBytesPerSec(n.rx_bytes_per_sec) +
+          ' ↑ ' + fmtBytesPerSec(n.tx_bytes_per_sec);
+        label.append(name, rates);
+        row.appendChild(label);
         return row;
       });
     } else {
@@ -227,10 +235,26 @@
     const cls = levelClass(pct, warn, crit);
     const row = document.createElement('div');
     row.className = 'bar-row';
-    row.innerHTML =
-      '<div class="bar-label"><span class="bar-name" title="' + name + '">' + name + '</span>' +
-      '<span class="bar-pct">' + pct.toFixed(1) + '% · ' + subText + '</span></div>' +
-      '<div class="bar-track"><div class="bar-fill ' + cls + '" style="width:' + Math.min(pct, 100).toFixed(1) + '%"></div></div>';
+
+    const label = document.createElement('div');
+    label.className = 'bar-label';
+    const nameEl = document.createElement('span');
+    nameEl.className = 'bar-name';
+    nameEl.title = name;
+    nameEl.textContent = name;
+    const pctEl = document.createElement('span');
+    pctEl.className = 'bar-pct';
+    pctEl.textContent = pct.toFixed(1) + '% · ' + subText;
+    label.append(nameEl, pctEl);
+
+    const track = document.createElement('div');
+    track.className = 'bar-track';
+    const fill = document.createElement('div');
+    fill.className = 'bar-fill ' + cls;
+    fill.style.width = Math.min(pct, 100).toFixed(1) + '%';
+    track.appendChild(fill);
+
+    row.append(label, track);
     return row;
   }
 
