@@ -41,6 +41,27 @@ func TestHandler_ServesStaticAssets(t *testing.T) {
 	}
 }
 
+func TestHandler_ServesThemeToggle(t *testing.T) {
+	h, err := Handler()
+	if err != nil {
+		t.Fatalf("Handler: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	if !strings.Contains(body, `id="theme-toggle"`) {
+		t.Errorf("expected index.html to contain the theme toggle button")
+	}
+	// The pre-paint script must key persistence off the same localStorage key
+	// app.js uses, so a stored choice survives a reload without a flash.
+	if !strings.Contains(body, "pimonitor-theme") {
+		t.Errorf("expected index.html to reference the pimonitor-theme storage key")
+	}
+}
+
 func TestHandler_UnknownPath404s(t *testing.T) {
 	h, err := Handler()
 	if err != nil {

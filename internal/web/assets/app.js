@@ -15,6 +15,73 @@
   };
   let lastCPUCount = 1;
   let latestPackages = [];
+  // Retained so a theme toggle can immediately repaint the canvas-based
+  // widgets (gauges/sparklines read their colors from CSS variables at draw
+  // time, so they need an explicit redraw when the palette changes).
+  let latestSnapshot = null;
+  let latestHistory = null;
+
+  const THEME_KEY = 'pimonitor-theme';
+
+  function storedTheme() {
+    try {
+      const v = localStorage.getItem(THEME_KEY);
+      return v === 'light' || v === 'dark' ? v : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function effectiveTheme() {
+    const stored = storedTheme();
+    if (stored) return stored;
+    return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+      ? 'dark' : 'light';
+  }
+
+  function updateThemeToggle() {
+    const btn = document.getElementById('theme-toggle');
+    if (!btn) return;
+    const dark = effectiveTheme() === 'dark';
+    // Show the icon of the mode the button switches to.
+    btn.textContent = dark ? '☀️' : '🌙';
+    btn.setAttribute('aria-label', dark ? 'Switch to light theme' : 'Switch to dark theme');
+    btn.setAttribute('aria-pressed', String(dark));
+  }
+
+  function applyTheme(theme) {
+    if (theme) {
+      document.documentElement.setAttribute('data-theme', theme);
+    } else {
+      document.documentElement.removeAttribute('data-theme');
+    }
+    updateThemeToggle();
+    // Repaint canvas widgets that cached the previous palette's colors.
+    if (latestSnapshot) renderMetrics(latestSnapshot);
+    if (latestHistory) renderHistory(latestHistory);
+  }
+
+  function toggleTheme() {
+    const next = effectiveTheme() === 'dark' ? 'light' : 'dark';
+    try {
+      localStorage.setItem(THEME_KEY, next);
+    } catch (e) {
+      console.warn('failed to persist theme choice', e);
+    }
+    applyTheme(next);
+  }
+
+  function wireThemeToggle() {
+    updateThemeToggle();
+    const btn = document.getElementById('theme-toggle');
+    if (btn) btn.addEventListener('click', toggleTheme);
+    // Follow live OS changes only while the user has made no explicit choice.
+    if (window.matchMedia) {
+      window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+        if (!storedTheme()) applyTheme(null);
+      });
+    }
+  }
 
   function levelClass(value, warn, crit) {
     if (value >= crit) return 'metric-crit';
@@ -75,6 +142,7 @@
   }
 
   function renderMetrics(snap) {
+    latestSnapshot = snap;
     const t = config.thresholds;
 
     document.getElementById('header-subtitle').textContent =
@@ -248,6 +316,7 @@
   }
 
   function renderHistory(hist) {
+    latestHistory = hist;
     if (hist.cpu_percent) drawSparkline(document.getElementById('cpu-sparkline'), hist.cpu_percent, { min: 0, max: 100 });
     if (hist.temperature) drawSparkline(document.getElementById('temp-sparkline'), hist.temperature);
   }
@@ -272,6 +341,7 @@
   }
 
   async function main() {
+    wireThemeToggle();
     wireUpdatesModal();
     await loadConfig();
     const intervalMs = Math.max(1, config.poll_interval_seconds) * 1000;

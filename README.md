@@ -25,6 +25,8 @@ automation systems like openHAB). Runs as a systemd service.
   indicator for the underlying apt cache
 - Short in-memory history (default: last 60 minutes) for sparklines - no
   database, nothing persisted across restarts
+- **Light/dark theme toggle** - follows the OS setting by default, with a
+  manual override remembered in the browser
 - A versioned REST API (`/api/v1/...`) for third-party consumers, with
   optional API-key authentication - see [`docs/API.md`](docs/API.md)
 
