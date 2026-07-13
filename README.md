@@ -31,14 +31,14 @@ automation systems like openHAB). Runs as a systemd service.
 ## Architecture
 
 ```
-                 ┌─────────────────────────────┐
-                 │        pimonitor (Go)        │
-                 │                              │
- /proc, /sys ───▶│  collector  ──▶  httpapi     │───▶ Web dashboard
- apt cache       │  (in-memory          │       │     (embedded assets)
-                 │   ring buffers)      ▼       │
-                 │                 /api/v1/...  │───▶ Third-party clients
-                 └─────────────────────────────┘        (e.g. openHAB)
+                  ┌─────────────────────────────┐
+                  │        pimonitor (Go)       │
+                  │                             │
+ /proc, /sys ───▶ │  collector  ──▶  httpapi   │───▶ Web dashboard
+ apt cache        │  (in-memory          │      │     (embedded assets)
+                  │   ring buffers)      ▼      │
+                  │                 /api/v1/... │───▶ Third-party clients
+                  └─────────────────────────────┘        (e.g. openHAB)
 
  pimonitor.service          pimonitor-apt-update.timer (root)
  runs unprivileged    <--   refreshes apt cache every 6h;
