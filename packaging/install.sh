@@ -4,6 +4,9 @@
 # Usage:
 #   sudo ./install.sh [path-to-pimonitor-binary]
 #
+# path-to-pimonitor-binary must point to the binary file itself (e.g.
+# ./pimonitor after extracting a release tarball), not a directory.
+#
 # If no binary path is given, this script tries to build one with the
 # local Go toolchain (useful when running directly on a Pi with Go
 # installed). Safe to re-run: it won't overwrite an existing config file,

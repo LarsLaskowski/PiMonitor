@@ -77,11 +77,23 @@ using [goreleaser](https://goreleaser.com/) - see the
 
 ## Installing on a Raspberry Pi
 
+Download the release tarball for your architecture from the
+[Releases](https://github.com/larslaskowski/pimonitor/releases) page and
+extract it on the Pi. It already contains the binary (named plainly
+`pimonitor`, with no architecture suffix) alongside the `packaging/`
+directory:
+
 ```sh
-# Copy the binary (or the release tarball) and the packaging/ directory
-# to the Pi, then:
-sudo ./packaging/install.sh path/to/pimonitor-arm64
+tar xzf pimonitor_linux_arm64.tar.gz
+ls
+# pimonitor  packaging/  README.md  LICENSE.md
+
+sudo ./packaging/install.sh ./pimonitor
 ```
+
+The argument to `install.sh` must be the **path to the binary file
+itself** (not a directory, and not the tarball) — e.g. `./pimonitor` or
+an absolute path like `/home/pi/Downloads/pimonitor`.
 
 This creates an unprivileged `pimonitor` system user, installs the binary
 to `/usr/local/bin/pimonitor`, writes a default config to
@@ -123,7 +135,7 @@ leaves an existing `/etc/pimonitor/config.yaml` untouched.
    binary:
 
    ```sh
-   sudo ./packaging/install.sh path/to/pimonitor-arm64
+   sudo ./packaging/install.sh ./pimonitor
    ```
 
    This replaces `/usr/local/bin/pimonitor`, refreshes the systemd units, and
