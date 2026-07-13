@@ -32,6 +32,10 @@ repository.
 
 ## Notes
 
+- Do not add any Claude/Anthropic attribution to commits or PRs created via
+  this skill: omit `Co-Authored-By: Claude ...` and `Claude-Session: ...`
+  trailers from commit messages, and omit the "Generated with Claude Code"
+  line and session link from the PR body.
 - Never force-push over another contributor's commits without explicit
   confirmation.
 - If the change touches `/api/v1/...` response shapes, `README.md`,

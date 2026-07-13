@@ -37,3 +37,10 @@ Use this skill to resolve a reported GitHub issue in this repository.
    steps even if verification already ran in step 5.
 8. If the fix is not fully verifiable without physical Pi hardware, say so
    explicitly in the PR description rather than claiming full verification.
+
+## Notes
+
+- As with `create-pr`, do not add Claude/Anthropic attribution to commits or
+  PRs: no `Co-Authored-By: Claude ...` / `Claude-Session: ...` commit
+  trailers, and no "Generated with Claude Code" line or session link in the
+  PR body.
