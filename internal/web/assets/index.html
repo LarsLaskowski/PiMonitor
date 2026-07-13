@@ -13,6 +13,30 @@
 </header>
 
 <main>
+  <section class="card" id="card-system">
+    <h2>System</h2>
+    <div class="bar-row">
+      <div class="bar-label"><span class="bar-name">Kernel</span></div>
+      <div class="text-tile-value" id="sys-kernel">&ndash;</div>
+    </div>
+    <div class="bar-row">
+      <div class="bar-label"><span class="bar-name">Distribution</span></div>
+      <div class="text-tile-value" id="sys-distro">&ndash;</div>
+    </div>
+    <div class="bar-row">
+      <div class="bar-label"><span class="bar-name">Model</span></div>
+      <div class="text-tile-value" id="sys-model">&ndash;</div>
+    </div>
+  </section>
+
+  <section class="card" id="card-updates">
+    <h2>Updates</h2>
+    <div class="metric-value" id="updates-count">&ndash;</div>
+    <div class="metric-sub" id="updates-checked"></div>
+    <span class="stale-badge hidden" id="updates-stale">cache may be outdated</span>
+    <ul class="updates-list hidden" id="updates-list"></ul>
+  </section>
+
   <section class="card" id="card-cpu">
     <h2>CPU Usage</h2>
     <div class="metric-value" id="cpu-overall">&ndash;</div>
@@ -74,30 +98,6 @@
   <section class="card hidden" id="card-network">
     <h2>Network</h2>
     <div id="network-list"></div>
-  </section>
-
-  <section class="card" id="card-system">
-    <h2>System</h2>
-    <div class="bar-row">
-      <div class="bar-label"><span class="bar-name">Kernel</span></div>
-      <div class="text-tile-value" id="sys-kernel">&ndash;</div>
-    </div>
-    <div class="bar-row">
-      <div class="bar-label"><span class="bar-name">Distribution</span></div>
-      <div class="text-tile-value" id="sys-distro">&ndash;</div>
-    </div>
-    <div class="bar-row">
-      <div class="bar-label"><span class="bar-name">Model</span></div>
-      <div class="text-tile-value" id="sys-model">&ndash;</div>
-    </div>
-  </section>
-
-  <section class="card" id="card-updates">
-    <h2>Updates</h2>
-    <div class="metric-value" id="updates-count">&ndash;</div>
-    <div class="metric-sub" id="updates-checked"></div>
-    <span class="stale-badge hidden" id="updates-stale">cache may be outdated</span>
-    <ul class="updates-list hidden" id="updates-list"></ul>
   </section>
 </main>
 
