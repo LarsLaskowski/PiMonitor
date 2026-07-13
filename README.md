@@ -109,14 +109,50 @@ binary path and `install.sh` will build one for you:
 sudo ./packaging/install.sh
 ```
 
-Check status with:
+### Customizing the configuration before installing
+
+`install.sh` never overwrites an existing `/etc/pimonitor/config.yaml` -
+it only writes one if none exists yet. If you want to start with
+non-default settings (for example a different `listen_addr` because port
+`8080` is already used by something else on the Pi) instead of editing
+the config and restarting afterwards, stage it yourself *before* running
+`install.sh`:
+
+```sh
+sudo mkdir -p /etc/pimonitor
+sudo cp packaging/pimonitor.example.yaml /etc/pimonitor/config.yaml
+sudo nano /etc/pimonitor/config.yaml   # e.g. change listen_addr
+sudo ./packaging/install.sh ./pimonitor
+```
+
+This matters in particular for `listen_addr`: if the configured port is
+already in use, `pimonitor.service` fails to bind it and keeps
+crash-looping (`Restart=on-failure`, retried every 5s) - but
+`install.sh` itself reports success and prints no error, because
+`systemctl enable --now` returns immediately without waiting to see
+whether the service actually stays up. Always verify the service is
+running after installing, see below.
+
+### Verifying the installation
 
 ```sh
 systemctl status pimonitor.service pimonitor-apt-update.timer
 journalctl -u pimonitor -f
 ```
 
-The dashboard is then available at `http://<pi-address>:8080/`.
+A successful install shows `active (running)` for `pimonitor.service`.
+If instead you see `activating (auto-restart)` or a growing restart
+count, the process is crash-looping on startup (a busy `listen_addr`
+port is the most common cause). Check the actual error with
+`journalctl -u pimonitor -n 50`, fix `/etc/pimonitor/config.yaml`
+accordingly, then apply it with:
+
+```sh
+sudo systemctl restart pimonitor.service
+```
+
+The dashboard is then available at `http://<pi-address>:8080/` (or
+whatever port you configured).
 
 ## Updating
 
