@@ -77,11 +77,66 @@ using [goreleaser](https://goreleaser.com/) - see the
 
 ## Installing on a Raspberry Pi
 
+### 1. Download and extract the release
+
+On the Pi, download the release tarball matching your Raspberry Pi OS and
+extract it. Release assets are named
+`pimonitor_<version>_linux_<arch>.tar.gz`, with `<arch>` being:
+
+- `arm64` - 64-bit Raspberry Pi OS (Pi 3/4/5)
+- `armv6` - 32-bit Raspberry Pi OS, or any Pi Zero/1
+
+The snippet below fetches the latest version automatically via the GitHub
+API, so you only need to set `ARCH`:
+
 ```sh
-# Copy the binary (or the release tarball) and the packaging/ directory
-# to the Pi, then:
-sudo ./packaging/install.sh path/to/pimonitor-arm64
+ARCH=arm64   # or armv6, see above
+
+VERSION=$(curl -fsSL https://api.github.com/repos/larslaskowski/pimonitor/releases/latest | grep -m1 '"tag_name"' | cut -d '"' -f4)
+wget "https://github.com/larslaskowski/pimonitor/releases/download/${VERSION}/pimonitor_${VERSION#v}_linux_${ARCH}.tar.gz"
+tar xzf "pimonitor_${VERSION#v}_linux_${ARCH}.tar.gz"
+
+ls
+# pimonitor  packaging/  README.md  LICENSE.md
 ```
+
+Alternatively, pick a specific version and architecture manually from the
+[Releases](https://github.com/larslaskowski/pimonitor/releases) page. Either
+way you end up with the binary (named plainly `pimonitor`) alongside the
+`packaging/` directory that `install.sh` needs.
+
+### 2. (Optional) Customize the configuration before installing
+
+`install.sh` never overwrites an existing `/etc/pimonitor/config.yaml` -
+it only writes one if none exists yet. If you want to start with
+non-default settings (for example a different `listen_addr` because port
+`8080` is already used by something else on the Pi) instead of editing
+the config and restarting afterwards, stage it yourself *before* running
+`install.sh`:
+
+```sh
+sudo mkdir -p /etc/pimonitor
+sudo cp packaging/pimonitor.example.yaml /etc/pimonitor/config.yaml
+sudo nano /etc/pimonitor/config.yaml   # e.g. change listen_addr
+```
+
+This matters in particular for `listen_addr`: if the configured port is
+already in use, `pimonitor.service` fails to bind it and keeps
+crash-looping (`Restart=on-failure`, retried every 5s) - but
+`install.sh` itself reports success and prints no error, because
+`systemctl enable --now` returns immediately without waiting to see
+whether the service actually stays up. Always verify the service is
+running after installing, see step 4.
+
+### 3. Run the installer
+
+```sh
+sudo ./packaging/install.sh ./pimonitor
+```
+
+The argument to `install.sh` must be the **path to the binary file
+itself** (not a directory, and not the tarball) — e.g. `./pimonitor` or
+an absolute path like `/home/pi/Downloads/pimonitor`.
 
 This creates an unprivileged `pimonitor` system user, installs the binary
 to `/usr/local/bin/pimonitor`, writes a default config to
@@ -97,14 +152,26 @@ binary path and `install.sh` will build one for you:
 sudo ./packaging/install.sh
 ```
 
-Check status with:
+### 4. Verify the installation
 
 ```sh
 systemctl status pimonitor.service pimonitor-apt-update.timer
 journalctl -u pimonitor -f
 ```
 
-The dashboard is then available at `http://<pi-address>:8080/`.
+A successful install shows `active (running)` for `pimonitor.service`.
+If instead you see `activating (auto-restart)` or a growing restart
+count, the process is crash-looping on startup (a busy `listen_addr`
+port is the most common cause). Check the actual error with
+`journalctl -u pimonitor -n 50`, fix `/etc/pimonitor/config.yaml`
+accordingly, then apply it with:
+
+```sh
+sudo systemctl restart pimonitor.service
+```
+
+The dashboard is then available at `http://<pi-address>:8080/` (or
+whatever port you configured).
 
 ## Updating
 
@@ -123,7 +190,7 @@ leaves an existing `/etc/pimonitor/config.yaml` untouched.
    binary:
 
    ```sh
-   sudo ./packaging/install.sh path/to/pimonitor-arm64
+   sudo ./packaging/install.sh ./pimonitor
    ```
 
    This replaces `/usr/local/bin/pimonitor`, refreshes the systemd units, and
