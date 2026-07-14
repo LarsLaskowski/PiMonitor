@@ -88,6 +88,7 @@ func TestHandleHistory(t *testing.T) {
 func TestHandleConfig(t *testing.T) {
 	s, _ := newTestServer(Config{
 		Client: ClientConfig{
+			Version:             "v1.2.3",
 			PollIntervalSeconds: 5,
 			NetworkEnabled:      true,
 			Thresholds:          Thresholds{TemperatureWarnC: 60, TemperatureCritC: 75},
@@ -103,6 +104,9 @@ func TestHandleConfig(t *testing.T) {
 	}
 	if got.PollIntervalSeconds != 5 || !got.NetworkEnabled || got.Thresholds.TemperatureCritC != 75 {
 		t.Fatalf("unexpected config: %+v", got)
+	}
+	if got.Version != "v1.2.3" {
+		t.Fatalf("Version = %q, want %q", got.Version, "v1.2.3")
 	}
 }
 

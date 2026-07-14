@@ -165,6 +165,7 @@ server:
 
 ```json
 {
+  "version": "1.2.3",
   "poll_interval_seconds": 5,
   "network_enabled": true,
   "thresholds": {
@@ -179,6 +180,15 @@ server:
   }
 }
 ```
+
+Notes:
+
+- `version` is the build-time version of the running binary, injected via
+  `-ldflags "-X main.version=..."`. Release builds report the release tag; a
+  local build made without version injection reports `dev`. The value may
+  include a leading `v` depending on the build path (e.g. a `git describe`
+  string like `v1.2.3-5-gabc123`); the dashboard strips that leading `v`
+  when it renders the version in its footer.
 
 ## Example: polling with curl
 

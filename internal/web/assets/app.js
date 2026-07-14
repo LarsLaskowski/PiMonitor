@@ -1,5 +1,6 @@
 (function () {
   let config = {
+    version: 'dev',
     poll_interval_seconds: 5,
     network_enabled: true,
     thresholds: {
@@ -139,6 +140,13 @@
     } catch (e) {
       console.warn('failed to load config, using defaults', e);
     }
+  }
+
+  function renderVersion() {
+    // A release is tagged "vX.Y.Z"; show it without the leading "v".
+    // Unversioned local builds report "dev", which is displayed as-is.
+    const raw = (config && config.version) || 'dev';
+    setText('app-version', raw.replace(/^v(?=\d)/, ''));
   }
 
   function renderMetrics(snap) {
@@ -368,6 +376,7 @@
     wireThemeToggle();
     wireUpdatesModal();
     await loadConfig();
+    renderVersion();
     const intervalMs = Math.max(1, config.poll_interval_seconds) * 1000;
 
     await pollMetrics();

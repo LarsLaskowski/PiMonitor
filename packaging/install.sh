@@ -31,7 +31,11 @@ if [[ -z "$BINARY_PATH" ]]; then
   fi
   echo "No binary path given; building with the local Go toolchain..."
   BUILD_OUT="$(mktemp -d)/pimonitor"
-  (cd "$REPO_ROOT" && CGO_ENABLED=0 go build -o "$BUILD_OUT" ./cmd/pimonitor)
+  # Embed the version (shown on the dashboard) the same way the Makefile and
+  # GoReleaser do. Outside a git checkout (e.g. an extracted source archive
+  # with no tags) this falls back to "dev".
+  VERSION="$(cd "$REPO_ROOT" && git describe --tags --always --dirty 2>/dev/null || echo dev)"
+  (cd "$REPO_ROOT" && CGO_ENABLED=0 go build -ldflags "-s -w -X main.version=$VERSION" -o "$BUILD_OUT" ./cmd/pimonitor)
   BINARY_PATH="$BUILD_OUT"
 fi
 
