@@ -144,3 +144,47 @@ func TestTemperatureCollector_Collect_RedetectsZone(t *testing.T) {
 		t.Fatalf("temp = %+v, want zone=cpu-thermal celsius=48.0", temp)
 	}
 }
+
+func TestTemperatureCollector_Collect_RedetectsAfterZoneVanishes(t *testing.T) {
+	root := t.TempDir()
+	glob := filepath.Join(root, "thermal_zone*")
+
+	now := time.Unix(1_700_000_000, 0)
+	c := &TemperatureCollector{
+		zoneGlob:         glob,
+		now:              func() time.Time { return now },
+		vcgencmdDetected: true, // skip vcgencmd lookup in this test
+	}
+
+	// A zone exists at first and is cached by Collect.
+	writeThermalZone(t, root, "thermal_zone0", "cpu-thermal", "40000")
+	if temp, _, err := c.Collect(context.Background()); err != nil {
+		t.Fatalf("initial Collect: %v", err)
+	} else if temp.Zone != "cpu-thermal" {
+		t.Fatalf("initial zone = %q, want cpu-thermal", temp.Zone)
+	}
+
+	// The cached zone disappears (driver/kernel change) and a differently
+	// numbered/typed zone takes its place.
+	if err := os.RemoveAll(filepath.Join(root, "thermal_zone0")); err != nil {
+		t.Fatalf("remove zone: %v", err)
+	}
+	writeThermalZone(t, root, "thermal_zone1", "soc_thermal", "55000")
+
+	// Within the throttle window the collector cannot re-detect yet, so the
+	// stale path keeps failing (documents that throttling covers this path too).
+	now = now.Add(detectRetryInterval - time.Second)
+	if _, _, err := c.Collect(context.Background()); err == nil {
+		t.Fatal("expected error while re-detection is throttled after the zone vanished")
+	}
+
+	// Past the window the same collector recovers onto the new zone.
+	now = now.Add(2 * time.Second)
+	temp, _, err := c.Collect(context.Background())
+	if err != nil {
+		t.Fatalf("Collect after zone moved: %v", err)
+	}
+	if temp.Zone != "soc_thermal" || diffFloat(temp.Celsius, 55.0) > 0.001 {
+		t.Fatalf("temp = %+v, want zone=soc_thermal celsius=55.0", temp)
+	}
+}
