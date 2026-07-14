@@ -251,6 +251,12 @@ example openHAB HTTP Binding configuration. Quick example:
 curl -s http://raspberrypi.local:8080/api/v1/metrics | jq '.cpu.overall_percent'
 ```
 
+### Integrations
+
+- [openHAB](docs/integrations/openhab.md) — ready-to-use HTTP-binding
+  `.things` / `.items` wiring PiMonitor's metrics into openHAB, plus a
+  Prometheus (`json_exporter`) alternative.
+
 ## Configuration
 
 All settings have sensible defaults; override via `/etc/pimonitor/config.yaml`
