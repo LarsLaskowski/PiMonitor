@@ -4,13 +4,16 @@
 # Usage:
 #   sudo ./install.sh [path-to-pimonitor-binary]
 #
-# path-to-pimonitor-binary must point to the binary file itself (e.g.
-# ./pimonitor after extracting a release tarball), not a directory.
+# When run from an extracted release archive, no argument is needed: the
+# 'pimonitor' binary sits next to this script and is picked up automatically.
+# You can still pass an explicit path to the binary file itself (e.g.
+# ./pimonitor), which must point to the binary, not a directory.
 #
-# If no binary path is given, this script tries to build one with the
-# local Go toolchain (useful when running directly on a Pi with Go
-# installed). Safe to re-run: it won't overwrite an existing config file,
-# and re-enabling already-enabled units is a no-op.
+# If no binary is found next to the script and no path is given, this script
+# tries to build one with the local Go toolchain (useful when running directly
+# on a Pi with Go installed, from a source checkout). Safe to re-run: it won't
+# overwrite an existing config file, and re-enabling already-enabled units is a
+# no-op.
 
 set -euo pipefail
 
@@ -23,6 +26,11 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 BINARY_PATH="${1:-}"
+# When run from an extracted release archive, the binary sits next to this
+# script; pick it up automatically so no path argument is needed.
+if [[ -z "$BINARY_PATH" && -f "$SCRIPT_DIR/pimonitor" ]]; then
+  BINARY_PATH="$SCRIPT_DIR/pimonitor"
+fi
 if [[ -z "$BINARY_PATH" ]]; then
   if ! command -v go >/dev/null 2>&1; then
     echo "error: no binary path given and 'go' is not installed to build one" >&2

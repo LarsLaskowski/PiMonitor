@@ -98,15 +98,19 @@ ARCH=arm64   # or armv6, see above
 VERSION=$(curl -fsSL https://api.github.com/repos/larslaskowski/pimonitor/releases/latest | grep -m1 '"tag_name"' | cut -d '"' -f4)
 wget "https://github.com/larslaskowski/pimonitor/releases/download/${VERSION}/pimonitor_${VERSION#v}_linux_${ARCH}.tar.gz"
 tar xzf "pimonitor_${VERSION#v}_linux_${ARCH}.tar.gz"
+cd "pimonitor_${VERSION#v}_linux_${ARCH}"
 
 ls
-# pimonitor  packaging/  README.md  LICENSE.md
+# install.sh  pimonitor  pimonitor.service  pimonitor-apt-update.service
+# pimonitor-apt-update.timer  pimonitor.example.yaml  README.md  LICENSE.md
 ```
 
 Alternatively, pick a specific version and architecture manually from the
 [Releases](https://github.com/larslaskowski/pimonitor/releases) page. Either
-way you end up with the binary (named plainly `pimonitor`) alongside the
-`packaging/` directory that `install.sh` needs.
+way you get a single `pimonitor_<version>_linux_<arch>/` directory containing
+everything the installer needs — the binary (named plainly `pimonitor`),
+`install.sh`, and the systemd units. Run the remaining steps from inside that
+directory.
 
 ### 2. (Optional) Customize the configuration before installing
 
@@ -119,7 +123,7 @@ the config and restarting afterwards, stage it yourself *before* running
 
 ```sh
 sudo mkdir -p /etc/pimonitor
-sudo cp packaging/pimonitor.example.yaml /etc/pimonitor/config.yaml
+sudo cp pimonitor.example.yaml /etc/pimonitor/config.yaml
 sudo nano /etc/pimonitor/config.yaml   # e.g. change listen_addr
 ```
 
@@ -134,12 +138,12 @@ running after installing, see step 4.
 ### 3. Run the installer
 
 ```sh
-sudo ./packaging/install.sh ./pimonitor
+sudo ./install.sh
 ```
 
-The argument to `install.sh` must be the **path to the binary file
-itself** (not a directory, and not the tarball) — e.g. `./pimonitor` or
-an absolute path like `/home/pi/Downloads/pimonitor`.
+Run it from inside the extracted directory (see step 1). The installer picks
+up the `pimonitor` binary sitting next to it automatically — no path argument
+needed.
 
 This creates an unprivileged `pimonitor` system user, installs the binary
 to `/usr/local/bin/pimonitor`, writes a default config to
@@ -152,8 +156,9 @@ the permissions of an existing config without touching its content. See
 [`packaging/pimonitor.example.yaml`](packaging/pimonitor.example.yaml) for
 every configuration option.
 
-If you have a Go toolchain installed directly on the Pi, you can omit the
-binary path and `install.sh` will build one for you:
+If you are installing from a source checkout instead of a release archive
+(so there is no pre-built binary next to the script) and have a Go toolchain
+installed directly on the Pi, `install.sh` builds one for you:
 
 ```sh
 sudo ./packaging/install.sh
@@ -193,11 +198,10 @@ leaves an existing `/etc/pimonitor/config.yaml` untouched.
    pull the latest source and cross-compile it (`make build-arm64` /
    `make build-arm`).
 
-2. **Re-run the installer** with the updated packaging directory and the new
-   binary:
+2. **Re-run the installer** from inside the newly extracted release directory:
 
    ```sh
-   sudo ./packaging/install.sh ./pimonitor
+   sudo ./install.sh
    ```
 
    This replaces `/usr/local/bin/pimonitor`, refreshes the systemd units, and
