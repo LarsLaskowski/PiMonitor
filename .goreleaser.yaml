@@ -21,12 +21,16 @@ builds:
 archives:
   - id: pimonitor
     formats: [tar.gz]
+    # Wrap everything in a single top-level directory named after the archive
+    # (e.g. pimonitor_1.2.3_linux_arm64/) so extracting doesn't litter the
+    # current directory. install.sh and the binary end up side by side inside
+    # it, so installing is just: cd <dir> && sudo ./install.sh
+    wrap_in_directory: true
     files:
-      - packaging/pimonitor.service
-      - packaging/pimonitor-apt-update.service
-      - packaging/pimonitor-apt-update.timer
-      - packaging/install.sh
-      - packaging/pimonitor.example.yaml
+      # Flatten the packaging/ files to the archive (wrap-dir) root so they sit
+      # next to the binary that GoReleaser always places there.
+      - src: packaging/*
+        strip_parent: true
       - README.md
       - LICENSE.md
 
