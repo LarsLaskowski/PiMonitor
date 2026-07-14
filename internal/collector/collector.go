@@ -249,25 +249,25 @@ func (c *Collector) collectSysInfo() {
 func (c *Collector) fastTick(ctx context.Context) {
 	now := time.Now()
 
-	cpuUsage, err := c.cpu.Collect()
-	if err != nil {
-		c.log.Warn("cpu collection failed", "error", err)
+	cpuUsage, cpuErr := c.cpu.Collect()
+	if cpuErr != nil {
+		c.log.Warn("cpu collection failed", "error", cpuErr)
 	}
 	load, err := c.loadAvg.Collect()
 	if err != nil {
 		c.log.Warn("load average collection failed", "error", err)
 	}
-	temp, gpuTemp, err := c.temp.Collect(ctx)
-	if err != nil {
-		c.log.Warn("temperature collection failed", "error", err)
+	temp, gpuTemp, tempErr := c.temp.Collect(ctx)
+	if tempErr != nil {
+		c.log.Warn("temperature collection failed", "error", tempErr)
 	}
-	mem, swap, err := c.memory.Collect()
-	if err != nil {
-		c.log.Warn("memory collection failed", "error", err)
+	mem, swap, memErr := c.memory.Collect()
+	if memErr != nil {
+		c.log.Warn("memory collection failed", "error", memErr)
 	}
-	disks, err := c.disk.Collect()
-	if err != nil {
-		c.log.Warn("disk collection failed", "error", err)
+	disks, diskErr := c.disk.Collect()
+	if diskErr != nil {
+		c.log.Warn("disk collection failed", "error", diskErr)
 	}
 	var netIfaces []NetworkInterface
 	if c.cfg.NetworkEnabled {
@@ -329,18 +329,24 @@ func (c *Collector) fastTick(ctx context.Context) {
 
 	// Evaluate the freshly collected values against the alert thresholds.
 	// The engine has its own lock and never calls back into the collector,
-	// so doing this while c.mu is held cannot deadlock.
+	// so doing this while c.mu is held cannot deadlock. Metrics whose
+	// collection failed this tick are flagged invalid so a bogus zero can't
+	// spuriously clear a real alert; the engine keeps their previous state.
 	if c.alerts != nil {
 		diskSamples := make([]alert.DiskSample, len(disks))
 		for i, d := range disks {
 			diskSamples[i] = alert.DiskSample{Mountpoint: d.Mountpoint, UsedPercent: d.UsedPercent}
 		}
 		c.alerts.Evaluate(alert.Sample{
-			Timestamp:    now,
-			CPUPercent:   cpuUsage.OverallPercent,
-			TemperatureC: temp.Celsius,
-			SwapPercent:  swap.UsedPercent,
-			Disks:        diskSamples,
+			Timestamp:        now,
+			CPUPercent:       cpuUsage.OverallPercent,
+			CPUValid:         cpuErr == nil,
+			TemperatureC:     temp.Celsius,
+			TemperatureValid: tempErr == nil,
+			SwapPercent:      swap.UsedPercent,
+			SwapValid:        memErr == nil,
+			Disks:            diskSamples,
+			DisksValid:       diskErr == nil,
 		})
 	}
 }

@@ -155,9 +155,20 @@ func TestCollector_Alerts_EvaluatedOnFastTick(t *testing.T) {
 	if !report.Enabled {
 		t.Fatal("expected alerts to be enabled")
 	}
-	// cpu, temperature, and swap are always evaluated.
-	if len(report.States) < 3 {
-		t.Fatalf("expected at least cpu/temperature/swap states, got %+v", report.States)
+	// CPU and swap collection succeed on any Linux CI host, so both states
+	// must be present. (Temperature may be skipped when no thermal zone is
+	// available, e.g. in a container, so it is not asserted here.)
+	var haveCPU, haveSwap bool
+	for _, st := range report.States {
+		switch st.Metric {
+		case "cpu":
+			haveCPU = true
+		case "swap":
+			haveSwap = true
+		}
+	}
+	if !haveCPU || !haveSwap {
+		t.Fatalf("expected cpu and swap alert states, got %+v", report.States)
 	}
 }
 

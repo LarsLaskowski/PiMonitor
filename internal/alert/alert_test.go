@@ -29,6 +29,7 @@ func feed(e *Engine, start time.Time, cpuValues ...float64) {
 		e.Evaluate(Sample{
 			Timestamp:  start.Add(time.Duration(i) * time.Second),
 			CPUPercent: v,
+			CPUValid:   true,
 		})
 	}
 }
@@ -150,13 +151,132 @@ func TestEvaluate_SymmetricDebounceKeepsAlert(t *testing.T) {
 	}
 }
 
+// A value oscillating across the crit cutoff but staying continuously at or
+// above warn must still fire a warn alert once the debounce window elapses,
+// rather than resetting the window on every warn<->crit flip.
+func TestEvaluate_FlappingWarnCritStillFires(t *testing.T) {
+	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	e := New(testThresholds(), 2*time.Second)
+
+	// Alternate 85 (warn) and 99 (crit) each second; the value is >= warn
+	// (80) the entire time but never continuously >= crit (95).
+	feed(e, start, 85, 99, 85, 99, 85, 99)
+
+	evs := cpuEvents(e.Report())
+	if len(evs) != 1 {
+		t.Fatalf("expected exactly one event, got %+v", evs)
+	}
+	if evs[0].Kind != KindFired || evs[0].To != LevelWarn {
+		t.Fatalf("event = %+v, want fired->warn", evs[0])
+	}
+	if st := cpuState(t, e.Report()); st.Level != LevelWarn {
+		t.Fatalf("expected cpu to settle at warn, got %s", st.Level)
+	}
+}
+
+// A disk that vanishes from the sample is pruned; if it was alerting, a
+// final cleared event is emitted so no dangling firing alert remains.
+func TestEvaluate_PrunesVanishedDisk(t *testing.T) {
+	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	e := New(testThresholds(), 0)
+
+	// /data enters crit.
+	e.Evaluate(Sample{
+		Timestamp:  start,
+		DisksValid: true,
+		Disks: []DiskSample{
+			{Mountpoint: "/", UsedPercent: 10},
+			{Mountpoint: "/data", UsedPercent: 99},
+		},
+	})
+	// Next tick /data is gone (unplugged).
+	e.Evaluate(Sample{
+		Timestamp:  start.Add(time.Second),
+		DisksValid: true,
+		Disks:      []DiskSample{{Mountpoint: "/", UsedPercent: 10}},
+	})
+
+	r := e.Report()
+	for _, st := range r.States {
+		if st.Resource == "/data" {
+			t.Fatalf("expected /data state to be pruned, still present: %+v", st)
+		}
+	}
+	// The last event must be the synthetic clear for /data.
+	last := r.Events[len(r.Events)-1]
+	if last.Resource != "/data" || last.Kind != KindCleared || last.To != LevelOK {
+		t.Fatalf("expected a cleared event for /data, got %+v", last)
+	}
+}
+
+// When the disk list is flagged invalid (collection failed), existing disk
+// states must be left untouched — neither re-evaluated nor pruned.
+func TestEvaluate_InvalidDisksLeftUntouched(t *testing.T) {
+	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	e := New(testThresholds(), 0)
+
+	e.Evaluate(Sample{
+		Timestamp:  start,
+		DisksValid: true,
+		Disks:      []DiskSample{{Mountpoint: "/data", UsedPercent: 99}},
+	})
+	// A failed disk collection this tick (empty list, DisksValid=false) must
+	// not prune /data.
+	e.Evaluate(Sample{Timestamp: start.Add(time.Second), DisksValid: false})
+
+	r := e.Report()
+	var found bool
+	for _, st := range r.States {
+		if st.Resource == "/data" {
+			found = true
+			if st.Level != LevelCrit {
+				t.Fatalf("expected /data to stay crit, got %s", st.Level)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("expected /data state to survive an invalid disk sample")
+	}
+}
+
+// A metric flagged invalid keeps its previous state instead of being
+// evaluated against a bogus zero value — so a transient sensor failure during
+// a sustained crit does not emit a spurious cleared event.
+func TestEvaluate_InvalidMetricKeepsState(t *testing.T) {
+	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	e := New(testThresholds(), 0)
+
+	// Temperature enters crit.
+	e.Evaluate(Sample{Timestamp: start, TemperatureC: 90, TemperatureValid: true})
+	// Several ticks where the sensor read fails (would be 0 == ok if used).
+	for i := 1; i <= 5; i++ {
+		e.Evaluate(Sample{Timestamp: start.Add(time.Duration(i) * time.Second), TemperatureValid: false})
+	}
+
+	var tempState *State
+	r := e.Report()
+	for i := range r.States {
+		if r.States[i].Metric == "temperature" {
+			tempState = &r.States[i]
+		}
+	}
+	if tempState == nil || tempState.Level != LevelCrit {
+		t.Fatalf("expected temperature to remain crit through read failures, got %+v", tempState)
+	}
+	// Only the initial fired event; no spurious clear.
+	if len(r.Events) != 1 || r.Events[0].Kind != KindFired {
+		t.Fatalf("expected only the initial fired event, got %+v", r.Events)
+	}
+}
+
 // Disk alerts are tracked per mountpoint, independently.
 func TestEvaluate_PerDiskState(t *testing.T) {
 	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	e := New(testThresholds(), 0)
 
 	e.Evaluate(Sample{
-		Timestamp: start,
+		Timestamp:  start,
+		DisksValid: true,
 		Disks: []DiskSample{
 			{Mountpoint: "/", UsedPercent: 10},
 			{Mountpoint: "/data", UsedPercent: 99},
@@ -197,7 +317,7 @@ func TestEvaluate_EventHistoryBounded(t *testing.T) {
 		if i%2 == 1 {
 			v = 99.0
 		}
-		e.Evaluate(Sample{Timestamp: start.Add(time.Duration(i) * time.Second), CPUPercent: v})
+		e.Evaluate(Sample{Timestamp: start.Add(time.Duration(i) * time.Second), CPUPercent: v, CPUValid: true})
 	}
 
 	if got := len(e.Report().Events); got != 3 {
