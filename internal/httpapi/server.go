@@ -38,6 +38,11 @@ type Thresholds struct {
 // (poll interval, thresholds, feature toggles) that are already defined
 // server-side.
 type ClientConfig struct {
+	// Version is the build-time version of the running binary (the release
+	// tag for release builds, or "dev" for an unversioned local build). It
+	// is set from main.version via -ldflags. The frontend renders it in the
+	// footer; it may carry a leading "v" depending on the build path.
+	Version             string     `json:"version"`
 	PollIntervalSeconds float64    `json:"poll_interval_seconds"`
 	NetworkEnabled      bool       `json:"network_enabled"`
 	Thresholds          Thresholds `json:"thresholds"`

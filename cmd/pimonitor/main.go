@@ -66,6 +66,7 @@ func run(args []string) error {
 		ListenAddr: cfg.ListenAddr,
 		APIKey:     cfg.APIKey,
 		Client: httpapi.ClientConfig{
+			Version:             version,
 			PollIntervalSeconds: cfg.PollIntervalSeconds,
 			NetworkEnabled:      cfg.NetworkEnabled,
 			Thresholds: httpapi.Thresholds{
