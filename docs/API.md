@@ -123,9 +123,13 @@ Notes:
 
 ### `GET /api/v1/metrics/history`
 
-Returns the retained in-memory history (a rolling window, typically the
-last 30-60 minutes) for every time-series metric. History is **not**
-persisted across service restarts.
+Returns the retained history (a rolling window, typically the last 30-60
+minutes) for every time-series metric. When history persistence is enabled
+(`history_persist_enabled`, on by default), history is periodically
+snapshotted to disk and restored on startup, so the returned window may
+span service restarts and reboots; points older than the configured window
+are dropped on restore. With persistence disabled, history is in-memory
+only and starts empty after every restart.
 
 ```json
 {

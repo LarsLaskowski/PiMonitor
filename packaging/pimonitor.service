@@ -15,9 +15,15 @@ RestartSec=5
 # Hardening. PiMonitor only ever reads world-readable files under /proc,
 # /sys/class/thermal, /etc/os-release, and the apt cache under
 # /var/lib/apt/lists/ (via `apt list --upgradable`), plus binds a TCP
-# listener - it needs no elevated privileges or filesystem write access.
+# listener - it needs no elevated privileges. Its only filesystem write
+# access is the state directory below, where it persists metric history
+# across restarts (data_dir in config.yaml, default /var/lib/pimonitor).
 NoNewPrivileges=true
 ProtectSystem=strict
+# Creates /var/lib/pimonitor owned by the service user and, together with
+# ReadWritePaths, keeps it writable despite ProtectSystem=strict.
+StateDirectory=pimonitor
+ReadWritePaths=/var/lib/pimonitor
 ProtectHome=true
 PrivateTmp=true
 ProtectKernelTunables=true

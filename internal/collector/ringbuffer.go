@@ -37,6 +37,22 @@ func (r *RingBuffer[T]) Add(v T) {
 	}
 }
 
+// Fill replaces the buffer's contents with values in insertion order
+// (oldest first). If values exceeds the buffer's capacity, only the newest
+// capacity elements are kept. It is the import counterpart to Snapshot,
+// used to restore persisted history.
+func (r *RingBuffer[T]) Fill(values []T) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if len(values) > r.capacity {
+		values = values[len(values)-r.capacity:]
+	}
+	r.data = make([]T, r.capacity)
+	r.size = copy(r.data, values)
+	r.next = r.size % r.capacity
+}
+
 // Snapshot returns a copy of the buffered values in insertion order
 // (oldest first).
 func (r *RingBuffer[T]) Snapshot() []T {
