@@ -105,7 +105,7 @@ Number:Dimensionless PiMonitor_Memory      "Memory Used [%.1f %%]"        <memor
 Number:Dimensionless PiMonitor_Swap        "Swap Used [%.1f %%]"          <memory>       { channel="http:url:pimonitor:swap" }
 Number:Dimensionless PiMonitor_RootDisk    "Root FS Used [%.1f %%]"       <harddisk>     { channel="http:url:pimonitor:rootDisk" }
 Number               PiMonitor_Updates     "Available Updates [%d]"       <settings>     { channel="http:url:pimonitor:updates" }
-Number:Time          PiMonitor_Uptime      "Uptime [%d s]"                <time>         { channel="http:url:pimonitor:uptime" }
+Number:Time          PiMonitor_Uptime      "Uptime [%.0f s]"              <time>         { channel="http:url:pimonitor:uptime" }
 String               PiMonitor_Model       "Pi Model [%s]"                <network>      { channel="http:url:pimonitor:piModel" }
 String               PiMonitor_Kernel      "Kernel [%s]"                  <network>      { channel="http:url:pimonitor:kernel" }
 ```
@@ -173,6 +173,12 @@ modules:
       - name: pimonitor_temperature_celsius
         path: '{ .temperature.celsius }'
         help: CPU temperature in Celsius
+      - name: pimonitor_gpu_temperature_celsius
+        path: '{ .gpu_temperature.celsius }'
+        help: GPU temperature in Celsius (only present when vcgencmd is available)
+      - name: pimonitor_uptime_seconds
+        path: '{ .uptime_seconds }'
+        help: Seconds since boot
       - name: pimonitor_memory_used_percent
         path: '{ .memory.used_percent }'
         help: Memory used percent
@@ -190,6 +196,15 @@ modules:
           mountpoint: '{ .mountpoint }'
         values:
           used_percent: '{ .used_percent }'
+      - name: pimonitor_network_bytes_per_sec
+        type: object
+        path: '{ .network[*] }'
+        help: Network throughput per interface (omitted when network monitoring is disabled)
+        labels:
+          interface: '{ .name }'
+        values:
+          rx_bytes_per_sec: '{ .rx_bytes_per_sec }'
+          tx_bytes_per_sec: '{ .tx_bytes_per_sec }'
     # If PiMonitor has an api_key set:
     # http_client_config:
     #   headers:
