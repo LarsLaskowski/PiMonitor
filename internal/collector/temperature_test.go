@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func writeThermalZone(t *testing.T, root, zoneName, zoneType, tempMilliC string) {
@@ -105,5 +106,41 @@ func TestTemperatureCollector_Collect_NoZoneDetected(t *testing.T) {
 	c := &TemperatureCollector{}
 	if _, _, err := c.Collect(context.Background()); err == nil {
 		t.Fatal("expected error when no thermal zone was detected")
+	}
+}
+
+func TestTemperatureCollector_Collect_RedetectsZone(t *testing.T) {
+	root := t.TempDir()
+	glob := filepath.Join(root, "thermal_zone*")
+
+	now := time.Unix(1_700_000_000, 0)
+	c := &TemperatureCollector{
+		zoneGlob:         glob,
+		now:              func() time.Time { return now },
+		vcgencmdDetected: true, // skip vcgencmd lookup in this test
+	}
+
+	// No zone exists yet: Collect must fail.
+	if _, _, err := c.Collect(context.Background()); err == nil {
+		t.Fatal("expected error when no thermal zone exists yet")
+	}
+
+	// The zone appears after start.
+	writeThermalZone(t, root, "thermal_zone0", "cpu-thermal", "48000")
+
+	// Still within the throttle window: re-detection is suppressed.
+	now = now.Add(detectRetryInterval - time.Second)
+	if _, _, err := c.Collect(context.Background()); err == nil {
+		t.Fatal("expected re-detection to be throttled within detectRetryInterval")
+	}
+
+	// Past the throttle window: the same collector now picks up the zone.
+	now = now.Add(2 * time.Second)
+	temp, _, err := c.Collect(context.Background())
+	if err != nil {
+		t.Fatalf("Collect after zone appeared: %v", err)
+	}
+	if temp.Zone != "cpu-thermal" || diffFloat(temp.Celsius, 48.0) > 0.001 {
+		t.Fatalf("temp = %+v, want zone=cpu-thermal celsius=48.0", temp)
 	}
 }

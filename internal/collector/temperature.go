@@ -2,16 +2,23 @@ package collector
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
 const thermalZoneGlob = "/sys/class/thermal/thermal_zone*"
+
+// detectRetryInterval throttles re-detection of the thermal zone and
+// vcgencmd so the glob / PATH lookup is not executed on every collection
+// tick on systems that genuinely have no sensor (e.g. development machines).
+const detectRetryInterval = 30 * time.Second
 
 // preferredThermalZoneTypes lists thermal-zone "type" values that identify
 // the actual CPU/SoC sensor, in priority order. thermal_zone0 is not
@@ -69,40 +76,107 @@ func readThermalZoneMilliC(zonePath string) (float64, error) {
 
 // TemperatureCollector reads CPU temperature from sysfs, with an optional
 // vcgencmd-sourced GPU/SoC reading on Raspberry Pi OS.
+//
+// The thermal zone and vcgencmd path are resolved lazily and re-resolved
+// (throttled) when they are still missing, so a sensor or driver that
+// appears after the process started — e.g. a thermal module loaded late in
+// boot, or a zone path that changes across a kernel/driver update — is
+// picked up without restarting the collector.
 type TemperatureCollector struct {
-	zonePath     string
-	zoneType     string
-	vcgencmdPath string // empty if vcgencmd is not available
+	zoneGlob string // sysfs glob for thermal zones (overridable in tests)
+
+	mu                 sync.Mutex
+	now                func() time.Time
+	zonePath           string
+	zoneType           string
+	lastZoneDetect     time.Time
+	vcgencmdPath       string // empty if vcgencmd is not available
+	vcgencmdDetected   bool   // whether a vcgencmd lookup has ever succeeded
+	lastVcgencmdDetect time.Time
 }
 
 // NewTemperatureCollector auto-detects the CPU thermal zone and checks
 // whether vcgencmd is available. Detection failures are not fatal: the
 // collector still works, it just reports errors from Collect() until a
-// thermal zone appears (e.g. useful for local development off-Pi).
+// thermal zone appears (e.g. useful for local development off-Pi). If the
+// zone (or vcgencmd) is missing at construction, Collect re-attempts
+// detection at most once every detectRetryInterval, so a sensor that shows
+// up later is used automatically.
 func NewTemperatureCollector() *TemperatureCollector {
-	c := &TemperatureCollector{}
-	if zonePath, zoneType, err := findCPUThermalZone(thermalZoneGlob); err == nil {
+	c := &TemperatureCollector{zoneGlob: thermalZoneGlob, now: time.Now}
+	c.redetectZoneLocked()
+	c.redetectVcgencmdLocked()
+	return c
+}
+
+// redetectZoneLocked (re)resolves the CPU thermal zone if we currently have
+// none, throttled to at most once per detectRetryInterval. Caller must hold
+// c.mu (the constructor is single-threaded, so it also qualifies).
+func (c *TemperatureCollector) redetectZoneLocked() {
+	if c.zonePath != "" {
+		return
+	}
+	now := c.now()
+	if !c.lastZoneDetect.IsZero() && now.Sub(c.lastZoneDetect) < detectRetryInterval {
+		return
+	}
+	c.lastZoneDetect = now
+	if zonePath, zoneType, err := findCPUThermalZone(c.zoneGlob); err == nil {
 		c.zonePath = zonePath
 		c.zoneType = zoneType
 	}
+}
+
+// redetectVcgencmdLocked retries exec.LookPath("vcgencmd") if it has never
+// been found, throttled the same way as zone re-detection.
+func (c *TemperatureCollector) redetectVcgencmdLocked() {
+	if c.vcgencmdDetected {
+		return
+	}
+	now := c.now()
+	if !c.lastVcgencmdDetect.IsZero() && now.Sub(c.lastVcgencmdDetect) < detectRetryInterval {
+		return
+	}
+	c.lastVcgencmdDetect = now
 	if path, err := exec.LookPath("vcgencmd"); err == nil {
 		c.vcgencmdPath = path
+		c.vcgencmdDetected = true
 	}
-	return c
 }
 
 // Collect returns the current CPU temperature and, if vcgencmd is
 // available, the GPU/SoC temperature as a secondary reading.
 func (c *TemperatureCollector) Collect(ctx context.Context) (Temperature, *GPUTemperature, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	// Collectors built as struct literals in tests may not set the clock.
+	if c.now == nil {
+		c.now = time.Now
+	}
+
+	c.redetectZoneLocked()
 	if c.zonePath == "" {
 		return Temperature{}, nil, fmt.Errorf("no CPU thermal zone detected")
 	}
 	celsius, err := readThermalZoneMilliC(c.zonePath)
 	if err != nil {
-		return Temperature{}, nil, err
+		if errors.Is(err, os.ErrNotExist) {
+			// The cached zone path vanished (driver/kernel change). Drop it
+			// and try to re-detect, subject to the same throttle.
+			c.zonePath = ""
+			c.redetectZoneLocked()
+			if c.zonePath != "" {
+				celsius, err = readThermalZoneMilliC(c.zonePath)
+			}
+		}
+		if err != nil {
+			return Temperature{}, nil, err
+		}
 	}
 	temp := Temperature{Zone: c.zoneType, Celsius: celsius}
 
+	c.redetectVcgencmdLocked()
 	if c.vcgencmdPath == "" {
 		return temp, nil, nil
 	}
