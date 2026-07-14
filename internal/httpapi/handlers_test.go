@@ -7,16 +7,19 @@ import (
 	"testing"
 	"time"
 
+	"github.com/larslaskowski/pimonitor/internal/alert"
 	"github.com/larslaskowski/pimonitor/internal/collector"
 )
 
 type fakeMetrics struct {
 	snapshot collector.Snapshot
 	history  collector.History
+	alerts   alert.Report
 }
 
 func (f *fakeMetrics) Snapshot() collector.Snapshot { return f.snapshot }
 func (f *fakeMetrics) History() collector.History   { return f.history }
+func (f *fakeMetrics) Alerts() alert.Report         { return f.alerts }
 
 func newTestServer(cfg Config) (*Server, *fakeMetrics) {
 	fm := &fakeMetrics{
@@ -82,6 +85,50 @@ func TestHandleHistory(t *testing.T) {
 	}
 	if len(got.CPUPercent) != 1 {
 		t.Fatalf("expected 1 CPUPercent history point, got %d", len(got.CPUPercent))
+	}
+}
+
+func TestHandleAlerts(t *testing.T) {
+	s, fm := newTestServer(Config{})
+	fm.alerts = alert.Report{
+		Enabled: true,
+		States: []alert.State{
+			{Metric: "cpu", Level: alert.LevelCrit, Value: 99},
+		},
+		Events: []alert.Event{
+			{Metric: "cpu", Kind: alert.KindFired, From: alert.LevelOK, To: alert.LevelCrit, Value: 99},
+		},
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/alerts", nil)
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	var got alert.Report
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if !got.Enabled {
+		t.Fatal("expected enabled=true")
+	}
+	if len(got.States) != 1 || got.States[0].Level != alert.LevelCrit {
+		t.Fatalf("unexpected states: %+v", got.States)
+	}
+	if len(got.Events) != 1 || got.Events[0].Kind != alert.KindFired {
+		t.Fatalf("unexpected events: %+v", got.Events)
+	}
+}
+
+func TestHandleAlerts_GatedByAPIKey(t *testing.T) {
+	s, _ := newTestServer(Config{APIKey: "secret123"})
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/alerts", nil)
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status without key = %d, want 401", rec.Code)
 	}
 }
 

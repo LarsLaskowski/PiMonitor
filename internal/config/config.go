@@ -25,6 +25,19 @@ type Thresholds struct {
 	SwapCritPercent  float64 `yaml:"swap_crit_percent"`
 }
 
+// Alerts configures the server-side threshold alert engine, which maps each
+// snapshot against Thresholds into per-metric alert states and transition
+// events exposed via GET /api/v1/alerts.
+type Alerts struct {
+	// Enabled toggles the alert engine. When false, GET /api/v1/alerts
+	// reports enabled=false with no states or events.
+	Enabled bool `yaml:"enabled"`
+	// ForSeconds is the debounce window: a threshold crossing must persist
+	// for at least this long before it is reported as an alert, suppressing
+	// short-lived spikes. Zero fires on the first crossing.
+	ForSeconds float64 `yaml:"for_seconds"`
+}
+
 // Config is PiMonitor's full runtime configuration.
 type Config struct {
 	ListenAddr                   string     `yaml:"listen_addr"`
@@ -40,6 +53,7 @@ type Config struct {
 	PiModelEnabled               bool       `yaml:"pi_model_enabled"`
 	APIKey                       string     `yaml:"api_key"`
 	Thresholds                   Thresholds `yaml:"thresholds"`
+	Alerts                       Alerts     `yaml:"alerts"`
 }
 
 // Default returns PiMonitor's built-in default configuration.
@@ -67,7 +81,17 @@ func Default() Config {
 			SwapWarnPercent:  50,
 			SwapCritPercent:  90,
 		},
+		Alerts: Alerts{
+			Enabled:    true,
+			ForSeconds: 30,
+		},
 	}
+}
+
+// AlertFor is the debounce window before a threshold crossing is reported as
+// an alert.
+func (c Config) AlertFor() time.Duration {
+	return time.Duration(c.Alerts.ForSeconds * float64(time.Second))
 }
 
 // FastInterval is how often live metrics (CPU, load, temperature,
@@ -144,6 +168,9 @@ func (c Config) Validate() error {
 	}
 	if err := c.Thresholds.validate(); err != nil {
 		return err
+	}
+	if c.Alerts.ForSeconds < 0 {
+		return fmt.Errorf("alerts.for_seconds must be >= 0 (got %v)", c.Alerts.ForSeconds)
 	}
 	return nil
 }

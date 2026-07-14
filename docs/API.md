@@ -157,6 +157,66 @@ only and starts empty after every restart.
 omitted entirely if empty (e.g. network history when monitoring is
 disabled).
 
+### `GET /api/v1/alerts`
+
+Returns the server-side alert engine's current per-metric state plus a
+rolling list of recent transition events. The engine maps each collected
+snapshot against the configured `thresholds` into `ok`/`warn`/`crit` states,
+applying a debounce (`alerts.for_seconds`) so a threshold crossing must
+persist before it is reported — this suppresses short-lived spikes and
+momentary dips. The states mirror the color-coding the dashboard already
+shows; the events make sustained crossings actionable (e.g. an openHAB rule
+polling this endpoint).
+
+```json
+{
+  "enabled": true,
+  "states": [
+    { "metric": "cpu", "level": "ok", "value": 12.4, "since": "2026-07-12T18:00:00Z" },
+    { "metric": "disk", "resource": "/", "level": "warn", "value": 82.1, "since": "2026-07-12T18:25:00Z" },
+    { "metric": "swap", "level": "ok", "value": 0, "since": "2026-07-12T18:00:00Z" },
+    { "metric": "temperature", "level": "crit", "value": 78.5, "since": "2026-07-12T18:30:10Z" }
+  ],
+  "events": [
+    {
+      "metric": "disk",
+      "resource": "/",
+      "kind": "fired",
+      "from": "ok",
+      "to": "warn",
+      "value": 82.1,
+      "at": "2026-07-12T18:25:00Z"
+    },
+    {
+      "metric": "temperature",
+      "kind": "fired",
+      "from": "warn",
+      "to": "crit",
+      "value": 78.5,
+      "at": "2026-07-12T18:30:10Z"
+    }
+  ]
+}
+```
+
+Notes:
+
+- `enabled` is `false` (with empty `states`/`events`) when alerting is
+  disabled via `alerts.enabled: false`.
+- `states` lists one entry per evaluated metric: `cpu`, `temperature`,
+  `swap`, and one `disk` entry per mounted filesystem (distinguished by
+  `resource`, the mountpoint). `resource` is omitted for non-per-device
+  metrics.
+- `level` is the debounced state actually reported; `value` is the most
+  recent reading and `since` is when the current level was entered.
+- Each `events` entry is a confirmed transition: `kind` is `fired` when the
+  severity increased (e.g. `ok`→`warn`, `warn`→`crit`) and `cleared` when it
+  decreased (e.g. `crit`→`ok`). `from`/`to` carry the levels and `at` is the
+  transition time. The list is bounded to the most recent transitions and is
+  in-memory only (it starts empty after a restart).
+- The value cutoffs match the dashboard's card coloring: a level is `crit`
+  when `value >= *_crit`, `warn` when `value >= *_warn`, otherwise `ok`.
+
 ### `GET /api/v1/config`
 
 Returns non-sensitive runtime configuration, so the web dashboard (or a
