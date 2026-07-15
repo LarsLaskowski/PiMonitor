@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
 )
@@ -73,7 +74,7 @@ func TestLoad_DefaultsWithNoArgs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if result.Config != Default() {
+	if !reflect.DeepEqual(result.Config, Default()) {
 		t.Fatalf("Load with no args = %+v, want defaults %+v", result.Config, Default())
 	}
 	if result.VersionRequested {
@@ -193,6 +194,16 @@ func TestValidate_RejectsBadValues(t *testing.T) {
 		{"disk warn above crit", func(c *Config) { c.Thresholds.DiskWarnPercent = 99 }},
 		{"swap warn above crit", func(c *Config) { c.Thresholds.SwapWarnPercent = 99 }},
 		{"negative alerts for_seconds", func(c *Config) { c.Alerts.ForSeconds = -1 }},
+		{"negative notify max retries", func(c *Config) { c.Alerts.NotifyMaxRetries = -1 }},
+		{"negative notify backoff", func(c *Config) { c.Alerts.NotifyRetryBackoffSeconds = -1 }},
+		{"negative notify min interval", func(c *Config) { c.Alerts.NotifyMinIntervalSeconds = -1 }},
+		{"webhook with empty url", func(c *Config) { c.Alerts.Webhooks = []Webhook{{URL: ""}} }},
+		{"webhook with bad min_level", func(c *Config) {
+			c.Alerts.Webhooks = []Webhook{{URL: "http://x", MinLevel: "info"}}
+		}},
+		{"webhook with negative timeout", func(c *Config) {
+			c.Alerts.Webhooks = []Webhook{{URL: "http://x", TimeoutSeconds: -1}}
+		}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -213,6 +224,8 @@ func TestValidate_AcceptsValidEdgeCases(t *testing.T) {
 	// An empty data_dir is fine as long as persistence is disabled.
 	cfg.HistoryPersistEnabled = false
 	cfg.DataDir = ""
+	// A well-formed webhook with an empty min_level (defaults to warn) is valid.
+	cfg.Alerts.Webhooks = []Webhook{{URL: "https://example.com/hook"}}
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("Validate() rejected a valid edge-case config: %v", err)
 	}

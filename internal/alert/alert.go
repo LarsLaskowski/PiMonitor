@@ -176,29 +176,39 @@ func New(thresholds config.Thresholds, forDur time.Duration) *Engine {
 // Evaluate folds one sample into the engine's state, emitting transition
 // events for any metric whose debounced level changed. Metrics flagged
 // invalid (their collection failed this tick) are skipped and keep their
-// previous state.
-func (e *Engine) Evaluate(s Sample) {
+// previous state. It returns the events emitted during this call (in
+// evaluation order) so the caller can forward them to notifiers; the returned
+// slice is nil when nothing changed.
+func (e *Engine) Evaluate(s Sample) []Event {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
+	var emitted []Event
+	record := func(ev *Event) {
+		if ev != nil {
+			emitted = append(emitted, *ev)
+		}
+	}
+
 	t := e.thresholds
 	if s.CPUValid {
-		e.evalMetric("cpu", "", s.CPUPercent, t.CPUWarnPercent, t.CPUCritPercent, s.Timestamp)
+		record(e.evalMetric("cpu", "", s.CPUPercent, t.CPUWarnPercent, t.CPUCritPercent, s.Timestamp))
 	}
 	if s.TemperatureValid {
-		e.evalMetric("temperature", "", s.TemperatureC, t.TemperatureWarnC, t.TemperatureCritC, s.Timestamp)
+		record(e.evalMetric("temperature", "", s.TemperatureC, t.TemperatureWarnC, t.TemperatureCritC, s.Timestamp))
 	}
 	if s.SwapValid {
-		e.evalMetric("swap", "", s.SwapPercent, t.SwapWarnPercent, t.SwapCritPercent, s.Timestamp)
+		record(e.evalMetric("swap", "", s.SwapPercent, t.SwapWarnPercent, t.SwapCritPercent, s.Timestamp))
 	}
 	if s.DisksValid {
 		present := make(map[string]struct{}, len(s.Disks))
 		for _, d := range s.Disks {
 			present[d.Mountpoint] = struct{}{}
-			e.evalMetric("disk", d.Mountpoint, d.UsedPercent, t.DiskWarnPercent, t.DiskCritPercent, s.Timestamp)
+			record(e.evalMetric("disk", d.Mountpoint, d.UsedPercent, t.DiskWarnPercent, t.DiskCritPercent, s.Timestamp))
 		}
-		e.pruneDisks(present, s.Timestamp)
+		emitted = append(emitted, e.pruneDisks(present, s.Timestamp)...)
 	}
+	return emitted
 }
 
 // evalMetric runs the debounce state machine for a single metric. Callers
@@ -210,7 +220,10 @@ func (e *Engine) Evaluate(s Sample) {
 // "below crit/warn for forDur" de-escalates. Because the warn and crit
 // boundaries are timed independently, a value continuously >= warn fires a
 // warn alert even while it dips in and out of crit.
-func (e *Engine) evalMetric(metric, resource string, value, warn, crit float64, now time.Time) {
+//
+// It returns the emitted transition event, or nil when the debounced level is
+// unchanged.
+func (e *Engine) evalMetric(metric, resource string, value, warn, crit float64, now time.Time) *Event {
 	key := metric + "\x00" + resource
 	st := e.states[key]
 	if st == nil {
@@ -272,18 +285,22 @@ func (e *Engine) evalMetric(metric, resource string, value, warn, crit float64, 
 		prev := st.active
 		st.active = next
 		st.activeSince = now
-		e.recordEvent(st, prev, next, value, now)
+		ev := e.recordEvent(st, prev, next, value, now)
+		return &ev
 	}
+	return nil
 }
 
 // pruneDisks drops disk states whose mountpoint is absent from the latest
 // sample (e.g. an unplugged USB drive or a transient mount), so a vanished
 // filesystem doesn't linger forever in the report — worst case, a drive
 // unmounted while at crit would otherwise report a frozen, never-cleared
-// alert. A pruned state that was still alerting emits a final cleared event.
-// Callers must hold e.mu, and must only call this when the disk list is
-// authoritative (collection succeeded).
-func (e *Engine) pruneDisks(present map[string]struct{}, now time.Time) {
+// alert. A pruned state that was still alerting emits a final cleared event,
+// which is returned so the caller can forward it to notifiers. Callers must
+// hold e.mu, and must only call this when the disk list is authoritative
+// (collection succeeded).
+func (e *Engine) pruneDisks(present map[string]struct{}, now time.Time) []Event {
+	var emitted []Event
 	for key, st := range e.states {
 		if st.metric != "disk" {
 			continue
@@ -292,20 +309,22 @@ func (e *Engine) pruneDisks(present map[string]struct{}, now time.Time) {
 			continue
 		}
 		if st.active != LevelOK {
-			e.recordEvent(st, st.active, LevelOK, st.lastValue, now)
+			emitted = append(emitted, e.recordEvent(st, st.active, LevelOK, st.lastValue, now))
 		}
 		delete(e.states, key)
 	}
+	return emitted
 }
 
-// recordEvent appends a transition event, trimming the history to maxEvents.
-// Callers must hold e.mu.
-func (e *Engine) recordEvent(st *metricState, from, to Level, value float64, now time.Time) {
+// recordEvent appends a transition event, trimming the history to maxEvents,
+// and returns the event so callers can forward it to notifiers. Callers must
+// hold e.mu.
+func (e *Engine) recordEvent(st *metricState, from, to Level, value float64, now time.Time) Event {
 	kind := KindFired
 	if severity(to) < severity(from) {
 		kind = KindCleared
 	}
-	e.events = append(e.events, Event{
+	ev := Event{
 		Metric:   st.metric,
 		Resource: st.resource,
 		Kind:     kind,
@@ -313,10 +332,12 @@ func (e *Engine) recordEvent(st *metricState, from, to Level, value float64, now
 		To:       to,
 		Value:    value,
 		At:       now,
-	})
+	}
+	e.events = append(e.events, ev)
 	if len(e.events) > e.maxEvents {
 		e.events = e.events[len(e.events)-e.maxEvents:]
 	}
+	return ev
 }
 
 // Report returns a snapshot of the current per-metric states (sorted for a

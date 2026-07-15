@@ -52,6 +52,10 @@ type Config struct {
 	// Thresholds are the warn/critical cutoffs the alert engine evaluates
 	// against.
 	Thresholds config.Thresholds
+	// Notifier delivers alert transition events to configured HTTP webhooks.
+	// Nil disables notifications. It is started by Run and fed the events each
+	// evaluation emits.
+	Notifier *alert.Notifier
 }
 
 // History is the collected time series for every metric, keyed by
@@ -86,6 +90,8 @@ type Collector struct {
 
 	// alerts is nil when alerting is disabled.
 	alerts *alert.Engine
+	// notifier is nil when no webhooks are configured.
+	notifier *alert.Notifier
 
 	log *slog.Logger
 
@@ -115,6 +121,7 @@ func New(cfg Config, log *slog.Logger) *Collector {
 	return &Collector{
 		cfg:      cfg,
 		alerts:   alerts,
+		notifier: cfg.Notifier,
 		cpu:      NewCPUCollector(),
 		loadAvg:  NewLoadAvgCollector(),
 		memory:   NewMemoryCollector(),
@@ -144,6 +151,9 @@ func New(cfg Config, log *slog.Logger) *Collector {
 func (c *Collector) Run(ctx context.Context) {
 	c.loadHistory()
 	c.collectSysInfo()
+	if c.notifier != nil {
+		c.notifier.Start(ctx)
+	}
 	c.fastTick(ctx)
 	c.slowTick(ctx)
 
@@ -337,7 +347,7 @@ func (c *Collector) fastTick(ctx context.Context) {
 		for i, d := range disks {
 			diskSamples[i] = alert.DiskSample{Mountpoint: d.Mountpoint, UsedPercent: d.UsedPercent}
 		}
-		c.alerts.Evaluate(alert.Sample{
+		events := c.alerts.Evaluate(alert.Sample{
 			Timestamp:        now,
 			CPUPercent:       cpuUsage.OverallPercent,
 			CPUValid:         cpuErr == nil,
@@ -348,6 +358,11 @@ func (c *Collector) fastTick(ctx context.Context) {
 			Disks:            diskSamples,
 			DisksValid:       diskErr == nil,
 		})
+		// Forward any transition events to the webhook notifier. Notify only
+		// enqueues (never blocks), so a slow webhook can't stall collection.
+		if c.notifier != nil && len(events) > 0 {
+			c.notifier.Notify(events)
+		}
 	}
 }
 
