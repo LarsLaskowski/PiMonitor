@@ -292,6 +292,127 @@
     });
   }
 
+  // Metric detail view: clicking a card opens a modal with a larger chart of
+  // that metric's history plus range buttons. Each entry maps a card's
+  // data-metric attribute to the matching History series and how to render it.
+  const DETAIL_METRICS = {
+    cpu: {
+      title: 'CPU Usage',
+      historyKey: 'cpu_percent',
+      opts: { min: 0, max: 100 },
+      fmt: v => v.toFixed(1) + ' %',
+    },
+    load: {
+      title: 'Load Average (1 min)',
+      historyKey: 'load1',
+      opts: { min: 0 },
+      fmt: v => v.toFixed(2),
+    },
+    temperature: {
+      title: 'Temperature',
+      historyKey: 'temperature',
+      opts: {},
+      fmt: v => v.toFixed(1) + ' °C',
+    },
+    memory: {
+      title: 'Memory Usage',
+      historyKey: 'memory_used_percent',
+      opts: { min: 0, max: 100 },
+      fmt: v => v.toFixed(1) + ' %',
+    },
+  };
+
+  let openDetailMetric = null;
+  // Default span; bounded in practice by however much history the server
+  // retains (history_window_minutes), since points beyond that aren't returned.
+  let detailRangeMinutes = 15;
+
+  function detailSeries(metricKey) {
+    const meta = DETAIL_METRICS[metricKey];
+    if (!meta || !latestHistory) return [];
+    return latestHistory[meta.historyKey] || [];
+  }
+
+  // Keep only the points within the last `minutes`, measured back from the
+  // most recent sample's timestamp (the Pi clock), not the browser's clock.
+  function pointsWithinRange(points, minutes) {
+    if (!points || !points.length) return [];
+    const latest = new Date(points[points.length - 1].t).getTime();
+    const cutoff = latest - minutes * 60000;
+    return points.filter(p => new Date(p.t).getTime() >= cutoff);
+  }
+
+  function updateRangeButtons() {
+    document.querySelectorAll('#detail-ranges .range-button').forEach(b => {
+      const active = Number(b.dataset.minutes) === detailRangeMinutes;
+      b.classList.toggle('active', active);
+      b.setAttribute('aria-pressed', String(active));
+    });
+  }
+
+  function renderDetailChart() {
+    if (!openDetailMetric) return;
+    const meta = DETAIL_METRICS[openDetailMetric];
+    const points = pointsWithinRange(detailSeries(openDetailMetric), detailRangeMinutes);
+    drawSparkline(document.getElementById('detail-chart'), points, meta.opts);
+
+    const stats = document.getElementById('detail-stats');
+    if (points.length) {
+      const vals = points.map(p => p.v);
+      const cur = vals[vals.length - 1];
+      const min = Math.min(...vals);
+      const max = Math.max(...vals);
+      const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
+      stats.textContent =
+        'Now ' + meta.fmt(cur) + ' · min ' + meta.fmt(min) +
+        ' · avg ' + meta.fmt(avg) + ' · max ' + meta.fmt(max) +
+        ' · ' + vals.length + (vals.length === 1 ? ' sample' : ' samples');
+    } else {
+      stats.textContent = 'No history for the selected range yet';
+    }
+  }
+
+  function openDetailModal(metricKey) {
+    if (!DETAIL_METRICS[metricKey]) return;
+    openDetailMetric = metricKey;
+    setText('detail-modal-title', DETAIL_METRICS[metricKey].title);
+    updateRangeButtons();
+    document.getElementById('detail-modal').classList.remove('hidden');
+    // Draw after the modal is visible so the canvas has a measurable size.
+    renderDetailChart();
+  }
+
+  function closeDetailModal() {
+    openDetailMetric = null;
+    document.getElementById('detail-modal').classList.add('hidden');
+  }
+
+  function wireDetailModal() {
+    document.querySelectorAll('[data-metric]').forEach(card => {
+      card.addEventListener('click', () => openDetailModal(card.dataset.metric));
+      card.addEventListener('keydown', e => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          openDetailModal(card.dataset.metric);
+        }
+      });
+    });
+    document.getElementById('detail-modal-close').addEventListener('click', closeDetailModal);
+    document.getElementById('detail-modal').addEventListener('click', e => {
+      if (e.target === e.currentTarget) closeDetailModal();
+    });
+    document.querySelectorAll('#detail-ranges .range-button').forEach(b => {
+      b.addEventListener('click', () => {
+        detailRangeMinutes = Number(b.dataset.minutes);
+        updateRangeButtons();
+        renderDetailChart();
+      });
+    });
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape') closeDetailModal();
+    });
+  }
+
   function renderGauge(canvasId, valueId, value) {
     const canvas = document.getElementById(canvasId);
     const cls = levelClass(value, lastCPUCount * 0.7, lastCPUCount * 1.0);
@@ -351,6 +472,9 @@
     latestHistory = hist;
     if (hist.cpu_percent) drawSparkline(document.getElementById('cpu-sparkline'), hist.cpu_percent, { min: 0, max: 100 });
     if (hist.temperature) drawSparkline(document.getElementById('temp-sparkline'), hist.temperature);
+    // Keep the open detail modal in sync with freshly polled history (and
+    // repaint it after a theme change, which re-calls renderHistory).
+    renderDetailChart();
   }
 
   async function pollMetrics() {
@@ -375,6 +499,7 @@
   async function main() {
     wireThemeToggle();
     wireUpdatesModal();
+    wireDetailModal();
     await loadConfig();
     renderVersion();
     const intervalMs = Math.max(1, config.poll_interval_seconds) * 1000;

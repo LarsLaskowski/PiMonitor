@@ -44,7 +44,8 @@
 
   <!-- Column 2: load & thermals -->
   <div class="column">
-    <section class="card accent-cpu" id="card-cpu">
+    <section class="card accent-cpu card-clickable" id="card-cpu" data-metric="cpu"
+             role="button" tabindex="0" aria-label="Open CPU usage detail">
       <h2><span class="card-icon">⚡</span> CPU Usage</h2>
       <div class="metric-value" id="cpu-overall">&ndash;</div>
       <div class="metric-sub" id="cpu-info"></div>
@@ -52,7 +53,8 @@
       <canvas class="sparkline" id="cpu-sparkline"></canvas>
     </section>
 
-    <section class="card accent-load" id="card-load">
+    <section class="card accent-load card-clickable" id="card-load" data-metric="load"
+             role="button" tabindex="0" aria-label="Open load average detail">
       <h2><span class="card-icon">🚦</span> Load Average</h2>
       <div class="gauge-row">
         <div class="gauge">
@@ -73,7 +75,8 @@
       </div>
     </section>
 
-    <section class="card accent-temperature" id="card-temperature">
+    <section class="card accent-temperature card-clickable" id="card-temperature" data-metric="temperature"
+             role="button" tabindex="0" aria-label="Open temperature detail">
       <h2><span class="card-icon">🌡️</span> Temperature</h2>
       <div class="metric-value" id="temp-value">&ndash;</div>
       <div class="metric-sub" id="temp-gpu"></div>
@@ -83,7 +86,8 @@
 
   <!-- Column 3: memory, storage & network -->
   <div class="column">
-    <section class="card accent-memory" id="card-memory">
+    <section class="card accent-memory card-clickable" id="card-memory" data-metric="memory"
+             role="button" tabindex="0" aria-label="Open memory usage detail">
       <h2><span class="card-icon">🧠</span> Memory &amp; Swap</h2>
       <div class="bar-row">
         <div class="bar-label">
@@ -128,6 +132,24 @@
         </thead>
         <tbody id="updates-table-body"></tbody>
       </table>
+    </div>
+  </div>
+</div>
+
+<div class="modal-backdrop hidden" id="detail-modal">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="detail-modal-title">
+    <div class="modal-header">
+      <h3 id="detail-modal-title">Metric</h3>
+      <button type="button" class="modal-close" id="detail-modal-close" aria-label="Close">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="range-picker" id="detail-ranges" role="group" aria-label="Time range">
+        <button type="button" class="range-button" data-minutes="5">5m</button>
+        <button type="button" class="range-button" data-minutes="15">15m</button>
+        <button type="button" class="range-button" data-minutes="60">1h</button>
+      </div>
+      <canvas class="detail-chart" id="detail-chart"></canvas>
+      <div class="detail-stats" id="detail-stats"></div>
     </div>
   </div>
 </div>
