@@ -36,6 +36,46 @@ type Alerts struct {
 	// for at least this long before it is reported as an alert, suppressing
 	// short-lived spikes. Zero fires on the first crossing.
 	ForSeconds float64 `yaml:"for_seconds"`
+	// Webhooks are HTTP endpoints that receive a JSON POST on every alert
+	// fired/cleared transition. A single generic webhook covers Slack,
+	// Discord, Home Assistant, ntfy, etc. via their incoming-webhook formats.
+	// Delivery happens off the collection path, so a slow or failing webhook
+	// never blocks metric collection.
+	Webhooks []Webhook `yaml:"webhooks"`
+	// NotifyMaxRetries is how many times a failed webhook delivery is retried
+	// (with exponential backoff) before it is given up on. Zero means a single
+	// attempt with no retries.
+	NotifyMaxRetries int `yaml:"notify_max_retries"`
+	// NotifyRetryBackoffSeconds is the base delay before the first retry; it
+	// doubles on each subsequent attempt. Zero retries immediately.
+	NotifyRetryBackoffSeconds float64 `yaml:"notify_retry_backoff_seconds"`
+	// NotifyMinIntervalSeconds rate-limits deliveries per webhook: an event
+	// arriving within this window of the previous delivery to the same URL is
+	// dropped, so an alert flapping faster than the debounce can't flood a
+	// destination. Zero disables rate-limiting.
+	NotifyMinIntervalSeconds float64 `yaml:"notify_min_interval_seconds"`
+}
+
+// Webhook is one HTTP notification destination for alert transition events.
+type Webhook struct {
+	// URL is the endpoint POSTed on each matching event. Required.
+	URL string `yaml:"url"`
+	// MinLevel filters which events are delivered to this webhook: only those
+	// reaching at least this severity are sent. Valid values are "warn" and
+	// "crit"; empty defaults to "warn" (every transition, since every event
+	// touches at least the warn level).
+	MinLevel string `yaml:"min_level"`
+	// Template is an optional Go text/template rendered against the event to
+	// build the request body (e.g. a Slack `{"text": "..."}` payload). When
+	// empty, a default JSON object describing the event is sent.
+	Template string `yaml:"template"`
+	// ContentType sets the request's Content-Type header. Empty defaults to
+	// "application/json"; override it when a custom Template renders a
+	// non-JSON body (e.g. "text/plain").
+	ContentType string `yaml:"content_type"`
+	// TimeoutSeconds bounds a single delivery attempt. Zero uses a built-in
+	// default.
+	TimeoutSeconds float64 `yaml:"timeout_seconds"`
 }
 
 // Config is PiMonitor's full runtime configuration.
@@ -82,8 +122,12 @@ func Default() Config {
 			SwapCritPercent:  90,
 		},
 		Alerts: Alerts{
-			Enabled:    true,
-			ForSeconds: 30,
+			Enabled:                   true,
+			ForSeconds:                30,
+			Webhooks:                  nil,
+			NotifyMaxRetries:          3,
+			NotifyRetryBackoffSeconds: 1,
+			NotifyMinIntervalSeconds:  5,
 		},
 	}
 }
@@ -171,6 +215,45 @@ func (c Config) Validate() error {
 	}
 	if c.Alerts.ForSeconds < 0 {
 		return fmt.Errorf("alerts.for_seconds must be >= 0 (got %v)", c.Alerts.ForSeconds)
+	}
+	if err := c.Alerts.validate(); err != nil {
+		return err
+	}
+	return nil
+}
+
+// validAlertMinLevels are the severities a webhook may filter on. "ok" is
+// intentionally excluded: an alert transition never rests at ok on both sides,
+// so filtering on it would be meaningless.
+var validAlertMinLevels = map[string]bool{
+	"":     true, // defaults to "warn"
+	"warn": true,
+	"crit": true,
+}
+
+// validate checks the notifier tuning and each configured webhook. It runs
+// regardless of Enabled so a typo in an inert config is still caught at
+// startup rather than silently ignored.
+func (a Alerts) validate() error {
+	if a.NotifyMaxRetries < 0 {
+		return fmt.Errorf("alerts.notify_max_retries must be >= 0 (got %v)", a.NotifyMaxRetries)
+	}
+	if a.NotifyRetryBackoffSeconds < 0 {
+		return fmt.Errorf("alerts.notify_retry_backoff_seconds must be >= 0 (got %v)", a.NotifyRetryBackoffSeconds)
+	}
+	if a.NotifyMinIntervalSeconds < 0 {
+		return fmt.Errorf("alerts.notify_min_interval_seconds must be >= 0 (got %v)", a.NotifyMinIntervalSeconds)
+	}
+	for i, w := range a.Webhooks {
+		if w.URL == "" {
+			return fmt.Errorf("alerts.webhooks[%d].url must not be empty", i)
+		}
+		if !validAlertMinLevels[w.MinLevel] {
+			return fmt.Errorf("alerts.webhooks[%d].min_level must be one of warn, crit (got %q)", i, w.MinLevel)
+		}
+		if w.TimeoutSeconds < 0 {
+			return fmt.Errorf("alerts.webhooks[%d].timeout_seconds must be >= 0 (got %v)", i, w.TimeoutSeconds)
+		}
 	}
 	return nil
 }

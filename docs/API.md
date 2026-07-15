@@ -227,6 +227,10 @@ Notes:
   in-memory only (it starts empty after a restart).
 - The value cutoffs match the dashboard's card coloring: a level is `crit`
   when `value >= *_crit`, `warn` when `value >= *_warn`, otherwise `ok`.
+- The same `fired`/`cleared` transitions can also be pushed to external HTTP
+  webhooks (Slack, Discord, Home Assistant, ntfy, ...). This is delivery-only
+  and configured under `alerts.webhooks` in the config file — it adds no new
+  API endpoint; see [`packaging/pimonitor.example.yaml`](../packaging/pimonitor.example.yaml).
 
 ### `GET /api/v1/config`
 

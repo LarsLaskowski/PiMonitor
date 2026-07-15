@@ -82,3 +82,37 @@ alerts:
   # (and momentary dips back to ok) don't flap. Set to 0 to fire on the
   # first crossing.
   for_seconds: 30
+
+  # Optional HTTP webhooks. On every fired/cleared transition, PiMonitor
+  # POSTs a JSON body to each webhook whose min_level the event reaches.
+  # Delivery happens off the collection path, so a slow or failing webhook
+  # never blocks metric collection. A single generic webhook covers Slack,
+  # Discord, Home Assistant, ntfy, etc. via their incoming-webhook formats.
+  # (No webhooks are configured by default.)
+  webhooks: []
+  #  - url: "https://hooks.example.com/pimonitor"
+  #    # Only send events reaching at least this severity: "warn" (default,
+  #    # every transition) or "crit".
+  #    min_level: "warn"
+  #    # Optional Go text/template rendered into the request body. When
+  #    # omitted, a default JSON object describing the event is sent. The
+  #    # template sees: .Metric, .Resource, .Kind ("fired"/"cleared"),
+  #    # .From, .To, .Value, .At, .Message. Example Slack payload:
+  #    # template: '{"text": "PiMonitor: {{.Message}}"}'
+  #    # Content-Type header (default "application/json"). Override it if a
+  #    # custom template renders a non-JSON body, e.g. "text/plain".
+  #    content_type: "application/json"
+  #    # Per-attempt timeout in seconds (0 uses the built-in 10s default).
+  #    timeout_seconds: 10
+
+  # How many times a failed webhook delivery is retried, with exponential
+  # backoff, before it is given up on. 0 means a single attempt.
+  notify_max_retries: 3
+  # Base delay (seconds) before the first retry; it doubles each attempt.
+  notify_retry_backoff_seconds: 1
+  # Rate limit: coalesce repeated *firing* events for the same metric that
+  # arrive within this many seconds of the previous delivery to the same
+  # webhook URL, so a flapping metric can't flood a destination. "cleared"
+  # (recovery) events are never rate-limited, so a downstream consumer can't
+  # get stuck showing an alert that has actually cleared. 0 disables it.
+  notify_min_interval_seconds: 5

@@ -13,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/larslaskowski/pimonitor/internal/alert"
 	"github.com/larslaskowski/pimonitor/internal/collector"
 	"github.com/larslaskowski/pimonitor/internal/config"
 	"github.com/larslaskowski/pimonitor/internal/httpapi"
@@ -42,6 +43,11 @@ func run(args []string) error {
 
 	log := newLogger(cfg.LogLevel)
 
+	notifier, err := alert.NewNotifier(cfg.Alerts, log)
+	if err != nil {
+		return fmt.Errorf("configure alert webhooks: %w", err)
+	}
+
 	collCfg := collector.Config{
 		FastInterval:          cfg.FastInterval(),
 		SlowInterval:          cfg.SlowInterval(),
@@ -54,6 +60,7 @@ func run(args []string) error {
 		AlertsEnabled:         cfg.Alerts.Enabled,
 		AlertFor:              cfg.AlertFor(),
 		Thresholds:            cfg.Thresholds,
+		Notifier:              notifier,
 	}
 	if cfg.HistoryPersistEnabled {
 		collCfg.PersistPath = filepath.Join(cfg.DataDir, "history.bin")

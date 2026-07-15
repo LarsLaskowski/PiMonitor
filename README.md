@@ -29,6 +29,12 @@ automation systems like openHAB). Runs as a systemd service.
 - **Threshold alerts** - a server-side engine maps each poll against the
   configured warn/critical thresholds into per-metric alert states with
   debounced fired/cleared events, exposed via `GET /api/v1/alerts`
+- **Alert webhooks** - optionally POST a JSON payload (with a per-webhook
+  severity filter, custom body template, retry-with-backoff and basic
+  rate-limiting) to one or more HTTP endpoints on each fired/cleared
+  transition, so alerts reach Slack, Discord, Home Assistant, ntfy, etc.
+  Delivery is fully off the collection path, so a slow webhook never blocks
+  metric sampling
 - **Light/dark theme toggle** - follows the OS setting by default, with a
   manual override remembered in the browser
 - A versioned REST API (`/api/v1/...`) for third-party consumers, with
@@ -43,8 +49,11 @@ automation systems like openHAB). Runs as a systemd service.
  /proc, /sys ───▶ │  collector  ──▶  httpapi   │───▶ Web dashboard
  apt cache        │  (in-memory          │      │     (embedded assets)
                   │   ring buffers)      ▼      │
-                  │                 /api/v1/... │───▶ Third-party clients
-                  └─────────────────────────────┘        (e.g. openHAB)
+                  │      │          /api/v1/... │───▶ Third-party clients
+                  │      │ alert events         │        (e.g. openHAB)
+                  │      ▼                       │
+                  │   notifier ─────────────────│───▶ HTTP webhooks
+                  └─────────────────────────────┘   (Slack, ntfy, HA, ...)
 
  pimonitor.service          pimonitor-apt-update.timer (root)
  runs unprivileged    <--   refreshes apt cache every 6h;
