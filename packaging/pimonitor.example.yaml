@@ -68,3 +68,17 @@ thresholds:
   disk_crit_percent: 95
   swap_warn_percent: 50
   swap_crit_percent: 90
+
+# Server-side threshold alert engine. On each poll it maps the current
+# metrics against the thresholds above into per-metric alert states
+# (ok/warn/crit) and a rolling list of fired/cleared transition events,
+# exposed via GET /api/v1/alerts for third-party integrations.
+alerts:
+  # Whether the alert engine runs. When false, GET /api/v1/alerts reports
+  # enabled=false with no states or events.
+  enabled: true
+  # Debounce window: a threshold crossing must persist for at least this
+  # many seconds before it is reported as an alert, so short-lived spikes
+  # (and momentary dips back to ok) don't flap. Set to 0 to fire on the
+  # first crossing.
+  for_seconds: 30

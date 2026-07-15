@@ -51,6 +51,9 @@ func run(args []string) error {
 		DistroInfoEnabled:     cfg.DistroInfoEnabled,
 		PiModelEnabled:        cfg.PiModelEnabled,
 		HistoryWindow:         cfg.HistoryWindow(),
+		AlertsEnabled:         cfg.Alerts.Enabled,
+		AlertFor:              cfg.AlertFor(),
+		Thresholds:            cfg.Thresholds,
 	}
 	if cfg.HistoryPersistEnabled {
 		collCfg.PersistPath = filepath.Join(cfg.DataDir, "history.bin")

@@ -5,6 +5,9 @@ import (
 	"log/slog"
 	"sync"
 	"time"
+
+	"github.com/larslaskowski/pimonitor/internal/alert"
+	"github.com/larslaskowski/pimonitor/internal/config"
 )
 
 // Config controls the collector's polling behavior and history retention.
@@ -39,6 +42,16 @@ type Config struct {
 	// persisted points older than this are dropped on load. Zero disables
 	// trimming.
 	HistoryWindow time.Duration
+	// AlertsEnabled toggles the threshold alert engine. When enabled, each
+	// fast tick is evaluated against Thresholds into per-metric alert states
+	// and transition events served by GET /api/v1/alerts.
+	AlertsEnabled bool
+	// AlertFor is the alert engine's debounce window: a threshold crossing
+	// must persist this long before it is reported as an alert.
+	AlertFor time.Duration
+	// Thresholds are the warn/critical cutoffs the alert engine evaluates
+	// against.
+	Thresholds config.Thresholds
 }
 
 // History is the collected time series for every metric, keyed by
@@ -71,6 +84,9 @@ type Collector struct {
 	updates *UpdatesCollector
 	uptime  *UptimeCollector
 
+	// alerts is nil when alerting is disabled.
+	alerts *alert.Engine
+
 	log *slog.Logger
 
 	mu       sync.RWMutex
@@ -92,8 +108,13 @@ func New(cfg Config, log *slog.Logger) *Collector {
 	if log == nil {
 		log = slog.Default()
 	}
+	var alerts *alert.Engine
+	if cfg.AlertsEnabled {
+		alerts = alert.New(cfg.Thresholds, cfg.AlertFor)
+	}
 	return &Collector{
 		cfg:      cfg,
+		alerts:   alerts,
 		cpu:      NewCPUCollector(),
 		loadAvg:  NewLoadAvgCollector(),
 		memory:   NewMemoryCollector(),
@@ -228,25 +249,25 @@ func (c *Collector) collectSysInfo() {
 func (c *Collector) fastTick(ctx context.Context) {
 	now := time.Now()
 
-	cpuUsage, err := c.cpu.Collect()
-	if err != nil {
-		c.log.Warn("cpu collection failed", "error", err)
+	cpuUsage, cpuErr := c.cpu.Collect()
+	if cpuErr != nil {
+		c.log.Warn("cpu collection failed", "error", cpuErr)
 	}
 	load, err := c.loadAvg.Collect()
 	if err != nil {
 		c.log.Warn("load average collection failed", "error", err)
 	}
-	temp, gpuTemp, err := c.temp.Collect(ctx)
-	if err != nil {
-		c.log.Warn("temperature collection failed", "error", err)
+	temp, gpuTemp, tempErr := c.temp.Collect(ctx)
+	if tempErr != nil {
+		c.log.Warn("temperature collection failed", "error", tempErr)
 	}
-	mem, swap, err := c.memory.Collect()
-	if err != nil {
-		c.log.Warn("memory collection failed", "error", err)
+	mem, swap, memErr := c.memory.Collect()
+	if memErr != nil {
+		c.log.Warn("memory collection failed", "error", memErr)
 	}
-	disks, err := c.disk.Collect()
-	if err != nil {
-		c.log.Warn("disk collection failed", "error", err)
+	disks, diskErr := c.disk.Collect()
+	if diskErr != nil {
+		c.log.Warn("disk collection failed", "error", diskErr)
 	}
 	var netIfaces []NetworkInterface
 	if c.cfg.NetworkEnabled {
@@ -305,6 +326,38 @@ func (c *Collector) fastTick(ctx context.Context) {
 		}
 		txRB.Add(HistoryPoint{Timestamp: now, Value: n.TxBytesPerSec})
 	}
+
+	// Evaluate the freshly collected values against the alert thresholds.
+	// The engine has its own lock and never calls back into the collector,
+	// so doing this while c.mu is held cannot deadlock. Metrics whose
+	// collection failed this tick are flagged invalid so a bogus zero can't
+	// spuriously clear a real alert; the engine keeps their previous state.
+	if c.alerts != nil {
+		diskSamples := make([]alert.DiskSample, len(disks))
+		for i, d := range disks {
+			diskSamples[i] = alert.DiskSample{Mountpoint: d.Mountpoint, UsedPercent: d.UsedPercent}
+		}
+		c.alerts.Evaluate(alert.Sample{
+			Timestamp:        now,
+			CPUPercent:       cpuUsage.OverallPercent,
+			CPUValid:         cpuErr == nil,
+			TemperatureC:     temp.Celsius,
+			TemperatureValid: tempErr == nil,
+			SwapPercent:      swap.UsedPercent,
+			SwapValid:        memErr == nil,
+			Disks:            diskSamples,
+			DisksValid:       diskErr == nil,
+		})
+	}
+}
+
+// Alerts returns the current alert states and recent transition events. When
+// alerting is disabled it reports enabled=false with no states or events.
+func (c *Collector) Alerts() alert.Report {
+	if c.alerts == nil {
+		return alert.Report{Enabled: false}
+	}
+	return c.alerts.Report()
 }
 
 func (c *Collector) slowTick(ctx context.Context) {

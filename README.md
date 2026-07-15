@@ -26,6 +26,9 @@ automation systems like openHAB). Runs as a systemd service.
 - Short metric history (default: last 60 minutes) for sparklines,
   periodically snapshotted to a compact binary file so it survives
   restarts and reboots - no database
+- **Threshold alerts** - a server-side engine maps each poll against the
+  configured warn/critical thresholds into per-metric alert states with
+  debounced fired/cleared events, exposed via `GET /api/v1/alerts`
 - **Light/dark theme toggle** - follows the OS setting by default, with a
   manual override remembered in the browser
 - A versioned REST API (`/api/v1/...`) for third-party consumers, with

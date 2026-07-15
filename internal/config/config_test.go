@@ -24,6 +24,12 @@ func TestDefault(t *testing.T) {
 	if cfg.DataDir != "/var/lib/pimonitor" {
 		t.Fatalf("DataDir = %q, want /var/lib/pimonitor", cfg.DataDir)
 	}
+	if !cfg.Alerts.Enabled {
+		t.Fatal("expected Alerts.Enabled to default to true")
+	}
+	if cfg.Alerts.ForSeconds != 30 {
+		t.Fatalf("Alerts.ForSeconds = %v, want 30", cfg.Alerts.ForSeconds)
+	}
 }
 
 func TestDurationHelpers(t *testing.T) {
@@ -47,6 +53,10 @@ func TestDurationHelpers(t *testing.T) {
 	}
 	if cfg.HistoryWindow() != time.Hour {
 		t.Fatalf("HistoryWindow = %v, want 1h", cfg.HistoryWindow())
+	}
+	cfg.Alerts.ForSeconds = 30
+	if cfg.AlertFor() != 30*time.Second {
+		t.Fatalf("AlertFor = %v, want 30s", cfg.AlertFor())
 	}
 }
 
@@ -182,6 +192,7 @@ func TestValidate_RejectsBadValues(t *testing.T) {
 		{"cpu warn above crit", func(c *Config) { c.Thresholds.CPUWarnPercent = 99 }},
 		{"disk warn above crit", func(c *Config) { c.Thresholds.DiskWarnPercent = 99 }},
 		{"swap warn above crit", func(c *Config) { c.Thresholds.SwapWarnPercent = 99 }},
+		{"negative alerts for_seconds", func(c *Config) { c.Alerts.ForSeconds = -1 }},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

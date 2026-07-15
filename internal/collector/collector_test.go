@@ -4,6 +4,8 @@ import (
 	"context"
 	"testing"
 	"time"
+
+	"github.com/larslaskowski/pimonitor/internal/config"
 )
 
 // These tests exercise the real Linux metric sources (/proc, /sys) since
@@ -119,6 +121,54 @@ func TestCollector_HistoryCapacityBounded(t *testing.T) {
 	hist := c.History()
 	if len(hist.MemoryUsedPercent) != 3 {
 		t.Fatalf("expected history bounded to capacity 3, got %d", len(hist.MemoryUsedPercent))
+	}
+}
+
+func TestCollector_Alerts_DisabledByDefault(t *testing.T) {
+	c := newTestCollector()
+	c.fastTick(context.Background())
+
+	report := c.Alerts()
+	if report.Enabled {
+		t.Fatal("expected alerts to be disabled when AlertsEnabled is false")
+	}
+	if len(report.States) != 0 || len(report.Events) != 0 {
+		t.Fatalf("expected empty report when disabled, got %+v", report)
+	}
+}
+
+func TestCollector_Alerts_EvaluatedOnFastTick(t *testing.T) {
+	c := New(Config{
+		FastInterval:    time.Second,
+		SlowInterval:    time.Minute,
+		HistoryCapacity: 10,
+		AlertsEnabled:   true,
+		AlertFor:        0,
+		// Zero thresholds mean every real reading classifies as crit, so the
+		// wiring is observable regardless of the host's actual metrics.
+		Thresholds: config.Thresholds{},
+	}, nil)
+
+	c.fastTick(context.Background())
+
+	report := c.Alerts()
+	if !report.Enabled {
+		t.Fatal("expected alerts to be enabled")
+	}
+	// CPU and swap collection succeed on any Linux CI host, so both states
+	// must be present. (Temperature may be skipped when no thermal zone is
+	// available, e.g. in a container, so it is not asserted here.)
+	var haveCPU, haveSwap bool
+	for _, st := range report.States {
+		switch st.Metric {
+		case "cpu":
+			haveCPU = true
+		case "swap":
+			haveSwap = true
+		}
+	}
+	if !haveCPU || !haveSwap {
+		t.Fatalf("expected cpu and swap alert states, got %+v", report.States)
 	}
 }
 

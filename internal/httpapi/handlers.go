@@ -31,6 +31,13 @@ func (s *Server) handleHistory(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, s.log.Error, s.metrics.History())
 }
 
+// handleAlerts serves GET /api/v1/alerts: the current per-metric alert
+// states (ok/warn/crit) plus the recent list of fired/cleared transition
+// events. When alerting is disabled the response reports enabled=false.
+func (s *Server) handleAlerts(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, s.log.Error, s.metrics.Alerts())
+}
+
 // handleConfig serves GET /api/v1/config: non-sensitive runtime
 // configuration the frontend needs (poll interval, thresholds, feature
 // toggles), so these values aren't duplicated/hardcoded client-side.

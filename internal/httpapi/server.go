@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/larslaskowski/pimonitor/internal/alert"
 	"github.com/larslaskowski/pimonitor/internal/collector"
 )
 
@@ -18,6 +19,7 @@ import (
 type MetricsProvider interface {
 	Snapshot() collector.Snapshot
 	History() collector.History
+	Alerts() alert.Report
 }
 
 // Thresholds are the color-coding thresholds the frontend uses to render
@@ -81,6 +83,7 @@ func New(metrics MetricsProvider, cfg Config, staticHandler http.Handler, log *s
 	mux.HandleFunc("GET /healthz", s.handleHealthz)
 	mux.Handle("GET /api/v1/metrics", s.withAPIKey(http.HandlerFunc(s.handleMetrics)))
 	mux.Handle("GET /api/v1/metrics/history", s.withAPIKey(http.HandlerFunc(s.handleHistory)))
+	mux.Handle("GET /api/v1/alerts", s.withAPIKey(http.HandlerFunc(s.handleAlerts)))
 	mux.Handle("GET /api/v1/config", s.withAPIKey(http.HandlerFunc(s.handleConfig)))
 	if staticHandler != nil {
 		mux.Handle("/", staticHandler)
