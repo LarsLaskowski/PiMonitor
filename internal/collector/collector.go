@@ -78,16 +78,16 @@ type History struct {
 type Collector struct {
 	cfg Config
 
-	cpu     *CPUCollector
-	loadAvg *LoadAvgCollector
-	memory  *MemoryCollector
-	disk    *DiskCollector
-	network *NetworkCollector
+	cpu       *CPUCollector
+	loadAvg   *LoadAvgCollector
+	memory    *MemoryCollector
+	disk      *DiskCollector
+	network   *NetworkCollector
 	temp      *TemperatureCollector
 	throttled *ThrottledCollector
 	sysInfo   *SysInfoCollector
-	updates *UpdatesCollector
-	uptime  *UptimeCollector
+	updates   *UpdatesCollector
+	uptime    *UptimeCollector
 
 	// alerts is nil when alerting is disabled.
 	alerts *alert.Engine
@@ -120,30 +120,30 @@ func New(cfg Config, log *slog.Logger) *Collector {
 		alerts = alert.New(cfg.Thresholds, cfg.AlertFor)
 	}
 	return &Collector{
-		cfg:      cfg,
-		alerts:   alerts,
-		notifier: cfg.Notifier,
-		cpu:      NewCPUCollector(),
-		loadAvg:  NewLoadAvgCollector(),
-		memory:   NewMemoryCollector(),
-		disk:     NewDiskCollector(),
-		network:  NewNetworkCollector(),
+		cfg:       cfg,
+		alerts:    alerts,
+		notifier:  cfg.Notifier,
+		cpu:       NewCPUCollector(),
+		loadAvg:   NewLoadAvgCollector(),
+		memory:    NewMemoryCollector(),
+		disk:      NewDiskCollector(),
+		network:   NewNetworkCollector(),
 		temp:      NewTemperatureCollector(),
 		throttled: NewThrottledCollector(),
 		sysInfo:   NewSysInfoCollector(),
-		updates:  NewUpdatesCollector(cfg.UpdatesStaleThreshold),
-		uptime:   NewUptimeCollector(),
-		log:      log,
-		cpuHist:  NewRingBuffer[HistoryPoint](cfg.HistoryCapacity),
-		l1Hist:   NewRingBuffer[HistoryPoint](cfg.HistoryCapacity),
-		l5Hist:   NewRingBuffer[HistoryPoint](cfg.HistoryCapacity),
-		l15Hist:  NewRingBuffer[HistoryPoint](cfg.HistoryCapacity),
-		tempHist: NewRingBuffer[HistoryPoint](cfg.HistoryCapacity),
-		memHist:  NewRingBuffer[HistoryPoint](cfg.HistoryCapacity),
-		swapHist: NewRingBuffer[HistoryPoint](cfg.HistoryCapacity),
-		diskHist: make(map[string]*RingBuffer[HistoryPoint]),
-		rxHist:   make(map[string]*RingBuffer[HistoryPoint]),
-		txHist:   make(map[string]*RingBuffer[HistoryPoint]),
+		updates:   NewUpdatesCollector(cfg.UpdatesStaleThreshold),
+		uptime:    NewUptimeCollector(),
+		log:       log,
+		cpuHist:   NewRingBuffer[HistoryPoint](cfg.HistoryCapacity),
+		l1Hist:    NewRingBuffer[HistoryPoint](cfg.HistoryCapacity),
+		l5Hist:    NewRingBuffer[HistoryPoint](cfg.HistoryCapacity),
+		l15Hist:   NewRingBuffer[HistoryPoint](cfg.HistoryCapacity),
+		tempHist:  NewRingBuffer[HistoryPoint](cfg.HistoryCapacity),
+		memHist:   NewRingBuffer[HistoryPoint](cfg.HistoryCapacity),
+		swapHist:  NewRingBuffer[HistoryPoint](cfg.HistoryCapacity),
+		diskHist:  make(map[string]*RingBuffer[HistoryPoint]),
+		rxHist:    make(map[string]*RingBuffer[HistoryPoint]),
+		txHist:    make(map[string]*RingBuffer[HistoryPoint]),
 	}
 }
 
