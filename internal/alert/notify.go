@@ -28,17 +28,19 @@ import (
 
 // Notifier defaults. These apply when the corresponding config value is zero.
 const (
-	defaultNotifyTimeout   = 10 * time.Second
-	defaultNotifyQueueSize = 256
+	defaultNotifyTimeout     = 10 * time.Second
+	defaultNotifyQueueSize   = 256
+	defaultNotifyContentType = "application/json"
 )
 
 // webhook is a single resolved delivery destination: the config values with
 // the template pre-parsed and defaults applied.
 type webhook struct {
-	url      string
-	minLevel Level
-	tmpl     *template.Template // nil for the default JSON payload
-	timeout  time.Duration
+	url         string
+	minLevel    Level
+	tmpl        *template.Template // nil for the default JSON payload
+	timeout     time.Duration
+	contentType string
 }
 
 // Notifier POSTs alert transition events to configured webhooks. Construct it
@@ -75,12 +77,16 @@ func NewNotifier(cfg config.Alerts, log *slog.Logger) (*Notifier, error) {
 	webhooks := make([]webhook, 0, len(cfg.Webhooks))
 	for i, w := range cfg.Webhooks {
 		wh := webhook{
-			url:      w.URL,
-			minLevel: parseMinLevel(w.MinLevel),
-			timeout:  time.Duration(w.TimeoutSeconds * float64(time.Second)),
+			url:         w.URL,
+			minLevel:    parseMinLevel(w.MinLevel),
+			timeout:     time.Duration(w.TimeoutSeconds * float64(time.Second)),
+			contentType: w.ContentType,
 		}
 		if wh.timeout <= 0 {
 			wh.timeout = defaultNotifyTimeout
+		}
+		if wh.contentType == "" {
+			wh.contentType = defaultNotifyContentType
 		}
 		if w.Template != "" {
 			tmpl, err := template.New(fmt.Sprintf("webhook[%d]", i)).Parse(w.Template)
@@ -134,6 +140,15 @@ func (n *Notifier) Start(ctx context.Context) {
 	}()
 }
 
+// Stop waits for the delivery worker to exit. It must be called only after the
+// context passed to Start has been canceled, otherwise it blocks until that
+// happens; any events still queued at cancellation are dropped, since delivery
+// is best-effort. It joins the worker goroutine so a caller can be sure no
+// delivery is still in flight once Stop returns.
+func (n *Notifier) Stop() {
+	n.wg.Wait()
+}
+
 // Notify enqueues events for asynchronous delivery. It never blocks: if the
 // queue is full (a backlog of slow deliveries), the event is dropped with a
 // warning rather than stalling the collector.
@@ -155,7 +170,11 @@ func (n *Notifier) dispatch(ctx context.Context, ev Event) {
 		if !eventReaches(ev, wh.minLevel) {
 			continue
 		}
-		if n.rateLimited(wh.url, ev) {
+		// cleared events bypass the rate limiter: a recovery signal must
+		// always be delivered so a state-based consumer (e.g. a Home Assistant
+		// binary_sensor) can never get stuck reporting an alert that has
+		// actually cleared. The limiter only coalesces repeated firings.
+		if ev.Kind != KindCleared && n.rateLimited(wh.url, ev) {
 			n.log.Warn("alert notification rate-limited, dropping event",
 				"url", wh.url, "metric", ev.Metric, "resource", ev.Resource, "kind", ev.Kind)
 			continue
@@ -173,9 +192,10 @@ func (n *Notifier) dispatch(ctx context.Context, ev Event) {
 // because the previous delivery of the same metric to the same URL was too
 // recent, and records the time otherwise. The rate limit is keyed per
 // (url, metric, resource) so a fast-flapping metric can't flood a webhook,
-// while a distinct metric alerting in the same tick is still delivered. The
-// event timestamp (not wall clock) drives the decision so it is deterministic
-// and testable.
+// while a distinct metric alerting in the same tick is still delivered. Only
+// firing events reach here (cleared events bypass the limiter in dispatch),
+// so it purely coalesces repeated escalations. The event timestamp (not wall
+// clock) drives the decision so it is deterministic and testable.
 func (n *Notifier) rateLimited(url string, ev Event) bool {
 	if n.minInterval <= 0 {
 		return false
@@ -221,7 +241,7 @@ func (n *Notifier) post(ctx context.Context, wh webhook, body []byte) error {
 	if err != nil {
 		return err
 	}
-	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Content-Type", wh.contentType)
 
 	resp, err := n.client.Do(req)
 	if err != nil {

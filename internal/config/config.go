@@ -69,6 +69,10 @@ type Webhook struct {
 	// build the request body (e.g. a Slack `{"text": "..."}` payload). When
 	// empty, a default JSON object describing the event is sent.
 	Template string `yaml:"template"`
+	// ContentType sets the request's Content-Type header. Empty defaults to
+	// "application/json"; override it when a custom Template renders a
+	// non-JSON body (e.g. "text/plain").
+	ContentType string `yaml:"content_type"`
 	// TimeoutSeconds bounds a single delivery attempt. Zero uses a built-in
 	// default.
 	TimeoutSeconds float64 `yaml:"timeout_seconds"`

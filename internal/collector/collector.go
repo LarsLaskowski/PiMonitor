@@ -153,6 +153,9 @@ func (c *Collector) Run(ctx context.Context) {
 	c.collectSysInfo()
 	if c.notifier != nil {
 		c.notifier.Start(ctx)
+		// Join the delivery worker on shutdown (ctx is canceled by the time
+		// Run returns), so no webhook POST is left in flight past exit.
+		defer c.notifier.Stop()
 	}
 	c.fastTick(ctx)
 	c.slowTick(ctx)

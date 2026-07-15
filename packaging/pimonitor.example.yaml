@@ -99,6 +99,9 @@ alerts:
   #    # template sees: .Metric, .Resource, .Kind ("fired"/"cleared"),
   #    # .From, .To, .Value, .At, .Message. Example Slack payload:
   #    # template: '{"text": "PiMonitor: {{.Message}}"}'
+  #    # Content-Type header (default "application/json"). Override it if a
+  #    # custom template renders a non-JSON body, e.g. "text/plain".
+  #    content_type: "application/json"
   #    # Per-attempt timeout in seconds (0 uses the built-in 10s default).
   #    timeout_seconds: 10
 
@@ -107,7 +110,9 @@ alerts:
   notify_max_retries: 3
   # Base delay (seconds) before the first retry; it doubles each attempt.
   notify_retry_backoff_seconds: 1
-  # Rate limit: drop events arriving within this many seconds of the previous
-  # delivery to the same webhook URL, so a metric flapping faster than the
-  # debounce can't flood a destination. 0 disables rate-limiting.
+  # Rate limit: coalesce repeated *firing* events for the same metric that
+  # arrive within this many seconds of the previous delivery to the same
+  # webhook URL, so a flapping metric can't flood a destination. "cleared"
+  # (recovery) events are never rate-limited, so a downstream consumer can't
+  # get stuck showing an alert that has actually cleared. 0 disables it.
   notify_min_interval_seconds: 5

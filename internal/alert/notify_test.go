@@ -116,6 +116,33 @@ func TestNotifier_RendersTemplate(t *testing.T) {
 	}
 }
 
+// A custom content_type overrides the default, so a plain-text template body
+// isn't mislabeled as JSON.
+func TestNotifier_CustomContentType(t *testing.T) {
+	srv, ch := newCapturingServer(t, http.StatusOK)
+
+	n, err := NewNotifier(config.Alerts{
+		Webhooks: []config.Webhook{{
+			URL:         srv.URL,
+			Template:    `{{.Message}}`,
+			ContentType: "text/plain",
+		}},
+	}, nil)
+	if err != nil {
+		t.Fatalf("NewNotifier: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	n.Start(ctx)
+
+	n.Notify([]Event{firedEvent(time.Now())})
+
+	req := waitForRequest(t, ch)
+	if req.contentType != "text/plain" {
+		t.Errorf("Content-Type = %q, want text/plain", req.contentType)
+	}
+}
+
 // A malformed template is rejected at construction so it fails fast at
 // startup rather than silently at delivery time.
 func TestNewNotifier_BadTemplate(t *testing.T) {
@@ -235,8 +262,9 @@ func TestNotifier_RateLimitsPerWebhook(t *testing.T) {
 
 	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	first := firedEvent(base)
-	// Only 1s later — well within the 60s rate-limit window.
-	second := Event{Metric: "cpu", Kind: KindCleared, From: LevelCrit, To: LevelOK, Value: 10, At: base.Add(time.Second)}
+	// A second firing of the same metric only 1s later — well within the 60s
+	// rate-limit window — must be coalesced away.
+	second := firedEvent(base.Add(time.Second))
 	n.Notify([]Event{first, second})
 
 	req := waitForRequest(t, ch)
@@ -244,13 +272,51 @@ func TestNotifier_RateLimitsPerWebhook(t *testing.T) {
 	if err := json.Unmarshal(req.body, &got); err != nil {
 		t.Fatalf("bad payload: %v", err)
 	}
-	if got.Kind != KindFired {
-		t.Fatalf("expected the first (fired) event delivered, got %+v", got)
+	if got.Kind != KindFired || !got.At.Equal(base) {
+		t.Fatalf("expected the first firing delivered, got %+v", got)
 	}
 	select {
 	case extra := <-ch:
-		t.Fatalf("rate-limited second event should not have been delivered: %s", extra.body)
+		t.Fatalf("rate-limited second firing should not have been delivered: %s", extra.body)
 	case <-time.After(100 * time.Millisecond):
+	}
+}
+
+// A cleared event is never rate-limited: even when it arrives within the
+// rate-limit window of the preceding fired delivery, the recovery signal must
+// still be delivered so a state-based downstream consumer can't get stuck
+// reporting an alert that has actually cleared.
+func TestNotifier_ClearedBypassesRateLimit(t *testing.T) {
+	srv, ch := newCapturingServer(t, http.StatusOK)
+
+	n, err := NewNotifier(config.Alerts{
+		Webhooks:                 []config.Webhook{{URL: srv.URL}},
+		NotifyMinIntervalSeconds: 60,
+	}, nil)
+	if err != nil {
+		t.Fatalf("NewNotifier: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	n.Start(ctx)
+
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	fired := firedEvent(base)
+	// Cleared only 1s later, deep inside the 60s window.
+	cleared := Event{Metric: "cpu", Kind: KindCleared, From: LevelCrit, To: LevelOK, Value: 10, At: base.Add(time.Second)}
+	n.Notify([]Event{fired, cleared})
+
+	kinds := map[string]bool{}
+	for i := 0; i < 2; i++ {
+		req := waitForRequest(t, ch)
+		var v eventView
+		if err := json.Unmarshal(req.body, &v); err != nil {
+			t.Fatalf("bad payload: %v", err)
+		}
+		kinds[v.Kind] = true
+	}
+	if !kinds[KindFired] || !kinds[KindCleared] {
+		t.Fatalf("expected both fired and cleared delivered, got %v", kinds)
 	}
 }
 
