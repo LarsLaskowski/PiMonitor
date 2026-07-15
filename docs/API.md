@@ -207,6 +207,17 @@ Notes:
   `swap`, and one `disk` entry per mounted filesystem (distinguished by
   `resource`, the mountpoint). `resource` is omitted for non-per-device
   metrics.
+- A metric whose collection fails on a given tick is skipped rather than
+  evaluated against a bogus zero, so its state is left unchanged (or absent
+  if it has never been collected). In particular, on hardware without a
+  readable thermal zone (containers, non-Pi dev machines) there is no
+  `temperature` entry at all — do not assume every metric is always present.
+- A per-filesystem `disk` state is dropped when its mountpoint disappears
+  from the sample (e.g. an unplugged USB drive). If that filesystem was
+  still alerting, a final synthetic `cleared` event is emitted for it; that
+  event's `value` is the last reading before the mount vanished (which may
+  still be `>=` a threshold), so a `cleared`/`to: "ok"` event carrying a
+  high `value` on an unmount is expected, not a bug.
 - `level` is the debounced state actually reported; `value` is the most
   recent reading and `since` is when the current level was entered.
 - Each `events` entry is a confirmed transition: `kind` is `fired` when the
