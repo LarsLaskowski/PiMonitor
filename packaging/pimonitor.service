@@ -31,5 +31,40 @@ ProtectControlGroups=true
 RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
 CapabilityBoundingSet=
 
+# Additional sandboxing (defense in depth). These directives further reduce
+# the kernel attack surface exposed to a process that parses network-facing
+# input and shells out to `apt`/`vcgencmd`. They are cheap and widely
+# supported on Debian-family systems.
+#
+# NOTE: PrivateDevices is deliberately NOT set - `vcgencmd` needs
+# /dev/vchiq (or /dev/vcio) to read the GPU temperature. Enabling it would
+# require paired DeviceAllow= rules and is out of scope. For the same
+# reason ProtectClock is NOT set: it implies DeviceAllow=char-rtc, and any
+# DeviceAllow= flips DevicePolicy into enforcing mode, which would silently
+# block /dev/vchiq. CAP_SYS_TIME is already dropped (empty
+# CapabilityBoundingSet) and @clock syscalls are already denied by
+# ~@privileged below, so ProtectClock would add almost nothing anyway.
+#
+# MemoryDenyWriteExecute is safe here: the binary is pure Go with CGO
+# disabled (no JIT, no W+X pages).
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectHostname=true
+RestrictNamespaces=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+RemoveIPC=true
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+# Return EPERM for filtered syscalls instead of killing the process with
+# SIGSYS. Go's runtime raises RLIMIT_NOFILE via setrlimit/prlimit64 at
+# startup (both in @resources), and the apt/vcgencmd children inherit this
+# filter; a soft EPERM lets them all degrade gracefully rather than crash.
+SystemCallErrorNumber=EPERM
+UMask=0077
+
 [Install]
 WantedBy=multi-user.target
