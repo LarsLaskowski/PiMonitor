@@ -166,11 +166,18 @@ main {
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
+/* The whole card is the mouse target, but the heading carries role="button"
+   (so assistive tech exposes a single control instead of flattening the card's
+   text into one name). Highlight the card whenever either is hovered/focused. */
 .card-clickable:hover,
-.card-clickable:focus-visible {
+.card-clickable:focus-within {
   border-color: var(--card-accent);
   box-shadow: 0 0 0 1px var(--card-accent);
-  outline: none;
+}
+
+.card-clickable h2[role="button"]:focus-visible {
+  outline: 2px solid var(--card-accent);
+  outline-offset: 3px;
 }
 
 /* Key/value rows for the System and Uptime cards. */

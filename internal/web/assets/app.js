@@ -357,19 +357,26 @@
     drawSparkline(document.getElementById('detail-chart'), points, meta.opts);
 
     const stats = document.getElementById('detail-stats');
-    if (points.length) {
-      const vals = points.map(p => p.v);
-      const cur = vals[vals.length - 1];
-      const min = Math.min(...vals);
-      const max = Math.max(...vals);
-      const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
-      stats.textContent =
-        'Now ' + meta.fmt(cur) + ' · min ' + meta.fmt(min) +
-        ' · avg ' + meta.fmt(avg) + ' · max ' + meta.fmt(max) +
-        ' · ' + vals.length + (vals.length === 1 ? ' sample' : ' samples');
-    } else {
+    if (!points.length) {
       stats.textContent = 'No history for the selected range yet';
+      return;
     }
+    // drawSparkline needs at least two points to draw a line, so with a single
+    // sample the chart is intentionally blank; say so rather than showing a
+    // full stats line next to an empty chart.
+    if (points.length < 2) {
+      stats.textContent = 'Now ' + meta.fmt(points[0].v) + ' · collecting more samples to plot…';
+      return;
+    }
+    const vals = points.map(p => p.v);
+    const cur = vals[vals.length - 1];
+    const min = Math.min(...vals);
+    const max = Math.max(...vals);
+    const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
+    stats.textContent =
+      'Now ' + meta.fmt(cur) + ' · min ' + meta.fmt(min) +
+      ' · avg ' + meta.fmt(avg) + ' · max ' + meta.fmt(max) +
+      ' · ' + vals.length + ' samples';
   }
 
   function openDetailModal(metricKey) {
