@@ -271,13 +271,82 @@
     });
   }
 
+  // Shared modal focus handling. The element focused before a modal opened is
+  // remembered so focus can return to it on close (e.g. back to the card that
+  // opened the detail view), and focus is moved into the dialog on open.
+  let modalReturnFocus = null;
+
+  function focusablesIn(el) {
+    return Array.from(
+      el.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])')
+    ).filter(node => node.offsetParent !== null);
+  }
+
+  function openModal(backdrop, initialFocus) {
+    modalReturnFocus = document.activeElement;
+    backdrop.classList.remove('hidden');
+    const target = initialFocus || backdrop.querySelector('.modal-close');
+    if (target) target.focus();
+  }
+
+  function closeModal(backdrop) {
+    backdrop.classList.add('hidden');
+    if (modalReturnFocus && typeof modalReturnFocus.focus === 'function') {
+      modalReturnFocus.focus();
+    }
+    modalReturnFocus = null;
+  }
+
+  // The one visible modal backdrop, if any (only ever one is open at a time).
+  function visibleModal() {
+    return document.querySelector('.modal-backdrop:not(.hidden)');
+  }
+
+  // Route a dismiss request to the matching close function so its side effects
+  // (e.g. clearing the open detail metric) still run.
+  function dismissModal(backdrop) {
+    if (backdrop.id === 'detail-modal') closeDetailModal();
+    else if (backdrop.id === 'updates-modal') closeUpdatesModal();
+    else closeModal(backdrop);
+  }
+
+  // Keep Tab focus inside the open dialog, as an aria-modal dialog should.
+  function trapTab(backdrop, e) {
+    const focusables = focusablesIn(backdrop);
+    if (!focusables.length) return;
+    const first = focusables[0];
+    const last = focusables[focusables.length - 1];
+    if (e.shiftKey && document.activeElement === first) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  }
+
+  // A single document-level handler serves whichever modal is open, rather
+  // than one Escape listener per modal.
+  function wireModalKeys() {
+    document.addEventListener('keydown', e => {
+      const modal = visibleModal();
+      if (!modal) return;
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        dismissModal(modal);
+      } else if (e.key === 'Tab') {
+        trapTab(modal, e);
+      }
+    });
+  }
+
   function openUpdatesModal() {
     renderUpdatesTable();
-    document.getElementById('updates-modal').classList.remove('hidden');
+    openModal(document.getElementById('updates-modal'));
   }
 
   function closeUpdatesModal() {
-    document.getElementById('updates-modal').classList.add('hidden');
+    closeModal(document.getElementById('updates-modal'));
   }
 
   function wireUpdatesModal() {
@@ -287,8 +356,130 @@
       // Close when clicking the backdrop, but not the dialog itself.
       if (e.target === e.currentTarget) closeUpdatesModal();
     });
-    document.addEventListener('keydown', e => {
-      if (e.key === 'Escape') closeUpdatesModal();
+  }
+
+  // Metric detail view: clicking a card opens a modal with a larger chart of
+  // that metric's history plus range buttons. Each entry maps a card's
+  // data-metric attribute to the matching History series and how to render it.
+  const DETAIL_METRICS = {
+    cpu: {
+      title: 'CPU Usage',
+      historyKey: 'cpu_percent',
+      opts: { min: 0, max: 100 },
+      fmt: v => v.toFixed(1) + ' %',
+    },
+    load: {
+      title: 'Load Average (1 min)',
+      historyKey: 'load1',
+      opts: { min: 0 },
+      fmt: v => v.toFixed(2),
+    },
+    temperature: {
+      title: 'Temperature',
+      historyKey: 'temperature',
+      opts: {},
+      fmt: v => v.toFixed(1) + ' °C',
+    },
+    memory: {
+      title: 'Memory Usage',
+      historyKey: 'memory_used_percent',
+      opts: { min: 0, max: 100 },
+      fmt: v => v.toFixed(1) + ' %',
+    },
+  };
+
+  let openDetailMetric = null;
+  // Default span; bounded in practice by however much history the server
+  // retains (history_window_minutes), since points beyond that aren't returned.
+  let detailRangeMinutes = 15;
+
+  function detailSeries(metricKey) {
+    const meta = DETAIL_METRICS[metricKey];
+    if (!meta || !latestHistory) return [];
+    return latestHistory[meta.historyKey] || [];
+  }
+
+  // Keep only the points within the last `minutes`, measured back from the
+  // most recent sample's timestamp (the Pi clock), not the browser's clock.
+  function pointsWithinRange(points, minutes) {
+    if (!points || !points.length) return [];
+    const latest = new Date(points[points.length - 1].t).getTime();
+    const cutoff = latest - minutes * 60000;
+    return points.filter(p => new Date(p.t).getTime() >= cutoff);
+  }
+
+  function updateRangeButtons() {
+    document.querySelectorAll('#detail-ranges .range-button').forEach(b => {
+      const active = Number(b.dataset.minutes) === detailRangeMinutes;
+      b.classList.toggle('active', active);
+      b.setAttribute('aria-pressed', String(active));
+    });
+  }
+
+  function renderDetailChart() {
+    if (!openDetailMetric) return;
+    const meta = DETAIL_METRICS[openDetailMetric];
+    const points = pointsWithinRange(detailSeries(openDetailMetric), detailRangeMinutes);
+    drawSparkline(document.getElementById('detail-chart'), points, meta.opts);
+
+    const stats = document.getElementById('detail-stats');
+    if (!points.length) {
+      stats.textContent = 'No history for the selected range yet';
+      return;
+    }
+    // drawSparkline needs at least two points to draw a line, so with a single
+    // sample the chart is intentionally blank; say so rather than showing a
+    // full stats line next to an empty chart.
+    if (points.length < 2) {
+      stats.textContent = 'Now ' + meta.fmt(points[0].v) + ' · collecting more samples to plot…';
+      return;
+    }
+    const vals = points.map(p => p.v);
+    const cur = vals[vals.length - 1];
+    const min = Math.min(...vals);
+    const max = Math.max(...vals);
+    const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
+    stats.textContent =
+      'Now ' + meta.fmt(cur) + ' · min ' + meta.fmt(min) +
+      ' · avg ' + meta.fmt(avg) + ' · max ' + meta.fmt(max) +
+      ' · ' + vals.length + ' samples';
+  }
+
+  function openDetailModal(metricKey) {
+    if (!DETAIL_METRICS[metricKey]) return;
+    openDetailMetric = metricKey;
+    setText('detail-modal-title', DETAIL_METRICS[metricKey].title);
+    updateRangeButtons();
+    openModal(document.getElementById('detail-modal'));
+    // Draw after the modal is visible so the canvas has a measurable size.
+    renderDetailChart();
+  }
+
+  function closeDetailModal() {
+    openDetailMetric = null;
+    closeModal(document.getElementById('detail-modal'));
+  }
+
+  function wireDetailModal() {
+    document.querySelectorAll('[data-metric]').forEach(card => {
+      card.addEventListener('click', () => openDetailModal(card.dataset.metric));
+      card.addEventListener('keydown', e => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          openDetailModal(card.dataset.metric);
+        }
+      });
+    });
+    document.getElementById('detail-modal-close').addEventListener('click', closeDetailModal);
+    document.getElementById('detail-modal').addEventListener('click', e => {
+      if (e.target === e.currentTarget) closeDetailModal();
+    });
+    document.querySelectorAll('#detail-ranges .range-button').forEach(b => {
+      b.addEventListener('click', () => {
+        detailRangeMinutes = Number(b.dataset.minutes);
+        updateRangeButtons();
+        renderDetailChart();
+      });
     });
   }
 
@@ -351,6 +542,9 @@
     latestHistory = hist;
     if (hist.cpu_percent) drawSparkline(document.getElementById('cpu-sparkline'), hist.cpu_percent, { min: 0, max: 100 });
     if (hist.temperature) drawSparkline(document.getElementById('temp-sparkline'), hist.temperature);
+    // Keep the open detail modal in sync with freshly polled history (and
+    // repaint it after a theme change, which re-calls renderHistory).
+    renderDetailChart();
   }
 
   async function pollMetrics() {
@@ -374,7 +568,9 @@
 
   async function main() {
     wireThemeToggle();
+    wireModalKeys();
     wireUpdatesModal();
+    wireDetailModal();
     await loadConfig();
     renderVersion();
     const intervalMs = Math.max(1, config.poll_interval_seconds) * 1000;
