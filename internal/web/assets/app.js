@@ -271,13 +271,82 @@
     });
   }
 
+  // Shared modal focus handling. The element focused before a modal opened is
+  // remembered so focus can return to it on close (e.g. back to the card that
+  // opened the detail view), and focus is moved into the dialog on open.
+  let modalReturnFocus = null;
+
+  function focusablesIn(el) {
+    return Array.from(
+      el.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])')
+    ).filter(node => node.offsetParent !== null);
+  }
+
+  function openModal(backdrop, initialFocus) {
+    modalReturnFocus = document.activeElement;
+    backdrop.classList.remove('hidden');
+    const target = initialFocus || backdrop.querySelector('.modal-close');
+    if (target) target.focus();
+  }
+
+  function closeModal(backdrop) {
+    backdrop.classList.add('hidden');
+    if (modalReturnFocus && typeof modalReturnFocus.focus === 'function') {
+      modalReturnFocus.focus();
+    }
+    modalReturnFocus = null;
+  }
+
+  // The one visible modal backdrop, if any (only ever one is open at a time).
+  function visibleModal() {
+    return document.querySelector('.modal-backdrop:not(.hidden)');
+  }
+
+  // Route a dismiss request to the matching close function so its side effects
+  // (e.g. clearing the open detail metric) still run.
+  function dismissModal(backdrop) {
+    if (backdrop.id === 'detail-modal') closeDetailModal();
+    else if (backdrop.id === 'updates-modal') closeUpdatesModal();
+    else closeModal(backdrop);
+  }
+
+  // Keep Tab focus inside the open dialog, as an aria-modal dialog should.
+  function trapTab(backdrop, e) {
+    const focusables = focusablesIn(backdrop);
+    if (!focusables.length) return;
+    const first = focusables[0];
+    const last = focusables[focusables.length - 1];
+    if (e.shiftKey && document.activeElement === first) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  }
+
+  // A single document-level handler serves whichever modal is open, rather
+  // than one Escape listener per modal.
+  function wireModalKeys() {
+    document.addEventListener('keydown', e => {
+      const modal = visibleModal();
+      if (!modal) return;
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        dismissModal(modal);
+      } else if (e.key === 'Tab') {
+        trapTab(modal, e);
+      }
+    });
+  }
+
   function openUpdatesModal() {
     renderUpdatesTable();
-    document.getElementById('updates-modal').classList.remove('hidden');
+    openModal(document.getElementById('updates-modal'));
   }
 
   function closeUpdatesModal() {
-    document.getElementById('updates-modal').classList.add('hidden');
+    closeModal(document.getElementById('updates-modal'));
   }
 
   function wireUpdatesModal() {
@@ -286,9 +355,6 @@
     document.getElementById('updates-modal').addEventListener('click', e => {
       // Close when clicking the backdrop, but not the dialog itself.
       if (e.target === e.currentTarget) closeUpdatesModal();
-    });
-    document.addEventListener('keydown', e => {
-      if (e.key === 'Escape') closeUpdatesModal();
     });
   }
 
@@ -384,14 +450,14 @@
     openDetailMetric = metricKey;
     setText('detail-modal-title', DETAIL_METRICS[metricKey].title);
     updateRangeButtons();
-    document.getElementById('detail-modal').classList.remove('hidden');
+    openModal(document.getElementById('detail-modal'));
     // Draw after the modal is visible so the canvas has a measurable size.
     renderDetailChart();
   }
 
   function closeDetailModal() {
     openDetailMetric = null;
-    document.getElementById('detail-modal').classList.add('hidden');
+    closeModal(document.getElementById('detail-modal'));
   }
 
   function wireDetailModal() {
@@ -414,9 +480,6 @@
         updateRangeButtons();
         renderDetailChart();
       });
-    });
-    document.addEventListener('keydown', e => {
-      if (e.key === 'Escape') closeDetailModal();
     });
   }
 
@@ -505,6 +568,7 @@
 
   async function main() {
     wireThemeToggle();
+    wireModalKeys();
     wireUpdatesModal();
     wireDetailModal();
     await loadConfig();
