@@ -42,6 +42,12 @@ extract the fields you need (e.g. via JSONPath in openHAB's HTTP binding).
     "overall_percent": 12.4,
     "per_core_percent": [10.1, 14.8, 11.2, 13.5]
   },
+  "cpu_frequency": [
+    { "core": 0, "mhz": 600, "governor": "ondemand" },
+    { "core": 1, "mhz": 1500, "governor": "ondemand" },
+    { "core": 2, "mhz": 600, "governor": "ondemand" },
+    { "core": 3, "mhz": 1500, "governor": "ondemand" }
+  ],
   "load_average": { "load1": 0.42, "load5": 0.38, "load15": 0.31 },
   "cpu_count": 4,
   "temperature": { "zone": "cpu-thermal", "celsius": 48.6 },
@@ -119,6 +125,12 @@ Notes:
   network filesystems (NFS, CIFS/SMB, SSHFS, ...) are excluded — only
   local storage is reported.
 - `network` entries are sorted by interface name.
+- `cpu_frequency` is one entry per CPU core with a readable sysfs `cpufreq`
+  directory (`scaling_cur_freq`, `scaling_governor`), sorted by `core`
+  index. It is omitted entirely on systems without a cpufreq driver (e.g.
+  many development machines, or a kernel built without `CONFIG_CPU_FREQ`),
+  and a core that is offline or whose driver doesn't expose both files is
+  simply left out rather than failing the whole reading.
 - `gpu_temperature` is only present if `vcgencmd` is installed and
   responded successfully; otherwise the field is omitted.
 - `throttled` decodes the Raspberry Pi `vcgencmd get_throttled` bitmask.

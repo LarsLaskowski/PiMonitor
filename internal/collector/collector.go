@@ -79,6 +79,7 @@ type Collector struct {
 	cfg Config
 
 	cpu       *CPUCollector
+	cpuFreq   *CPUFreqCollector
 	loadAvg   *LoadAvgCollector
 	memory    *MemoryCollector
 	disk      *DiskCollector
@@ -124,6 +125,7 @@ func New(cfg Config, log *slog.Logger) *Collector {
 		alerts:    alerts,
 		notifier:  cfg.Notifier,
 		cpu:       NewCPUCollector(),
+		cpuFreq:   NewCPUFreqCollector(),
 		loadAvg:   NewLoadAvgCollector(),
 		memory:    NewMemoryCollector(),
 		disk:      NewDiskCollector(),
@@ -268,6 +270,10 @@ func (c *Collector) fastTick(ctx context.Context) {
 	if cpuErr != nil {
 		c.log.Warn("cpu collection failed", "error", cpuErr)
 	}
+	cpuFreq, cpuFreqErr := c.cpuFreq.Collect()
+	if cpuFreqErr != nil {
+		c.log.Warn("cpu frequency collection failed", "error", cpuFreqErr)
+	}
 	load, err := c.loadAvg.Collect()
 	if err != nil {
 		c.log.Warn("load average collection failed", "error", err)
@@ -306,6 +312,7 @@ func (c *Collector) fastTick(ctx context.Context) {
 	c.latest.Timestamp = now
 	c.latest.UptimeSeconds = uptimeSecs
 	c.latest.CPU = cpuUsage
+	c.latest.CPUFrequency = cpuFreq
 	c.latest.Load = load
 	c.latest.Temperature = temp
 	c.latest.GPUTemperature = gpuTemp
