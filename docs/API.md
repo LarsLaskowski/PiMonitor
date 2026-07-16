@@ -46,6 +46,17 @@ extract the fields you need (e.g. via JSONPath in openHAB's HTTP binding).
   "cpu_count": 4,
   "temperature": { "zone": "cpu-thermal", "celsius": 48.6 },
   "gpu_temperature": { "celsius": 47.8 },
+  "throttled": {
+    "under_voltage_now": false,
+    "frequency_capped_now": false,
+    "throttled_now": false,
+    "soft_temp_limit_now": false,
+    "under_voltage_since_boot": true,
+    "frequency_capped_since_boot": false,
+    "throttled_since_boot": true,
+    "soft_temp_limit_since_boot": false,
+    "raw": "0x50000"
+  },
   "memory": {
     "total_bytes": 4137000000, "available_bytes": 2900000000, "used_percent": 29.9
   },
@@ -110,6 +121,12 @@ Notes:
 - `network` entries are sorted by interface name.
 - `gpu_temperature` is only present if `vcgencmd` is installed and
   responded successfully; otherwise the field is omitted.
+- `throttled` decodes the Raspberry Pi `vcgencmd get_throttled` bitmask.
+  The `*_now` flags reflect the current state; the `*_since_boot` flags
+  latch whether the condition has occurred at any point since boot. A set
+  `under_voltage_*` flag usually means an inadequate power supply or cable.
+  Like `gpu_temperature`, the whole object is omitted when `vcgencmd` is
+  unavailable (e.g. off-Pi), and `raw` carries the original hex bitmask.
 - `network` is omitted entirely when network monitoring is disabled
   (`network_enabled: false`).
 - `updates.stale` is `true` when the underlying apt cache (refreshed by a
