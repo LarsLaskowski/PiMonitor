@@ -12,6 +12,14 @@ type CPUUsage struct {
 	PerCorePercent []float64 `json:"per_core_percent,omitempty"`
 }
 
+// CPUCoreFrequency is a single CPU core's current clock speed and active
+// scaling governor, read from sysfs cpufreq.
+type CPUCoreFrequency struct {
+	Core     int     `json:"core"`
+	MHz      float64 `json:"mhz"`
+	Governor string  `json:"governor"`
+}
+
 // LoadAverage is the standard Unix load average as reported by the kernel.
 type LoadAverage struct {
 	Load1  float64 `json:"load1"`
@@ -111,6 +119,7 @@ type Snapshot struct {
 	Timestamp      time.Time          `json:"timestamp"`
 	UptimeSeconds  float64            `json:"uptime_seconds"`
 	CPU            CPUUsage           `json:"cpu"`
+	CPUFrequency   []CPUCoreFrequency `json:"cpu_frequency,omitempty"`
 	Load           LoadAverage        `json:"load_average"`
 	CPUCount       int                `json:"cpu_count"`
 	Temperature    Temperature        `json:"temperature"`
