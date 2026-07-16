@@ -30,6 +30,23 @@ type GPUTemperature struct {
 	Celsius float64 `json:"celsius"`
 }
 
+// Throttled is the Raspberry Pi under-voltage / throttling state decoded
+// from the `vcgencmd get_throttled` bitmask. The *Now flags reflect the
+// current state; the *SinceBoot flags latch whether the condition has
+// occurred at any point since boot.
+type Throttled struct {
+	UnderVoltageNow          bool `json:"under_voltage_now"`
+	FrequencyCappedNow       bool `json:"frequency_capped_now"`
+	ThrottledNow             bool `json:"throttled_now"`
+	SoftTempLimitNow         bool `json:"soft_temp_limit_now"`
+	UnderVoltageSinceBoot    bool `json:"under_voltage_since_boot"`
+	FrequencyCappedSinceBoot bool `json:"frequency_capped_since_boot"`
+	ThrottledSinceBoot       bool `json:"throttled_since_boot"`
+	SoftTempLimitSinceBoot   bool `json:"soft_temp_limit_since_boot"`
+	// Raw is the original hex bitmask string (e.g. "0x50005").
+	Raw string `json:"raw"`
+}
+
 // Memory holds RAM usage figures.
 type Memory struct {
 	TotalBytes     uint64  `json:"total_bytes"`
@@ -98,6 +115,7 @@ type Snapshot struct {
 	CPUCount       int                `json:"cpu_count"`
 	Temperature    Temperature        `json:"temperature"`
 	GPUTemperature *GPUTemperature    `json:"gpu_temperature,omitempty"`
+	Throttled      *Throttled         `json:"throttled,omitempty"`
 	Memory         Memory             `json:"memory"`
 	Swap           Swap               `json:"swap"`
 	Disks          []Disk             `json:"disks"`

@@ -78,15 +78,16 @@ type History struct {
 type Collector struct {
 	cfg Config
 
-	cpu     *CPUCollector
-	loadAvg *LoadAvgCollector
-	memory  *MemoryCollector
-	disk    *DiskCollector
-	network *NetworkCollector
-	temp    *TemperatureCollector
-	sysInfo *SysInfoCollector
-	updates *UpdatesCollector
-	uptime  *UptimeCollector
+	cpu       *CPUCollector
+	loadAvg   *LoadAvgCollector
+	memory    *MemoryCollector
+	disk      *DiskCollector
+	network   *NetworkCollector
+	temp      *TemperatureCollector
+	throttled *ThrottledCollector
+	sysInfo   *SysInfoCollector
+	updates   *UpdatesCollector
+	uptime    *UptimeCollector
 
 	// alerts is nil when alerting is disabled.
 	alerts *alert.Engine
@@ -119,29 +120,30 @@ func New(cfg Config, log *slog.Logger) *Collector {
 		alerts = alert.New(cfg.Thresholds, cfg.AlertFor)
 	}
 	return &Collector{
-		cfg:      cfg,
-		alerts:   alerts,
-		notifier: cfg.Notifier,
-		cpu:      NewCPUCollector(),
-		loadAvg:  NewLoadAvgCollector(),
-		memory:   NewMemoryCollector(),
-		disk:     NewDiskCollector(),
-		network:  NewNetworkCollector(),
-		temp:     NewTemperatureCollector(),
-		sysInfo:  NewSysInfoCollector(),
-		updates:  NewUpdatesCollector(cfg.UpdatesStaleThreshold),
-		uptime:   NewUptimeCollector(),
-		log:      log,
-		cpuHist:  NewRingBuffer[HistoryPoint](cfg.HistoryCapacity),
-		l1Hist:   NewRingBuffer[HistoryPoint](cfg.HistoryCapacity),
-		l5Hist:   NewRingBuffer[HistoryPoint](cfg.HistoryCapacity),
-		l15Hist:  NewRingBuffer[HistoryPoint](cfg.HistoryCapacity),
-		tempHist: NewRingBuffer[HistoryPoint](cfg.HistoryCapacity),
-		memHist:  NewRingBuffer[HistoryPoint](cfg.HistoryCapacity),
-		swapHist: NewRingBuffer[HistoryPoint](cfg.HistoryCapacity),
-		diskHist: make(map[string]*RingBuffer[HistoryPoint]),
-		rxHist:   make(map[string]*RingBuffer[HistoryPoint]),
-		txHist:   make(map[string]*RingBuffer[HistoryPoint]),
+		cfg:       cfg,
+		alerts:    alerts,
+		notifier:  cfg.Notifier,
+		cpu:       NewCPUCollector(),
+		loadAvg:   NewLoadAvgCollector(),
+		memory:    NewMemoryCollector(),
+		disk:      NewDiskCollector(),
+		network:   NewNetworkCollector(),
+		temp:      NewTemperatureCollector(),
+		throttled: NewThrottledCollector(),
+		sysInfo:   NewSysInfoCollector(),
+		updates:   NewUpdatesCollector(cfg.UpdatesStaleThreshold),
+		uptime:    NewUptimeCollector(),
+		log:       log,
+		cpuHist:   NewRingBuffer[HistoryPoint](cfg.HistoryCapacity),
+		l1Hist:    NewRingBuffer[HistoryPoint](cfg.HistoryCapacity),
+		l5Hist:    NewRingBuffer[HistoryPoint](cfg.HistoryCapacity),
+		l15Hist:   NewRingBuffer[HistoryPoint](cfg.HistoryCapacity),
+		tempHist:  NewRingBuffer[HistoryPoint](cfg.HistoryCapacity),
+		memHist:   NewRingBuffer[HistoryPoint](cfg.HistoryCapacity),
+		swapHist:  NewRingBuffer[HistoryPoint](cfg.HistoryCapacity),
+		diskHist:  make(map[string]*RingBuffer[HistoryPoint]),
+		rxHist:    make(map[string]*RingBuffer[HistoryPoint]),
+		txHist:    make(map[string]*RingBuffer[HistoryPoint]),
 	}
 }
 
@@ -274,6 +276,10 @@ func (c *Collector) fastTick(ctx context.Context) {
 	if tempErr != nil {
 		c.log.Warn("temperature collection failed", "error", tempErr)
 	}
+	throttled, throttledErr := c.throttled.Collect(ctx)
+	if throttledErr != nil {
+		c.log.Warn("throttled state collection failed", "error", throttledErr)
+	}
 	mem, swap, memErr := c.memory.Collect()
 	if memErr != nil {
 		c.log.Warn("memory collection failed", "error", memErr)
@@ -303,6 +309,7 @@ func (c *Collector) fastTick(ctx context.Context) {
 	c.latest.Load = load
 	c.latest.Temperature = temp
 	c.latest.GPUTemperature = gpuTemp
+	c.latest.Throttled = throttled
 	c.latest.Memory = mem
 	c.latest.Swap = swap
 	c.latest.Disks = disks
