@@ -10,8 +10,8 @@ automation systems like openHAB). Runs as a systemd service.
 ## Features
 
 - **CPU usage** - overall and per-core percentage, with a trend sparkline
-- **CPU frequency & governor** - per-core clock speed and active
-  `cpufreq` scaling governor
+- **CPU frequency & governor** (REST API) - per-core clock speed and
+  active `cpufreq` scaling governor
 - **Load average** - 1/5/15 minute values shown as gauges, scaled to CPU
   core count
 - **CPU temperature** - auto-detected thermal zone, with an optional
