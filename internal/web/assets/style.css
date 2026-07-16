@@ -160,6 +160,26 @@ main {
 .accent-disks { --card-accent: #0891b2; }
 .accent-network { --card-accent: #db2777; }
 
+/* Cards that open a metric detail view on click/Enter. */
+.card-clickable {
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+/* The whole card is the mouse target, but the heading carries role="button"
+   (so assistive tech exposes a single control instead of flattening the card's
+   text into one name). Highlight the card whenever either is hovered/focused. */
+.card-clickable:hover,
+.card-clickable:focus-within {
+  border-color: var(--card-accent);
+  box-shadow: 0 0 0 1px var(--card-accent);
+}
+
+.card-clickable h2[role="button"]:focus-visible {
+  outline: 2px solid var(--card-accent);
+  outline-offset: 3px;
+}
+
 /* Key/value rows for the System and Uptime cards. */
 .kv-row {
   display: flex;
@@ -407,6 +427,49 @@ main {
   color: var(--ok);
   font-weight: 600;
   word-break: break-word;
+}
+
+/* Metric detail modal: range picker + enlarged chart. */
+.range-picker {
+  display: flex;
+  gap: 0.375rem;
+  margin: 0.25rem 0 0.75rem;
+}
+
+.range-button {
+  padding: 0.3rem 0.75rem;
+  font: inherit;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--muted);
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.range-button:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.range-button.active {
+  color: #fff;
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.detail-chart {
+  width: 100%;
+  height: 220px;
+  display: block;
+}
+
+.detail-stats {
+  margin-top: 0.625rem;
+  color: var(--muted);
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
 }
 
 .stale-badge {
