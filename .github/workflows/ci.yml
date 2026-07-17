@@ -30,9 +30,9 @@ jobs:
         run: go test ./... -race -cover
 
       - name: Lint
-        uses: golangci/golangci-lint-action@55c2c1448f86e01eaae002a5a3a9624417608d84 # v6.5.2
+        uses: golangci/golangci-lint-action@9fae48acfc02a90574d7c304a1758ef9895495fa # v7.0.1
         with:
-          version: v1.64.8
+          version: v2.12.2
 
   cross-compile:
     runs-on: ubuntu-latest
