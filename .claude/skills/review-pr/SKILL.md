@@ -35,7 +35,10 @@ conventions.
    - **Unnecessary dependencies**: flag any new third-party dependency beyond
      `gopkg.in/yaml.v3` and ask if it's really justified over hand-rolling
      (see `CLAUDE.md` dependency philosophy).
-4. Post review comments (or a summary if inline commenting isn't available)
-   focused on concrete, actionable issues — don't nitpick style that a
+4. Post the results as review comments on the PR (inline where possible,
+   otherwise a single review comment). Only report genuine findings —
+   concrete, actionable issues. Do not comment on things that are fine,
+   pass the checklist, or work as expected; positive remarks and
+   "looks good" filler add noise, not value. Don't nitpick style that a
    linter would already catch.
-5. If everything checks out, say so explicitly rather than staying silent.
+5. If the review produces no findings, do not post any comments.
