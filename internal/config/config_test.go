@@ -236,6 +236,15 @@ func TestValidate_RejectsBadValues(t *testing.T) {
 			c.HistoryWindowMinutes = 525600
 			c.PollIntervalSeconds = 0.05
 		}},
+		{"history capacity ratio overflows int64", func(c *Config) {
+			// Regression test: converting an out-of-range float64 to int is
+			// implementation-specific in Go and differs by architecture
+			// (amd64 wraps to a negative number, arm64 saturates to
+			// math.MaxInt64), so the cap must be checked on the float64
+			// ratio, not on HistoryCapacity()'s post-conversion int.
+			c.HistoryWindowMinutes = 1e300
+			c.PollIntervalSeconds = 1
+		}},
 		{"negative alerts for_seconds", func(c *Config) { c.Alerts.ForSeconds = -1 }},
 		{"negative notify max retries", func(c *Config) { c.Alerts.NotifyMaxRetries = -1 }},
 		{"negative notify backoff", func(c *Config) { c.Alerts.NotifyRetryBackoffSeconds = -1 }},

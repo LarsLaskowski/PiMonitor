@@ -217,8 +217,14 @@ func (c Config) Validate() error {
 	if c.HistoryWindowMinutes <= 0 {
 		return fmt.Errorf("history_window_minutes must be > 0 (got %v)", c.HistoryWindowMinutes)
 	}
-	if cap := c.HistoryCapacity(); cap > maxHistoryCapacity {
-		return fmt.Errorf("history_window_minutes (%v) / poll_interval_seconds (%v) implies %d history points per series, exceeding the %d limit; increase poll_interval_seconds or reduce history_window_minutes", c.HistoryWindowMinutes, c.PollIntervalSeconds, cap, maxHistoryCapacity)
+	// Compare the ratio in float64 before any int conversion: converting an
+	// out-of-range float64 to int is implementation-specific in Go and
+	// differs by architecture (e.g. amd64 wraps to math.MinInt64, arm64
+	// saturates to math.MaxInt64), so calling HistoryCapacity() first and
+	// comparing the resulting int could let an extreme ratio slip past this
+	// check on some platforms but not others.
+	if ratio := c.HistoryWindowMinutes * 60 / c.PollIntervalSeconds; ratio > maxHistoryCapacity {
+		return fmt.Errorf("history_window_minutes (%v) / poll_interval_seconds (%v) implies %v history points per series, exceeding the %d limit; increase poll_interval_seconds or reduce history_window_minutes", c.HistoryWindowMinutes, c.PollIntervalSeconds, ratio, maxHistoryCapacity)
 	}
 	if c.HistoryPersistEnabled && c.DataDir == "" {
 		return fmt.Errorf("data_dir must not be empty when history_persist_enabled is true")
