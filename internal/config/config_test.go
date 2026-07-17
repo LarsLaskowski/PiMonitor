@@ -149,6 +149,44 @@ func TestLoad_MalformedYAML(t *testing.T) {
 	}
 }
 
+func TestLoad_UnknownTopLevelKeyIsError(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	// "api_kay" is a typo of "api_key"; it must not be silently ignored,
+	// since that would leave APIKey at its default (no authentication).
+	writeFile(t, path, "api_kay: \"secret123\"\n")
+
+	_, err := Load([]string{"-config", path})
+	if err == nil {
+		t.Fatal("expected error for unknown top-level YAML key")
+	}
+}
+
+func TestLoad_UnknownNestedKeyIsError(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	writeFile(t, path, "thresholds:\n  temperature_warn_percent: 55\n")
+
+	_, err := Load([]string{"-config", path})
+	if err == nil {
+		t.Fatal("expected error for unknown nested YAML key")
+	}
+}
+
+func TestLoad_EmptyConfigFileIsNotError(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	writeFile(t, path, "# just a comment, no keys\n")
+
+	result, err := Load([]string{"-config", path})
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if !reflect.DeepEqual(result.Config, Default()) {
+		t.Fatalf("Load with empty/comment-only file = %+v, want defaults %+v", result.Config, Default())
+	}
+}
+
 func TestLoad_VersionFlag(t *testing.T) {
 	result, err := Load([]string{"-version"})
 	if err != nil {
