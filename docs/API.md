@@ -21,6 +21,12 @@ Requests without a valid key receive `401 Unauthorized`. `GET /healthz` is
 never gated by the API key, so external health checks keep working
 regardless of authentication configuration.
 
+The bundled web dashboard uses this same API: when an `api_key` is set it
+shows an "API key required" prompt on first load, then stores the entered
+key in the browser's `localStorage` and sends it as `X-Api-Key` on every
+request. Setting a key therefore does not disable the dashboard — each
+browser just has to unlock it once.
+
 ## Endpoints
 
 ### `GET /healthz`

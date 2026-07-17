@@ -49,7 +49,11 @@ reporters and reviewers have context:
   systems (e.g. for home automation integrations), set the optional `api_key`
   configuration value to require a bearer token on `/api/v1/...` requests,
   and do not expose the service directly to the public internet without a
-  reverse proxy providing TLS and additional access control.
+  reverse proxy providing TLS and additional access control. The bundled
+  dashboard keeps working with `api_key` set: it prompts for the key once
+  per browser and persists it in `localStorage` (an accepted trade-off —
+  anyone with access to the browser profile can read it, and without TLS
+  the key is visible on the wire either way).
 - Shell-outs (`apt list --upgradable`, optional `vcgencmd measure_temp`) are
   invoked with fixed argument lists (no user input is interpolated into
   shell commands), to avoid command injection.
