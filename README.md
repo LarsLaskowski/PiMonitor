@@ -202,12 +202,16 @@ whatever port you configured).
 ## Migrating from RPi-Monitor
 
 If you're replacing [RPi-Monitor](https://github.com/XavierBerger/RPi-Monitor-website)
-with PiMonitor on the same device, [install PiMonitor](#installing-on-a-raspberry-pi)
-first, then remove RPi-Monitor to avoid leftover cron jobs, systemd units, or
-web server configs interfering with the new dashboard. PiMonitor listens on
+with PiMonitor on the same device, remove RPi-Monitor completely *before*
+[installing PiMonitor](#installing-on-a-raspberry-pi). PiMonitor listens on
 port `8080` by default, RPi-Monitor's bundled `lighttpd` on `8888`, so the two
-don't collide even if both happen to be running briefly - but double-check
-any firewall rules or reverse-proxy config that reference the old port.
+don't collide as long as you keep the default ports - but if you plan to
+reuse RPi-Monitor's old port (e.g. set `listen_addr` to `:8888` so existing
+bookmarks/firewall rules keep working), RPi-Monitor's `lighttpd` must be
+stopped first, or `pimonitor.service` will fail to bind that port and
+crash-loop on startup (see step 4 of the installation instructions above).
+Installing PiMonitor first and cleaning up RPi-Monitor afterwards works too,
+but only if you're not reusing the port.
 
 The exact paths below assume RPi-Monitor was installed from the `.deb`
 package; adjust them if you built it manually. As with any `rm -rf`, take a
