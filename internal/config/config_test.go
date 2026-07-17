@@ -149,6 +149,44 @@ func TestLoad_MalformedYAML(t *testing.T) {
 	}
 }
 
+func TestLoad_UnknownTopLevelKeyIsError(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	// "api_kay" is a typo of "api_key"; it must not be silently ignored,
+	// since that would leave APIKey at its default (no authentication).
+	writeFile(t, path, "api_kay: \"secret123\"\n")
+
+	_, err := Load([]string{"-config", path})
+	if err == nil {
+		t.Fatal("expected error for unknown top-level YAML key")
+	}
+}
+
+func TestLoad_UnknownNestedKeyIsError(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	writeFile(t, path, "thresholds:\n  temperature_warn_percent: 55\n")
+
+	_, err := Load([]string{"-config", path})
+	if err == nil {
+		t.Fatal("expected error for unknown nested YAML key")
+	}
+}
+
+func TestLoad_EmptyConfigFileIsNotError(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	writeFile(t, path, "# just a comment, no keys\n")
+
+	result, err := Load([]string{"-config", path})
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if !reflect.DeepEqual(result.Config, Default()) {
+		t.Fatalf("Load with empty/comment-only file = %+v, want defaults %+v", result.Config, Default())
+	}
+}
+
 func TestLoad_VersionFlag(t *testing.T) {
 	result, err := Load([]string{"-version"})
 	if err != nil {
@@ -193,6 +231,7 @@ func TestValidate_RejectsBadValues(t *testing.T) {
 		{"cpu warn above crit", func(c *Config) { c.Thresholds.CPUWarnPercent = 99 }},
 		{"disk warn above crit", func(c *Config) { c.Thresholds.DiskWarnPercent = 99 }},
 		{"swap warn above crit", func(c *Config) { c.Thresholds.SwapWarnPercent = 99 }},
+		{"memory warn above crit", func(c *Config) { c.Thresholds.MemoryWarnPercent = 99 }},
 		{"negative alerts for_seconds", func(c *Config) { c.Alerts.ForSeconds = -1 }},
 		{"negative notify max retries", func(c *Config) { c.Alerts.NotifyMaxRetries = -1 }},
 		{"negative notify backoff", func(c *Config) { c.Alerts.NotifyRetryBackoffSeconds = -1 }},

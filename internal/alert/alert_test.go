@@ -11,14 +11,16 @@ import (
 // machine tests: temperature warns at 60/crits at 75, cpu at 80/95, etc.
 func testThresholds() config.Thresholds {
 	return config.Thresholds{
-		TemperatureWarnC: 60,
-		TemperatureCritC: 75,
-		CPUWarnPercent:   80,
-		CPUCritPercent:   95,
-		DiskWarnPercent:  80,
-		DiskCritPercent:  95,
-		SwapWarnPercent:  50,
-		SwapCritPercent:  90,
+		TemperatureWarnC:  60,
+		TemperatureCritC:  75,
+		CPUWarnPercent:    80,
+		CPUCritPercent:    95,
+		DiskWarnPercent:   80,
+		DiskCritPercent:   95,
+		SwapWarnPercent:   50,
+		SwapCritPercent:   90,
+		MemoryWarnPercent: 80,
+		MemoryCritPercent: 95,
 	}
 }
 
@@ -266,6 +268,42 @@ func TestEvaluate_InvalidMetricKeepsState(t *testing.T) {
 	// Only the initial fired event; no spurious clear.
 	if len(r.Events) != 1 || r.Events[0].Kind != KindFired {
 		t.Fatalf("expected only the initial fired event, got %+v", r.Events)
+	}
+}
+
+// Memory has its own threshold pair and is evaluated like every other
+// metric: a sustained crossing must fire, and a read failure must not
+// spuriously report ok.
+func TestEvaluate_MemoryEvaluated(t *testing.T) {
+	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	e := New(testThresholds(), 0)
+
+	e.Evaluate(Sample{Timestamp: start, MemoryPercent: 99, MemoryValid: true})
+
+	r := e.Report()
+	var memState *State
+	for i := range r.States {
+		if r.States[i].Metric == "memory" {
+			memState = &r.States[i]
+		}
+	}
+	if memState == nil || memState.Level != LevelCrit {
+		t.Fatalf("expected memory to be crit at 99%%, got %+v", memState)
+	}
+	if len(r.Events) != 1 || r.Events[0].Metric != "memory" || r.Events[0].To != LevelCrit {
+		t.Fatalf("expected a single memory fired->crit event, got %+v", r.Events)
+	}
+
+	// A failed read must not clear the alert.
+	e.Evaluate(Sample{Timestamp: start.Add(time.Second), MemoryValid: false})
+	r = e.Report()
+	for i := range r.States {
+		if r.States[i].Metric == "memory" {
+			memState = &r.States[i]
+		}
+	}
+	if memState.Level != LevelCrit {
+		t.Fatalf("expected memory to remain crit through a read failure, got %s", memState.Level)
 	}
 }
 

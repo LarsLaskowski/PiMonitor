@@ -209,6 +209,7 @@ polling this endpoint).
   "states": [
     { "metric": "cpu", "level": "ok", "value": 12.4, "since": "2026-07-12T18:00:00Z" },
     { "metric": "disk", "resource": "/", "level": "warn", "value": 82.1, "since": "2026-07-12T18:25:00Z" },
+    { "metric": "memory", "level": "ok", "value": 45.2, "since": "2026-07-12T18:00:00Z" },
     { "metric": "swap", "level": "ok", "value": 0, "since": "2026-07-12T18:00:00Z" },
     { "metric": "temperature", "level": "crit", "value": 78.5, "since": "2026-07-12T18:30:10Z" }
   ],
@@ -239,8 +240,8 @@ Notes:
 - `enabled` is `false` (with empty `states`/`events`) when alerting is
   disabled via `alerts.enabled: false`.
 - `states` lists one entry per evaluated metric: `cpu`, `temperature`,
-  `swap`, and one `disk` entry per mounted filesystem (distinguished by
-  `resource`, the mountpoint). `resource` is omitted for non-per-device
+  `memory`, `swap`, and one `disk` entry per mounted filesystem (distinguished
+  by `resource`, the mountpoint). `resource` is omitted for non-per-device
   metrics.
 - A metric whose collection fails on a given tick is skipped rather than
   evaluated against a bogus zero, so its state is left unchanged (or absent
@@ -286,7 +287,9 @@ server:
     "disk_warn_percent": 80,
     "disk_crit_percent": 95,
     "swap_warn_percent": 50,
-    "swap_crit_percent": 90
+    "swap_crit_percent": 90,
+    "memory_warn_percent": 80,
+    "memory_crit_percent": 95
   }
 }
 ```
