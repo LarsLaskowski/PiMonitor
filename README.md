@@ -53,7 +53,7 @@ automation systems like openHAB). Runs as a systemd service.
                   │   ring buffers)      ▼      │
                   │      │          /api/v1/... │───▶ Third-party clients
                   │      │ alert events         │        (e.g. openHAB)
-                  │      ▼                       │
+                  │      ▼                      │
                   │   notifier ─────────────────│───▶ HTTP webhooks
                   └─────────────────────────────┘   (Slack, ntfy, HA, ...)
 
@@ -201,7 +201,7 @@ whatever port you configured).
 
 ## Migrating from RPi-Monitor
 
-If you're replacing [RPi-Monitor](https://github.com/XavierBerger/RPi-Monitor-website)
+If you're replacing [RPi-Monitor](https://github.com/RPi-Monitor/RPi-Monitor)
 with PiMonitor on the same device, remove RPi-Monitor completely *before*
 [installing PiMonitor](#installing-on-a-raspberry-pi). PiMonitor listens on
 port `8080` by default, RPi-Monitor's bundled `lighttpd` on `8888`, so the two
