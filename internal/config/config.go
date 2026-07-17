@@ -4,8 +4,11 @@
 package config
 
 import (
+	"bytes"
+	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"time"
 
@@ -286,14 +289,20 @@ func (t Thresholds) validate() error {
 
 // loadYAMLFile merges the YAML file at path into cfg. Only keys present in
 // the file override cfg's existing (default) values; absent keys are left
-// untouched, since yaml.Unmarshal only writes fields it finds in the
-// document.
+// untouched, since the decoder only writes fields it finds in the document.
+// KnownFields(true) rejects any key that doesn't map to a Config field, so a
+// typo (e.g. "api_kay") fails fast at startup instead of silently falling
+// back to the default (e.g. no authentication).
 func loadYAMLFile(path string, cfg *Config) error {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return fmt.Errorf("read %s: %w", path, err)
 	}
-	if err := yaml.Unmarshal(data, cfg); err != nil {
+	dec := yaml.NewDecoder(bytes.NewReader(data))
+	dec.KnownFields(true)
+	// An empty or comment-only file has nothing to decode; Decode reports
+	// that as io.EOF, but it's not an error here since cfg is left as-is.
+	if err := dec.Decode(cfg); err != nil && !errors.Is(err, io.EOF) {
 		return fmt.Errorf("parse %s: %w", path, err)
 	}
 	return nil
