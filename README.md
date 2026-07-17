@@ -53,7 +53,7 @@ automation systems like openHAB). Runs as a systemd service.
                   │   ring buffers)      ▼      │
                   │      │          /api/v1/... │───▶ Third-party clients
                   │      │ alert events         │        (e.g. openHAB)
-                  │      ▼                       │
+                  │      ▼                      │
                   │   notifier ─────────────────│───▶ HTTP webhooks
                   └─────────────────────────────┘   (Slack, ntfy, HA, ...)
 
@@ -198,6 +198,123 @@ sudo systemctl restart pimonitor.service
 
 The dashboard is then available at `http://<pi-address>:8080/` (or
 whatever port you configured).
+
+## Migrating from RPi-Monitor
+
+If you're replacing [RPi-Monitor](https://github.com/RPi-Monitor/RPi-Monitor)
+with PiMonitor on the same device, remove RPi-Monitor completely *before*
+[installing PiMonitor](#installing-on-a-raspberry-pi). PiMonitor listens on
+port `8080` by default, RPi-Monitor's bundled `lighttpd` on `8888`, so the two
+don't collide as long as you keep the default ports - but if you plan to
+reuse RPi-Monitor's old port (e.g. set `listen_addr` to `:8888` so existing
+bookmarks/firewall rules keep working), RPi-Monitor's `lighttpd` must be
+stopped first, or `pimonitor.service` will fail to bind that port and
+crash-loop on startup (see step 4 of the installation instructions above).
+Installing PiMonitor first and cleaning up RPi-Monitor afterwards works too,
+but only if you're not reusing the port.
+
+The exact paths below assume RPi-Monitor was installed from the `.deb`
+package; adjust them if you built it manually. As with any `rm -rf`, take a
+backup first if you're unsure and review each command before running it.
+
+### 1. Stop the service
+
+```sh
+sudo systemctl stop rpimonitor
+```
+
+Stops the running service so its files aren't locked during removal.
+
+### 2. Disable the service
+
+```sh
+sudo systemctl disable rpimonitor
+```
+
+Removes the systemd symlinks so RPi-Monitor no longer starts on boot.
+
+### 3. Remove the package
+
+```sh
+sudo apt-get remove --purge rpimonitor
+```
+
+Uninstalls the binaries; `--purge` also removes the package's own
+configuration files.
+
+### 4. Clean up dependencies
+
+```sh
+sudo apt-get autoremove --purge
+```
+
+Removes libraries that were only pulled in for RPi-Monitor and any orphaned
+configuration files left behind.
+
+### 5. Delete leftover files
+
+RPi-Monitor leaves files outside of what `apt` manages:
+
+```sh
+sudo rm -rf /etc/rpimonitor/
+sudo rm -rf /usr/share/rpimonitor/
+sudo rm -rf /var/lib/rpimonitor/
+sudo rm -rf /var/log/rpimonitor/
+sudo rm -rf /var/www/rpimonitor/   # only if you had a web server integration
+```
+
+### 6. Remove cron jobs
+
+RPi-Monitor typically schedules its sensor-collection script via cron:
+
+```sh
+sudo crontab -e
+```
+
+Remove any lines referencing `rpimonitor` or
+`/usr/share/rpimonitor/scripts/`. Also check for a system-wide job and
+remove it if present:
+
+```sh
+sudo rm -f /etc/cron.d/rpimonitor
+```
+
+### 7. Check for leftover systemd unit files
+
+Only relevant if RPi-Monitor was installed manually rather than via `apt`:
+
+```sh
+ls /etc/systemd/system/ | grep rpimonitor
+sudo rm -f /etc/systemd/system/rpimonitor.service   # if found
+sudo systemctl daemon-reload
+```
+
+### 8. Clean up web server configuration
+
+Only relevant if RPi-Monitor was fronted by Apache or Nginx instead of its
+bundled `lighttpd`:
+
+```sh
+# Apache
+sudo rm -f /etc/apache2/conf-available/rpimonitor.conf
+sudo a2disconf rpimonitor
+sudo systemctl reload apache2
+
+# Nginx
+sudo rm -f /etc/nginx/sites-enabled/rpimonitor
+sudo systemctl reload nginx
+```
+
+### 9. Final check
+
+```sh
+which rpimonitor          # no output
+systemctl status rpimonitor   # "Unit rpimonitor.service could not be found."
+dpkg -l | grep rpimonitor     # no output
+```
+
+If all three come back clean, RPi-Monitor is fully removed and PiMonitor is
+the only monitoring service left running on the Pi.
 
 ## Updating
 
