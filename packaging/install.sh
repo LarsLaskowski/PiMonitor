@@ -12,8 +12,8 @@
 # If no binary is found next to the script and no path is given, this script
 # tries to build one with the local Go toolchain (useful when running directly
 # on a Pi with Go installed, from a source checkout). Safe to re-run: it won't
-# overwrite an existing config file, and re-enabling already-enabled units is a
-# no-op.
+# overwrite an existing config file, and if pimonitor.service is already
+# running it gets restarted so the new binary/unit actually takes effect.
 
 set -euo pipefail
 
@@ -81,11 +81,25 @@ install -m 644 "$SCRIPT_DIR/pimonitor.service" /etc/systemd/system/pimonitor.ser
 install -m 644 "$SCRIPT_DIR/pimonitor-apt-update.service" /etc/systemd/system/pimonitor-apt-update.service
 install -m 644 "$SCRIPT_DIR/pimonitor-apt-update.timer" /etc/systemd/system/pimonitor-apt-update.timer
 
+# Capture this before daemon-reload/enable so an upgrade of an already-running
+# service is detected: 'enable --now' is a no-op when the unit is already
+# active, which would otherwise leave the old binary running until an
+# unrelated reboot/restart.
+SERVICE_WAS_ACTIVE=0
+if systemctl is-active --quiet pimonitor.service; then
+  SERVICE_WAS_ACTIVE=1
+fi
+
 systemctl daemon-reload
 
 echo "Enabling and starting services..."
 systemctl enable --now pimonitor.service
 systemctl enable --now pimonitor-apt-update.timer
+
+if [[ "$SERVICE_WAS_ACTIVE" -eq 1 ]]; then
+  echo "pimonitor.service was already running; restarting to pick up the new binary/unit..."
+  systemctl restart pimonitor.service
+fi
 
 echo "Running an initial apt cache refresh so the update count isn't empty on first view..."
 systemctl start pimonitor-apt-update.service || true
