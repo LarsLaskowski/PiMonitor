@@ -25,14 +25,16 @@ type MetricsProvider interface {
 // Thresholds are the color-coding thresholds the frontend uses to render
 // metric cards as ok/warn/critical.
 type Thresholds struct {
-	TemperatureWarnC float64 `json:"temperature_warn_c"`
-	TemperatureCritC float64 `json:"temperature_crit_c"`
-	CPUWarnPercent   float64 `json:"cpu_warn_percent"`
-	CPUCritPercent   float64 `json:"cpu_crit_percent"`
-	DiskWarnPercent  float64 `json:"disk_warn_percent"`
-	DiskCritPercent  float64 `json:"disk_crit_percent"`
-	SwapWarnPercent  float64 `json:"swap_warn_percent"`
-	SwapCritPercent  float64 `json:"swap_crit_percent"`
+	TemperatureWarnC  float64 `json:"temperature_warn_c"`
+	TemperatureCritC  float64 `json:"temperature_crit_c"`
+	CPUWarnPercent    float64 `json:"cpu_warn_percent"`
+	CPUCritPercent    float64 `json:"cpu_crit_percent"`
+	DiskWarnPercent   float64 `json:"disk_warn_percent"`
+	DiskCritPercent   float64 `json:"disk_crit_percent"`
+	SwapWarnPercent   float64 `json:"swap_warn_percent"`
+	SwapCritPercent   float64 `json:"swap_crit_percent"`
+	MemoryWarnPercent float64 `json:"memory_warn_percent"`
+	MemoryCritPercent float64 `json:"memory_crit_percent"`
 }
 
 // ClientConfig is the non-sensitive runtime configuration exposed via

@@ -12,6 +12,8 @@
       disk_crit_percent: 95,
       swap_warn_percent: 50,
       swap_crit_percent: 90,
+      memory_warn_percent: 80,
+      memory_crit_percent: 95,
     },
   };
   let lastCPUCount = 1;
@@ -225,7 +227,7 @@
     // Memory & swap (show absolute sizes alongside the percentage, like
     // the filesystem rows).
     const memUsed = Math.max(0, (snap.memory.total_bytes || 0) - (snap.memory.available_bytes || 0));
-    renderBar('mem-bar', 'mem-pct', snap.memory.used_percent, t.disk_warn_percent, t.disk_crit_percent,
+    renderBar('mem-bar', 'mem-pct', snap.memory.used_percent, t.memory_warn_percent, t.memory_crit_percent,
       fmtBytes(memUsed) + ' / ' + fmtBytes(snap.memory.total_bytes));
     renderBar('swap-bar', 'swap-pct', snap.swap.used_percent, t.swap_warn_percent, t.swap_crit_percent,
       fmtBytes(snap.swap.used_bytes) + ' / ' + fmtBytes(snap.swap.total_bytes));

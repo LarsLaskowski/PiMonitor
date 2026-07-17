@@ -15,14 +15,16 @@ import (
 // Thresholds are the warn/critical cutoffs used both to color-code the web
 // dashboard and to size the load-average gauges.
 type Thresholds struct {
-	TemperatureWarnC float64 `yaml:"temperature_warn_c"`
-	TemperatureCritC float64 `yaml:"temperature_crit_c"`
-	CPUWarnPercent   float64 `yaml:"cpu_warn_percent"`
-	CPUCritPercent   float64 `yaml:"cpu_crit_percent"`
-	DiskWarnPercent  float64 `yaml:"disk_warn_percent"`
-	DiskCritPercent  float64 `yaml:"disk_crit_percent"`
-	SwapWarnPercent  float64 `yaml:"swap_warn_percent"`
-	SwapCritPercent  float64 `yaml:"swap_crit_percent"`
+	TemperatureWarnC  float64 `yaml:"temperature_warn_c"`
+	TemperatureCritC  float64 `yaml:"temperature_crit_c"`
+	CPUWarnPercent    float64 `yaml:"cpu_warn_percent"`
+	CPUCritPercent    float64 `yaml:"cpu_crit_percent"`
+	DiskWarnPercent   float64 `yaml:"disk_warn_percent"`
+	DiskCritPercent   float64 `yaml:"disk_crit_percent"`
+	SwapWarnPercent   float64 `yaml:"swap_warn_percent"`
+	SwapCritPercent   float64 `yaml:"swap_crit_percent"`
+	MemoryWarnPercent float64 `yaml:"memory_warn_percent"`
+	MemoryCritPercent float64 `yaml:"memory_crit_percent"`
 }
 
 // Alerts configures the server-side threshold alert engine, which maps each
@@ -112,14 +114,16 @@ func Default() Config {
 		PiModelEnabled:               true,
 		APIKey:                       "",
 		Thresholds: Thresholds{
-			TemperatureWarnC: 60,
-			TemperatureCritC: 75,
-			CPUWarnPercent:   80,
-			CPUCritPercent:   95,
-			DiskWarnPercent:  80,
-			DiskCritPercent:  95,
-			SwapWarnPercent:  50,
-			SwapCritPercent:  90,
+			TemperatureWarnC:  60,
+			TemperatureCritC:  75,
+			CPUWarnPercent:    80,
+			CPUCritPercent:    95,
+			DiskWarnPercent:   80,
+			DiskCritPercent:   95,
+			SwapWarnPercent:   50,
+			SwapCritPercent:   90,
+			MemoryWarnPercent: 80,
+			MemoryCritPercent: 95,
 		},
 		Alerts: Alerts{
 			Enabled:                   true,
@@ -269,6 +273,7 @@ func (t Thresholds) validate() error {
 		{"cpu", t.CPUWarnPercent, t.CPUCritPercent},
 		{"disk", t.DiskWarnPercent, t.DiskCritPercent},
 		{"swap", t.SwapWarnPercent, t.SwapCritPercent},
+		{"memory", t.MemoryWarnPercent, t.MemoryCritPercent},
 	}
 	for _, p := range pairs {
 		if p.warn < 0 {

@@ -84,6 +84,9 @@ type Sample struct {
 	TemperatureC     float64
 	TemperatureValid bool
 
+	MemoryPercent float64
+	MemoryValid   bool
+
 	SwapPercent float64
 	SwapValid   bool
 
@@ -196,6 +199,9 @@ func (e *Engine) Evaluate(s Sample) []Event {
 	}
 	if s.TemperatureValid {
 		record(e.evalMetric("temperature", "", s.TemperatureC, t.TemperatureWarnC, t.TemperatureCritC, s.Timestamp))
+	}
+	if s.MemoryValid {
+		record(e.evalMetric("memory", "", s.MemoryPercent, t.MemoryWarnPercent, t.MemoryCritPercent, s.Timestamp))
 	}
 	if s.SwapValid {
 		record(e.evalMetric("swap", "", s.SwapPercent, t.SwapWarnPercent, t.SwapCritPercent, s.Timestamp))
