@@ -232,6 +232,19 @@ func TestValidate_RejectsBadValues(t *testing.T) {
 		{"disk warn above crit", func(c *Config) { c.Thresholds.DiskWarnPercent = 99 }},
 		{"swap warn above crit", func(c *Config) { c.Thresholds.SwapWarnPercent = 99 }},
 		{"memory warn above crit", func(c *Config) { c.Thresholds.MemoryWarnPercent = 99 }},
+		{"history capacity exceeds sanity cap", func(c *Config) {
+			c.HistoryWindowMinutes = 525600
+			c.PollIntervalSeconds = 0.05
+		}},
+		{"history capacity ratio overflows int64", func(c *Config) {
+			// Regression test: converting an out-of-range float64 to int is
+			// implementation-specific in Go and differs by architecture
+			// (amd64 wraps to a negative number, arm64 saturates to
+			// math.MaxInt64), so the cap must be checked on the float64
+			// ratio, not on HistoryCapacity()'s post-conversion int.
+			c.HistoryWindowMinutes = 1e300
+			c.PollIntervalSeconds = 1
+		}},
 		{"negative alerts for_seconds", func(c *Config) { c.Alerts.ForSeconds = -1 }},
 		{"negative notify max retries", func(c *Config) { c.Alerts.NotifyMaxRetries = -1 }},
 		{"negative notify backoff", func(c *Config) { c.Alerts.NotifyRetryBackoffSeconds = -1 }},
@@ -252,6 +265,23 @@ func TestValidate_RejectsBadValues(t *testing.T) {
 				t.Fatalf("Validate() accepted invalid config (%s)", tt.name)
 			}
 		})
+	}
+}
+
+func TestValidate_HistoryCapacityBoundary(t *testing.T) {
+	cfg := Default()
+	// With poll_interval_seconds: 60, HistoryCapacity() equals
+	// history_window_minutes exactly, giving clean integer boundaries.
+	cfg.PollIntervalSeconds = 60
+
+	cfg.HistoryWindowMinutes = maxHistoryCapacity // exactly at the cap
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Validate() rejected history capacity exactly at the cap: %v", err)
+	}
+
+	cfg.HistoryWindowMinutes = maxHistoryCapacity + 1 // one point over
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("Validate() accepted history capacity one point over the cap")
 	}
 }
 

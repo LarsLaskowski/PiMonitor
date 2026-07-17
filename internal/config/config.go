@@ -182,6 +182,15 @@ func (c Config) HistoryCapacity() int {
 	return capacity
 }
 
+// maxHistoryCapacity bounds HistoryCapacity(). NewRingBuffer allocates its
+// capacity eagerly for each of the 7 scalar history series, so an
+// unreasonably large window/interval ratio (e.g. a config typo like
+// history_window_minutes: 525600 with poll_interval_seconds: 0.05) would
+// otherwise allocate on the order of gigabytes at startup and OOM a Pi. One
+// million points per series (~7M points, well under 1 GiB total) is far more
+// than any real dashboard use case needs.
+const maxHistoryCapacity = 1_000_000
+
 // validLogLevels are the log levels newLogger understands; any other value
 // silently falls back to info, so we reject it here instead.
 var validLogLevels = map[string]bool{
@@ -207,6 +216,15 @@ func (c Config) Validate() error {
 	}
 	if c.HistoryWindowMinutes <= 0 {
 		return fmt.Errorf("history_window_minutes must be > 0 (got %v)", c.HistoryWindowMinutes)
+	}
+	// Compare the ratio in float64 before any int conversion: converting an
+	// out-of-range float64 to int is implementation-specific in Go and
+	// differs by architecture (e.g. amd64 wraps to math.MinInt64, arm64
+	// saturates to math.MaxInt64), so calling HistoryCapacity() first and
+	// comparing the resulting int could let an extreme ratio slip past this
+	// check on some platforms but not others.
+	if ratio := c.HistoryWindowMinutes * 60 / c.PollIntervalSeconds; ratio > maxHistoryCapacity {
+		return fmt.Errorf("history_window_minutes (%v) / poll_interval_seconds (%v) implies %v history points per series, exceeding the %d limit; increase poll_interval_seconds or reduce history_window_minutes", c.HistoryWindowMinutes, c.PollIntervalSeconds, ratio, maxHistoryCapacity)
 	}
 	if c.HistoryPersistEnabled && c.DataDir == "" {
 		return fmt.Errorf("data_dir must not be empty when history_persist_enabled is true")
