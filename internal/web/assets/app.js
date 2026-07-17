@@ -23,6 +23,29 @@
   let latestHistory = null;
 
   const THEME_KEY = 'pimonitor-theme';
+  const API_KEY_STORAGE = 'pimonitor-api-key';
+
+  function storedAPIKey() {
+    try {
+      return localStorage.getItem(API_KEY_STORAGE) || '';
+    } catch (e) {
+      return '';
+    }
+  }
+
+  function persistAPIKey(key) {
+    try {
+      localStorage.setItem(API_KEY_STORAGE, key);
+    } catch (e) {
+      // Private browsing or blocked storage: the key still works for this
+      // page load via the in-memory fallback below.
+      console.warn('failed to persist API key', e);
+    }
+  }
+
+  // Fallback when localStorage is unavailable, so an entered key at least
+  // survives until the next full page load.
+  let sessionAPIKey = '';
 
   function storedTheme() {
     try {
@@ -128,9 +151,18 @@
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   }
 
-  async function fetchJSON(path) {
-    const res = await fetch(path);
-    if (!res.ok) throw new Error(path + ': HTTP ' + res.status);
+  // Fetch a JSON API response, sending the API key (if any) as X-Api-Key.
+  // `overrideKey` lets the key prompt validate a candidate key before it is
+  // persisted. Non-2xx responses throw an Error carrying `status`, so
+  // callers can tell "API key required" (401) apart from other failures.
+  async function fetchJSON(path, overrideKey) {
+    const key = overrideKey !== undefined ? overrideKey : (storedAPIKey() || sessionAPIKey);
+    const res = await fetch(path, key ? { headers: { 'X-Api-Key': key } } : undefined);
+    if (!res.ok) {
+      const err = new Error(path + ': HTTP ' + res.status);
+      err.status = res.status;
+      throw err;
+    }
     return res.json();
   }
 
@@ -303,8 +335,11 @@
   }
 
   // Route a dismiss request to the matching close function so its side effects
-  // (e.g. clearing the open detail metric) still run.
+  // (e.g. clearing the open detail metric) still run. The API key prompt is
+  // deliberately not dismissible: without a valid key every card stays empty,
+  // so closing it would just leave a broken-looking page.
   function dismissModal(backdrop) {
+    if (backdrop.id === 'apikey-modal') return;
     if (backdrop.id === 'detail-modal') closeDetailModal();
     else if (backdrop.id === 'updates-modal') closeUpdatesModal();
     else closeModal(backdrop);
@@ -347,6 +382,43 @@
 
   function closeUpdatesModal() {
     closeModal(document.getElementById('updates-modal'));
+  }
+
+  // API key prompt: shown when the server answers 401 (an api_key is
+  // configured). The entered key is validated against GET /api/v1/config
+  // before being persisted, then all data is reloaded with it.
+  function openAPIKeyModal() {
+    const modal = document.getElementById('apikey-modal');
+    if (!modal.classList.contains('hidden')) return;
+    setText('header-subtitle', 'API key required');
+    document.getElementById('apikey-error').classList.add('hidden');
+    openModal(modal, document.getElementById('apikey-input'));
+  }
+
+  async function submitAPIKey(e) {
+    e.preventDefault();
+    const input = document.getElementById('apikey-input');
+    const errEl = document.getElementById('apikey-error');
+    const key = input.value.trim();
+    if (!key) return;
+    try {
+      await fetchJSON('/api/v1/config', key);
+    } catch (err) {
+      errEl.textContent = err.status === 401
+        ? 'Invalid API key' : 'Could not verify the key: connection error';
+      errEl.classList.remove('hidden');
+      return;
+    }
+    persistAPIKey(key);
+    sessionAPIKey = key;
+    input.value = '';
+    errEl.classList.add('hidden');
+    closeModal(document.getElementById('apikey-modal'));
+    await reloadAll();
+  }
+
+  function wireAPIKeyModal() {
+    document.getElementById('apikey-form').addEventListener('submit', submitAPIKey);
   }
 
   function wireUpdatesModal() {
@@ -553,7 +625,14 @@
       renderMetrics(snap);
     } catch (e) {
       console.error('failed to fetch metrics', e);
-      document.getElementById('header-subtitle').textContent = 'Connection error';
+      if (e.status === 401) {
+        // An api_key is configured and we have no (valid) key: ask for one
+        // instead of pretending the server is unreachable. Also covers a key
+        // rotated server-side while the dashboard is open.
+        openAPIKeyModal();
+      } else {
+        document.getElementById('header-subtitle').textContent = 'Connection error';
+      }
     }
   }
 
@@ -566,20 +645,35 @@
     }
   }
 
+  let metricsTimer = null;
+  let historyTimer = null;
+
+  function startPolling() {
+    if (metricsTimer) clearInterval(metricsTimer);
+    if (historyTimer) clearInterval(historyTimer);
+    const intervalMs = Math.max(1, config.poll_interval_seconds) * 1000;
+    metricsTimer = setInterval(pollMetrics, intervalMs);
+    historyTimer = setInterval(pollHistory, Math.max(intervalMs, 60000));
+  }
+
+  // Initial load, re-run after an API key is accepted (the first attempt may
+  // have fallen back to default config values on 401, and the poll cadence
+  // may change once the real config is readable).
+  async function reloadAll() {
+    await loadConfig();
+    renderVersion();
+    await pollMetrics();
+    await pollHistory();
+    startPolling();
+  }
+
   async function main() {
     wireThemeToggle();
     wireModalKeys();
     wireUpdatesModal();
     wireDetailModal();
-    await loadConfig();
-    renderVersion();
-    const intervalMs = Math.max(1, config.poll_interval_seconds) * 1000;
-
-    await pollMetrics();
-    await pollHistory();
-
-    setInterval(pollMetrics, intervalMs);
-    setInterval(pollHistory, Math.max(intervalMs, 60000));
+    wireAPIKeyModal();
+    await reloadAll();
   }
 
   main();

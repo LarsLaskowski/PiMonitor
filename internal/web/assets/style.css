@@ -472,6 +472,58 @@ main {
   font-variant-numeric: tabular-nums;
 }
 
+/* API key prompt modal. */
+.apikey-hint {
+  margin: 0.25rem 0 0.75rem;
+  color: var(--muted);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+
+.apikey-form {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.apikey-input {
+  flex: 1;
+  min-width: 0;
+  padding: 0.4rem 0.6rem;
+  font: inherit;
+  font-size: 0.875rem;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.apikey-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.apikey-submit {
+  padding: 0.4rem 0.875rem;
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #fff;
+  background: var(--accent);
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.apikey-submit:hover {
+  filter: brightness(1.08);
+}
+
+.apikey-error {
+  margin-top: 0.5rem;
+  color: var(--crit);
+  font-size: 0.8125rem;
+}
+
 .stale-badge {
   display: inline-block;
   margin-top: 0.375rem;

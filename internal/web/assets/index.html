@@ -132,6 +132,26 @@
   </div>
 </div>
 
+<div class="modal-backdrop hidden" id="apikey-modal">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="apikey-modal-title">
+    <div class="modal-header">
+      <h3 id="apikey-modal-title">API key required</h3>
+    </div>
+    <div class="modal-body">
+      <p class="apikey-hint">This PiMonitor instance requires an API key.
+        Enter the <code>api_key</code> value from its configuration; it is
+        stored in this browser only.</p>
+      <form class="apikey-form" id="apikey-form">
+        <input type="password" class="apikey-input" id="apikey-input"
+               placeholder="API key" aria-label="API key"
+               autocomplete="off" spellcheck="false">
+        <button type="submit" class="apikey-submit" id="apikey-submit">Unlock</button>
+      </form>
+      <div class="apikey-error hidden" id="apikey-error" role="alert">Invalid API key</div>
+    </div>
+  </div>
+</div>
+
 <div class="modal-backdrop hidden" id="detail-modal">
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="detail-modal-title">
     <div class="modal-header">
