@@ -8,3 +8,37 @@ Type=oneshot
 # This is the only part of PiMonitor that touches apt with write intent;
 # the main pimonitor.service never runs this itself and never needs root.
 ExecStart=/usr/bin/apt-get update
+
+# Hardening. apt-get update needs root (to write the package lists/cache
+# and to drop privileges to the _apt sandbox user for the actual network
+# fetch) so this can't be locked down as tightly as pimonitor.service, but
+# the following cheap directives still apply.
+NoNewPrivileges=true
+# strict (not full) so ReadWritePaths= below actually confines writes
+# instead of being a no-op - traced (strace) against a live 'apt-get
+# update': the only write-mode opens are under /var/lib/apt/lists (index
+# files) and /tmp (apt-key's gpg homedir, already covered by PrivateTmp).
+# /var/cache/apt is included for portability across apt versions that
+# rebuild pkgcache.bin here. Nothing is written under /var/log/apt - that's
+# only touched by install/remove, not update.
+ProtectSystem=strict
+ReadWritePaths=/var/lib/apt /var/cache/apt
+ProtectHome=true
+PrivateTmp=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+
+# Trimmed from the default (full) capability set for root. Verified against
+# a live 'apt-get update' run: apt drops to the _apt user for the actual
+# download (CAP_SETUID/CAP_SETGID), then chowns/chmods the fetched index
+# files (CAP_CHOWN/CAP_FOWNER) and needs CAP_DAC_OVERRIDE to replace
+# lock/partial files it doesn't own as _apt. Dropping any one of these five
+# makes apt-get update fail outright or silently leave files root-owned
+# instead of _apt-owned.
+CapabilityBoundingSet=CAP_CHOWN CAP_DAC_OVERRIDE CAP_FOWNER CAP_SETGID CAP_SETUID
+
+# The 6-hourly refresh shouldn't compete with foreground workloads on slow
+# SD cards.
+Nice=19
+IOSchedulingClass=idle

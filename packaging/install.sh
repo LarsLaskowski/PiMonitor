@@ -82,12 +82,16 @@ install -m 644 "$SCRIPT_DIR/pimonitor-apt-update.service" /etc/systemd/system/pi
 install -m 644 "$SCRIPT_DIR/pimonitor-apt-update.timer" /etc/systemd/system/pimonitor-apt-update.timer
 
 # Capture this before daemon-reload/enable so an upgrade of an already-running
-# service is detected: 'enable --now' is a no-op when the unit is already
-# active, which would otherwise leave the old binary running until an
-# unrelated reboot/restart.
+# service/timer is detected: 'enable --now' is a no-op when the unit is
+# already active, which would otherwise leave the old binary/schedule loaded
+# until an unrelated reboot/restart.
 SERVICE_WAS_ACTIVE=0
 if systemctl is-active --quiet pimonitor.service; then
   SERVICE_WAS_ACTIVE=1
+fi
+TIMER_WAS_ACTIVE=0
+if systemctl is-active --quiet pimonitor-apt-update.timer; then
+  TIMER_WAS_ACTIVE=1
 fi
 
 systemctl daemon-reload
@@ -100,9 +104,15 @@ if [[ "$SERVICE_WAS_ACTIVE" -eq 1 ]]; then
   echo "pimonitor.service was already running; restarting to pick up the new binary/unit..."
   systemctl restart pimonitor.service
 fi
+if [[ "$TIMER_WAS_ACTIVE" -eq 1 ]]; then
+  echo "pimonitor-apt-update.timer was already active; restarting to pick up any schedule change..."
+  systemctl restart pimonitor-apt-update.timer
+fi
 
 echo "Running an initial apt cache refresh so the update count isn't empty on first view..."
-systemctl start pimonitor-apt-update.service || true
+if ! systemctl start pimonitor-apt-update.service; then
+  echo "warning: initial apt cache refresh failed; check 'systemctl status pimonitor-apt-update.service'" >&2
+fi
 
 echo
 echo "Done. Check status with:"
