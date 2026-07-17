@@ -110,7 +110,9 @@ if [[ "$TIMER_WAS_ACTIVE" -eq 1 ]]; then
 fi
 
 echo "Running an initial apt cache refresh so the update count isn't empty on first view..."
-systemctl start pimonitor-apt-update.service || true
+if ! systemctl start pimonitor-apt-update.service; then
+  echo "warning: initial apt cache refresh failed; check 'systemctl status pimonitor-apt-update.service'" >&2
+fi
 
 echo
 echo "Done. Check status with:"

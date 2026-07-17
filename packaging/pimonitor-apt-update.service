@@ -14,8 +14,15 @@ ExecStart=/usr/bin/apt-get update
 # fetch) so this can't be locked down as tightly as pimonitor.service, but
 # the following cheap directives still apply.
 NoNewPrivileges=true
-ProtectSystem=full
-ReadWritePaths=/var/lib/apt /var/cache/apt /var/log/apt
+# strict (not full) so ReadWritePaths= below actually confines writes
+# instead of being a no-op - traced (strace) against a live 'apt-get
+# update': the only write-mode opens are under /var/lib/apt/lists (index
+# files) and /tmp (apt-key's gpg homedir, already covered by PrivateTmp).
+# /var/cache/apt is included for portability across apt versions that
+# rebuild pkgcache.bin here. Nothing is written under /var/log/apt - that's
+# only touched by install/remove, not update.
+ProtectSystem=strict
+ReadWritePaths=/var/lib/apt /var/cache/apt
 ProtectHome=true
 PrivateTmp=true
 ProtectKernelModules=true
