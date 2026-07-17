@@ -18,7 +18,9 @@ blast radius) · **Low** (polish, hardening, docs, efficiency).
 
 ## New findings (not covered by any existing issue)
 
-### F1 — Setting `api_key` breaks the bundled dashboard entirely
+> Update 2026-07-17: all 17 findings below have been filed as issues #58–#74 (F1 → #58 … F17 → #74).
+
+### F1 — Setting `api_key` breaks the bundled dashboard entirely (filed as [#58](https://github.com/larslaskowski/pimonitor/issues/58))
 **Severity: High · Bug · `internal/web/assets/app.js:131-135`, `internal/httpapi/server.go:84-87`**
 
 All four API routes — including `GET /api/v1/config` — are wrapped in
@@ -36,7 +38,7 @@ key prompt persisted in `localStorage`, exempt only `/api/v1/config`, or at
 minimum document the limitation prominently and make the dashboard render a
 clear "API key required" state instead of "Connection error".
 
-### F2 — `install.sh` never restarts a running service on upgrade
+### F2 — `install.sh` never restarts a running service on upgrade (filed as [#59](https://github.com/larslaskowski/pimonitor/issues/59))
 **Severity: Medium · Bug · `packaging/install.sh:86-91`**
 
 The script advertises "Installs or upgrades PiMonitor" and replaces
@@ -47,7 +49,7 @@ and the dashboard footer version silently disagrees with what was just
 installed. Fix: `systemctl restart pimonitor.service` when the unit was
 already active (and say so in the output).
 
-### F3 — Unknown YAML config keys are silently ignored
+### F3 — Unknown YAML config keys are silently ignored (filed as [#60](https://github.com/larslaskowski/pimonitor/issues/60))
 **Severity: Medium · Robustness/Security · `internal/config/config.go:291-300`**
 
 `loadYAMLFile` uses plain `yaml.Unmarshal`, so a typo like `api_kay:` or a
@@ -58,7 +60,7 @@ relevant key this is a real footgun, and it undermines the stated goal of
 Fix: decode with `yaml.NewDecoder(...).KnownFields(true)` and fail fast on
 unknown fields.
 
-### F4 — Memory has no thresholds of its own: UI colors RAM with the *disk* thresholds, and the alert engine never evaluates memory at all
+### F4 — Memory has no thresholds of its own: UI colors RAM with the *disk* thresholds, and the alert engine never evaluates memory at all (filed as [#61](https://github.com/larslaskowski/pimonitor/issues/61))
 **Severity: Medium · Bug/Gap · `internal/web/assets/app.js:195-197`, `internal/alert/alert.go:182-212`, `internal/config/config.go:17-26`**
 
 `renderBar('mem-bar', …, t.disk_warn_percent, t.disk_crit_percent, …)`
@@ -70,7 +72,7 @@ and temperature all do. Adding `memory_warn_percent`/`memory_crit_percent`
 (config + engine + UI) would close the gap; note the API impact is additive
 (new state metric `memory`), not a breaking change.
 
-### F5 — Webhook rate limiter records a delivery *before* it succeeds
+### F5 — Webhook rate limiter records a delivery *before* it succeeds (filed as [#62](https://github.com/larslaskowski/pimonitor/issues/62))
 **Severity: Low · Bug · `internal/alert/notify.go:199-209`**
 
 `rateLimited` stamps `lastSent[key] = ev.At` at check time, before
@@ -80,7 +82,7 @@ a "repeat" — even though nothing was ever delivered. Stamping only after a
 successful `post` (or clearing the stamp on give-up) would make the limiter
 count deliveries, not attempts.
 
-### F6 — Webhook delivery retries non-retryable 4xx responses and serializes all deliveries through one worker
+### F6 — Webhook delivery retries non-retryable 4xx responses and serializes all deliveries through one worker (filed as [#63](https://github.com/larslaskowski/pimonitor/issues/63))
 **Severity: Low · Robustness/Efficiency · `internal/alert/notify.go:214-232`, `128-141`**
 
 `deliver` treats every non-2xx alike, so a permanent `400`/`404`/`410`
@@ -92,7 +94,7 @@ retries for 4xx (except 408/429) and/or delivering per-webhook concurrently
 would bound the damage. (The queue-drop safety valve already exists, so
 this is degradation, not loss of collection.)
 
-### F7 — A legitimate 0.0 °C reading renders as "n/a", and the API cannot distinguish 0 °C from "sensor failed"
+### F7 — A legitimate 0.0 °C reading renders as "n/a", and the API cannot distinguish 0 °C from "sensor failed" (filed as [#64](https://github.com/larslaskowski/pimonitor/issues/64))
 **Severity: Low · Bug · `internal/web/assets/app.js:184-190`, `internal/collector/types.go:118-134`**
 
 The dashboard uses a falsy check (`snap.temperature.celsius`), so an exact
@@ -103,7 +105,7 @@ A pointer field (`*Temperature`, omitted on failure like `gpu_temperature`)
 would fix it cleanly but is a v1-breaking change; within v1, the frontend
 could at least key off `temperature.zone !== ""` instead of the value.
 
-### F8 — No upper bound on history capacity: a misconfigured window/interval can allocate huge buffers
+### F8 — No upper bound on history capacity: a misconfigured window/interval can allocate huge buffers (filed as [#65](https://github.com/larslaskowski/pimonitor/issues/65))
 **Severity: Low · Robustness · `internal/config/config.go:167-176`, `Validate()`**
 
 `Validate` enforces only `> 0`. `history_window_minutes: 525600` with
@@ -113,7 +115,7 @@ instant OOM on a Pi from a config typo. A sanity cap on
 `HistoryCapacity()` (or on the window/interval ratio) in `Validate` would
 fail fast with a clear message instead.
 
-### F9 — `vcgencmd` is spawned twice per fast tick
+### F9 — `vcgencmd` is spawned twice per fast tick (filed as [#66](https://github.com/larslaskowski/pimonitor/issues/66))
 **Severity: Low · Efficiency · `internal/collector/temperature.go:195-204`, `internal/collector/throttled.go:90-96`**
 
 `TemperatureCollector` (`measure_temp`) and `ThrottledCollector`
@@ -123,7 +125,7 @@ counts against the tick budget. The two collectors also duplicate the
 lazy-redetect logic verbatim. A small shared vcgencmd runner (one detect,
 one helper) would halve the exec rate and remove the duplication.
 
-### F10 — Config comment promises the load gauges use the CPU thresholds; the code hardcodes 70 %/100 % of core count
+### F10 — Config comment promises the load gauges use the CPU thresholds; the code hardcodes 70 %/100 % of core count (filed as [#67](https://github.com/larslaskowski/pimonitor/issues/67))
 **Severity: Low · Docs/Code mismatch · `packaging/pimonitor.example.yaml:60-61`, `internal/web/assets/app.js:486-491`**
 
 `pimonitor.example.yaml` says the thresholds section drives "the
@@ -132,7 +134,7 @@ count", but `renderGauge` uses fixed `cores×0.7` / `cores×1.0`. Either use
 `cpu_warn_percent`/`cpu_crit_percent` relative to core count as documented,
 or fix the comment.
 
-### F11 — `-api-key` CLI flag exposes the secret in the process list
+### F11 — `-api-key` CLI flag exposes the secret in the process list (filed as [#68](https://github.com/larslaskowski/pimonitor/issues/68))
 **Severity: Low · Security note · `internal/config/config.go:318`, `docs/API.md`, `README.md:278`**
 
 Any local user can read `/proc/<pid>/cmdline`, so passing the key via
@@ -140,13 +142,13 @@ Any local user can read `/proc/<pid>/cmdline`, so passing the key via
 installer gets right). Worth a warning in README/API.md that the flag is
 for development only, and/or supporting an environment variable instead.
 
-### F12 — `go.mod` marks `gopkg.in/yaml.v3` as `// indirect` although it is a direct dependency
+### F12 — `go.mod` marks `gopkg.in/yaml.v3` as `// indirect` although it is a direct dependency (filed as [#69](https://github.com/larslaskowski/pimonitor/issues/69))
 **Severity: Low · Hygiene · `go.mod:5`**
 
 `internal/config` imports it directly; the comment is stale. `go mod tidy`
 fixes it. (CI would not catch this today; a tidy-check step would.)
 
-### F13 — `disks` is `null` (not `[]`) before the first tick, contradicting API.md
+### F13 — `disks` is `null` (not `[]`) before the first tick, contradicting API.md (filed as [#70](https://github.com/larslaskowski/pimonitor/issues/70))
 **Severity: Low · Docs/API nit · `internal/collector/types.go:130`, `docs/API.md:148-151`**
 
 API.md says fields may briefly read as "empty arrays", but a nil
@@ -155,7 +157,7 @@ API.md says fields may briefly read as "empty arrays", but a nil
 will trip on `null`. Either initialize the slices, add `omitempty` for
 consistency, or fix the docs sentence.
 
-### F14 — Embedded static assets are served with no cache validators or `Cache-Control`
+### F14 — Embedded static assets are served with no cache validators or `Cache-Control` (filed as [#71](https://github.com/larslaskowski/pimonitor/issues/71))
 **Severity: Low · Efficiency · `internal/web/embed.go:15-21`**
 
 Files from `embed.FS` have a zero ModTime, so `http.FileServerFS` emits no
@@ -165,7 +167,7 @@ refetches all assets. Harmless on a LAN, but a small
 would give correct, cheap revalidation (and avoids stale-JS confusion after
 upgrades if any intermediary caches heuristically).
 
-### F15 — Webhooks configured while `alerts.enabled: false` silently never fire
+### F15 — Webhooks configured while `alerts.enabled: false` silently never fire (filed as [#72](https://github.com/larslaskowski/pimonitor/issues/72))
 **Severity: Low · Config UX · `cmd/pimonitor/main.go:46-64`, `internal/config/config.go:237-259`**
 
 The notifier is built and its worker started, but with the engine disabled
@@ -173,7 +175,7 @@ no events are ever produced. A user who configured webhooks but flipped
 `enabled: false` (or vice versa) gets no hint. A startup warning ("webhooks
 configured but alerts disabled") would catch this in the journal.
 
-### F16 — CI actions and golangci-lint are unpinned (`version: latest`)
+### F16 — CI actions and golangci-lint are unpinned (`version: latest`) (filed as [#73](https://github.com/larslaskowski/pimonitor/issues/73))
 **Severity: Low · Supply chain/Reproducibility · `.github/workflows/ci.yml:33-35`, `release.yml`**
 
 `golangci-lint-action@v6` with `version: latest` means lint rules change
@@ -181,7 +183,7 @@ under the project without a commit, and workflow actions are pinned only by
 major tag rather than SHA. Pinning the linter version (and optionally
 action SHAs) makes CI reproducible and tamper-evident.
 
-### F17 — `pimonitor-apt-update.service` runs as root with no sandboxing
+### F17 — `pimonitor-apt-update.service` runs as root with no sandboxing (filed as [#74](https://github.com/larslaskowski/pimonitor/issues/74))
 **Severity: Low · Hardening · `packaging/pimonitor-apt-update.service`**
 
 The main service got extensive hardening (#22/#52), but the root-privileged
