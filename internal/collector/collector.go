@@ -370,6 +370,8 @@ func (c *Collector) fastTick(ctx context.Context) {
 			CPUValid:         cpuErr == nil,
 			TemperatureC:     temp.Celsius,
 			TemperatureValid: tempErr == nil,
+			MemoryPercent:    mem.UsedPercent,
+			MemoryValid:      memErr == nil,
 			SwapPercent:      swap.UsedPercent,
 			SwapValid:        memErr == nil,
 			Disks:            diskSamples,

@@ -231,6 +231,7 @@ func TestValidate_RejectsBadValues(t *testing.T) {
 		{"cpu warn above crit", func(c *Config) { c.Thresholds.CPUWarnPercent = 99 }},
 		{"disk warn above crit", func(c *Config) { c.Thresholds.DiskWarnPercent = 99 }},
 		{"swap warn above crit", func(c *Config) { c.Thresholds.SwapWarnPercent = 99 }},
+		{"memory warn above crit", func(c *Config) { c.Thresholds.MemoryWarnPercent = 99 }},
 		{"negative alerts for_seconds", func(c *Config) { c.Alerts.ForSeconds = -1 }},
 		{"negative notify max retries", func(c *Config) { c.Alerts.NotifyMaxRetries = -1 }},
 		{"negative notify backoff", func(c *Config) { c.Alerts.NotifyRetryBackoffSeconds = -1 }},

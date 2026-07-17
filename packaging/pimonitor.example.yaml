@@ -70,6 +70,8 @@ thresholds:
   disk_crit_percent: 95
   swap_warn_percent: 50
   swap_crit_percent: 90
+  memory_warn_percent: 80
+  memory_crit_percent: 95
 
 # Server-side threshold alert engine. On each poll it maps the current
 # metrics against the thresholds above into per-metric alert states
