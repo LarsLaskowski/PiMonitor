@@ -306,6 +306,9 @@ binary and the packaging files it ships next to.
 **CI** (`.github/workflows/ci.yml`) runs `go build ./...`, `go vet ./...`,
 `go test ./... -race -cover`, and `golangci-lint run` on every push/PR to `main`, plus a
 separate cross-compile job (build-only, `arm`/`arm64`) so a target-platform build break is
-caught even though the runner itself is `amd64` and cannot execute Pi-only code paths.
+caught even though the runner itself is `amd64` and cannot execute Pi-only code paths. A
+`sonarqube` job (skipped for Dependabot PRs, which don't receive repository secrets)
+regenerates coverage as a Go coverage profile and uploads it to SonarCloud together with
+the sources, per `sonar-project.properties` at the repo root.
 Actions are pinned to commit SHAs (not floating tags) so a compromised or rewritten action
 release can't silently change what CI executes.
