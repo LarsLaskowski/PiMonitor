@@ -222,7 +222,7 @@ main {
   color: var(--text);
   font-weight: 600;
   text-align: right;
-  overflow-wrap: break-word;
+  overflow-wrap: anywhere;
 }
 
 .metric-value {
@@ -335,7 +335,7 @@ main {
 .text-tile-value {
   font-size: 1rem;
   font-weight: 500;
-  overflow-wrap: break-word;
+  overflow-wrap: anywhere;
 }
 
 .updates-button {
@@ -435,7 +435,7 @@ dialog.modal::backdrop {
 
 .updates-table td.pkg-name {
   font-weight: 600;
-  overflow-wrap: break-word;
+  overflow-wrap: anywhere;
 }
 
 .updates-table td.pkg-old {
@@ -445,7 +445,7 @@ dialog.modal::backdrop {
 .updates-table td.pkg-new {
   color: var(--ok);
   font-weight: 600;
-  overflow-wrap: break-word;
+  overflow-wrap: anywhere;
 }
 
 /* Metric detail modal: range picker + enlarged chart. A <fieldset> resets
