@@ -126,15 +126,33 @@ main {
 }
 
 .card h2 {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
   margin: 0 0 0.75rem;
   font-size: 0.9375rem;
   color: var(--text);
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.03em;
+}
+
+.card h2,
+.card-header-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* Real <button> inside a clickable card's <h2>, styled to look like the
+   plain heading text of the non-clickable cards. */
+.card-header-btn {
+  width: 100%;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  background: none;
+  border: none;
+  cursor: pointer;
 }
 
 .card-icon {
@@ -166,16 +184,17 @@ main {
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
-/* The whole card is the mouse target, but the heading carries role="button"
-   (so assistive tech exposes a single control instead of flattening the card's
-   text into one name). Highlight the card whenever either is hovered/focused. */
+/* The whole card is the mouse target, but only the heading's button is
+   keyboard-focusable (so assistive tech exposes a single control instead of
+   flattening the card's text into one name). Highlight the card whenever
+   either is hovered/focused. */
 .card-clickable:hover,
 .card-clickable:focus-within {
   border-color: var(--card-accent);
   box-shadow: 0 0 0 1px var(--card-accent);
 }
 
-.card-clickable h2[role="button"]:focus-visible {
+.card-header-btn:focus-visible {
   outline: 2px solid var(--card-accent);
   outline-offset: 3px;
 }
@@ -203,7 +222,7 @@ main {
   color: var(--text);
   font-weight: 600;
   text-align: right;
-  word-break: break-word;
+  overflow-wrap: break-word;
 }
 
 .metric-value {
@@ -316,7 +335,7 @@ main {
 .text-tile-value {
   font-size: 1rem;
   font-weight: 500;
-  word-break: break-word;
+  overflow-wrap: break-word;
 }
 
 .updates-button {
@@ -336,28 +355,28 @@ main {
   filter: brightness(1.08);
 }
 
-/* Modal overlay for the full update list. */
-.modal-backdrop {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 1rem;
-  z-index: 100;
-}
-
-.modal {
+/* Native <dialog> elements (updates list, API key prompt, metric detail).
+   showModal() handles the top-layer promotion, ::backdrop, native focus
+   trapping and centering; we only need to style the box and its overlay.
+   Scoped to [open] so the UA's default `dialog:not([open]) { display: none }`
+   still applies and the dialog stays hidden (and out of layout) until shown. */
+dialog.modal[open] {
+  margin: auto;
+  padding: 0;
   background: var(--card-bg);
   color: var(--text);
   border: 1px solid var(--border);
   border-radius: 12px;
   width: min(640px, 100%);
   max-height: 85vh;
+  max-width: calc(100% - 2rem);
   display: flex;
   flex-direction: column;
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+}
+
+dialog.modal::backdrop {
+  background: rgba(0, 0, 0, 0.5);
 }
 
 .modal-header {
@@ -416,7 +435,7 @@ main {
 
 .updates-table td.pkg-name {
   font-weight: 600;
-  word-break: break-word;
+  overflow-wrap: break-word;
 }
 
 .updates-table td.pkg-old {
@@ -426,14 +445,32 @@ main {
 .updates-table td.pkg-new {
   color: var(--ok);
   font-weight: 600;
-  word-break: break-word;
+  overflow-wrap: break-word;
 }
 
-/* Metric detail modal: range picker + enlarged chart. */
+/* Metric detail modal: range picker + enlarged chart. A <fieldset> resets
+   its default border/padding/min-width so it lays out like the plain <div>
+   it replaces; its <legend> is screen-reader only (the buttons' own labels
+   are visually self-explanatory). */
 .range-picker {
   display: flex;
   gap: 0.375rem;
   margin: 0.25rem 0 0.75rem;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .range-button {

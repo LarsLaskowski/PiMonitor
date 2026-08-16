@@ -11,5 +11,9 @@
     if (stored === 'light' || stored === 'dark') {
       document.documentElement.dataset.theme = stored;
     }
-  } catch (e) {}
+  } catch (e) {
+    // Private browsing or blocked storage: leave data-theme unset, same as
+    // when nothing was ever stored; the CSS prefers-color-scheme default
+    // still applies.
+  }
 })();

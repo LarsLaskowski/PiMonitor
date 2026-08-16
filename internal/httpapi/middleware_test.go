@@ -44,7 +44,7 @@ func TestSecurityHeaders_SetOnUnauthorizedResponses(t *testing.T) {
 	if got := rec.Header().Get("X-Content-Type-Options"); got != "nosniff" {
 		t.Errorf("X-Content-Type-Options = %q, want %q on 401 response", got, "nosniff")
 	}
-	if got := rec.Header().Get("Content-Security-Policy"); got == "" {
+	if rec.Header().Get("Content-Security-Policy") == "" {
 		t.Error("Content-Security-Policy missing on 401 response")
 	}
 }

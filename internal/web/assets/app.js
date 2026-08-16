@@ -31,6 +31,7 @@
     try {
       return localStorage.getItem(API_KEY_STORAGE) || '';
     } catch (e) {
+      // Private browsing or blocked storage: fall back to the in-memory key.
       return '';
     }
   }
@@ -54,6 +55,8 @@
       const v = localStorage.getItem(THEME_KEY);
       return v === 'light' || v === 'dark' ? v : null;
     } catch (e) {
+      // Private browsing or blocked storage: behave as if nothing was
+      // stored, falling back to the OS prefers-color-scheme setting.
       return null;
     }
   }
@@ -61,7 +64,7 @@
   function effectiveTheme() {
     const stored = storedTheme();
     if (stored) return stored;
-    return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+    return window.matchMedia?.('(prefers-color-scheme: dark)')?.matches
       ? 'dark' : 'light';
   }
 
@@ -179,7 +182,7 @@
   function renderVersion() {
     // A release is tagged "vX.Y.Z"; show it without the leading "v".
     // Unversioned local builds report "dev", which is displayed as-is.
-    const raw = (config && config.version) || 'dev';
+    const raw = config?.version || 'dev';
     setText('app-version', raw.replace(/^v(?=\d)/, ''));
   }
 
@@ -199,13 +202,13 @@
     setText('cpu-overall', snap.cpu.overall_percent.toFixed(1) + ' %');
     document.getElementById('cpu-overall').className =
       'metric-value ' + levelClass(snap.cpu.overall_percent, t.cpu_warn_percent, t.cpu_crit_percent);
-    if (snap.cpu.per_core_percent && snap.cpu.per_core_percent.length) {
+    if (snap.cpu.per_core_percent?.length) {
       setText('cpu-per-core', snap.cpu.per_core_percent.map((v, i) => 'C' + i + ': ' + v.toFixed(0) + '%').join('  '));
     }
     lastCPUCount = snap.cpu_count || (snap.cpu.per_core_percent || []).length || 1;
 
     // CPU details: core count plus model name where the kernel exposes it.
-    const cpuModel = snap.system && snap.system.cpu_model;
+    const cpuModel = snap.system?.cpu_model;
     setText('cpu-info', lastCPUCount + (lastCPUCount === 1 ? ' core' : ' cores') + (cpuModel ? ' · ' + cpuModel : ''));
 
     // Load average gauges
@@ -215,7 +218,7 @@
 
     // Temperature
     const tempEl = document.getElementById('temp-value');
-    if (snap.temperature && snap.temperature.celsius) {
+    if (snap.temperature?.celsius) {
       setText('temp-value', snap.temperature.celsius.toFixed(1) + ' °C');
       tempEl.className = 'metric-value ' + levelClass(snap.temperature.celsius, t.temperature_warn_c, t.temperature_crit_c);
     } else {
@@ -240,7 +243,7 @@
 
     // Network
     const networkCard = document.getElementById('card-network');
-    if (config.network_enabled && snap.network && snap.network.length) {
+    if (config.network_enabled && snap.network?.length) {
       networkCard.classList.remove('hidden');
       renderList('network-list', snap.network, n => {
         const row = document.createElement('div');
@@ -281,7 +284,7 @@
     showBtn.textContent = latestPackages.length === 1
       ? 'Show 1 update' : 'Show all ' + latestPackages.length + ' updates';
     // Keep the open modal's contents in sync with fresh data.
-    if (!document.getElementById('updates-modal').classList.contains('hidden')) {
+    if (document.getElementById('updates-modal').open) {
       renderUpdatesTable();
     }
   }
@@ -305,75 +308,38 @@
     });
   }
 
-  // Shared modal focus handling. The element focused before a modal opened is
-  // remembered so focus can return to it on close (e.g. back to the card that
-  // opened the detail view), and focus is moved into the dialog on open.
+  // Shared modal focus handling. A native <dialog> shown via showModal()
+  // handles top-layer promotion, focus trapping, the ::backdrop, and
+  // Escape-to-dismiss on its own; we only need to remember and restore the
+  // triggering element's focus, and route each dialog's side effects (e.g.
+  // clearing the open detail metric) through its native "close" event so
+  // they run no matter how it was dismissed (button, Escape, or backdrop
+  // click).
   let modalReturnFocus = null;
 
-  function focusablesIn(el) {
-    return Array.from(
-      el.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])')
-    ).filter(node => node.offsetParent !== null);
-  }
-
-  function openModal(backdrop, initialFocus) {
+  function openModal(dialog, initialFocus) {
     modalReturnFocus = document.activeElement;
-    backdrop.classList.remove('hidden');
-    const target = initialFocus || backdrop.querySelector('.modal-close');
+    dialog.showModal();
+    const target = initialFocus || dialog.querySelector('.modal-close');
     if (target) target.focus();
   }
 
-  function closeModal(backdrop) {
-    backdrop.classList.add('hidden');
-    if (modalReturnFocus && typeof modalReturnFocus.focus === 'function') {
-      modalReturnFocus.focus();
-    }
-    modalReturnFocus = null;
-  }
-
-  // The one visible modal backdrop, if any (only ever one is open at a time).
-  function visibleModal() {
-    return document.querySelector('.modal-backdrop:not(.hidden)');
-  }
-
-  // Route a dismiss request to the matching close function so its side effects
-  // (e.g. clearing the open detail metric) still run. The API key prompt is
-  // deliberately not dismissible: without a valid key every card stays empty,
-  // so closing it would just leave a broken-looking page.
-  function dismissModal(backdrop) {
-    if (backdrop.id === 'apikey-modal') return;
-    if (backdrop.id === 'detail-modal') closeDetailModal();
-    else if (backdrop.id === 'updates-modal') closeUpdatesModal();
-    else closeModal(backdrop);
-  }
-
-  // Keep Tab focus inside the open dialog, as an aria-modal dialog should.
-  function trapTab(backdrop, e) {
-    const focusables = focusablesIn(backdrop);
-    if (!focusables.length) return;
-    const first = focusables[0];
-    const last = focusables[focusables.length - 1];
-    if (e.shiftKey && document.activeElement === first) {
-      e.preventDefault();
-      last.focus();
-    } else if (!e.shiftKey && document.activeElement === last) {
-      e.preventDefault();
-      first.focus();
-    }
-  }
-
-  // A single document-level handler serves whichever modal is open, rather
-  // than one Escape listener per modal.
-  function wireModalKeys() {
-    document.addEventListener('keydown', e => {
-      const modal = visibleModal();
-      if (!modal) return;
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        dismissModal(modal);
-      } else if (e.key === 'Tab') {
-        trapTab(modal, e);
+  // Restore focus once a dialog actually closes, regardless of how.
+  function wireModalFocusReturn(dialog) {
+    dialog.addEventListener('close', () => {
+      if (modalReturnFocus && typeof modalReturnFocus.focus === 'function') {
+        modalReturnFocus.focus();
       }
+      modalReturnFocus = null;
+    });
+  }
+
+  // Close when a click lands on the dialog element itself rather than its
+  // content, i.e. the ::backdrop area — a native <dialog> has no separate
+  // backdrop element to attach a listener to.
+  function wireBackdropDismiss(dialog) {
+    dialog.addEventListener('click', e => {
+      if (e.target === dialog) dialog.close();
     });
   }
 
@@ -382,16 +348,12 @@
     openModal(document.getElementById('updates-modal'));
   }
 
-  function closeUpdatesModal() {
-    closeModal(document.getElementById('updates-modal'));
-  }
-
   // API key prompt: shown when the server answers 401 (an api_key is
   // configured). The entered key is validated against GET /api/v1/config
   // before being persisted, then all data is reloaded with it.
   function openAPIKeyModal() {
     const modal = document.getElementById('apikey-modal');
-    if (!modal.classList.contains('hidden')) return;
+    if (modal.open) return;
     setText('header-subtitle', 'API key required');
     document.getElementById('apikey-error').classList.add('hidden');
     openModal(modal, document.getElementById('apikey-input'));
@@ -415,21 +377,26 @@
     sessionAPIKey = key;
     input.value = '';
     errEl.classList.add('hidden');
-    closeModal(document.getElementById('apikey-modal'));
+    document.getElementById('apikey-modal').close();
     await reloadAll();
   }
 
   function wireAPIKeyModal() {
+    const dialog = document.getElementById('apikey-modal');
     document.getElementById('apikey-form').addEventListener('submit', submitAPIKey);
+    // Deliberately not dismissible: without a valid key every card stays
+    // empty, so allowing Escape to close it would just leave a
+    // broken-looking page.
+    dialog.addEventListener('cancel', e => e.preventDefault());
+    wireModalFocusReturn(dialog);
   }
 
   function wireUpdatesModal() {
+    const dialog = document.getElementById('updates-modal');
     document.getElementById('updates-show').addEventListener('click', openUpdatesModal);
-    document.getElementById('updates-modal-close').addEventListener('click', closeUpdatesModal);
-    document.getElementById('updates-modal').addEventListener('click', e => {
-      // Close when clicking the backdrop, but not the dialog itself.
-      if (e.target === e.currentTarget) closeUpdatesModal();
-    });
+    document.getElementById('updates-modal-close').addEventListener('click', () => dialog.close());
+    wireBackdropDismiss(dialog);
+    wireModalFocusReturn(dialog);
   }
 
   // Metric detail view: clicking a card opens a modal with a larger chart of
@@ -476,8 +443,8 @@
   // Keep only the points within the last `minutes`, measured back from the
   // most recent sample's timestamp (the Pi clock), not the browser's clock.
   function pointsWithinRange(points, minutes) {
-    if (!points || !points.length) return [];
-    const latest = new Date(points[points.length - 1].t).getTime();
+    if (!points?.length) return [];
+    const latest = new Date(points.at(-1).t).getTime();
     const cutoff = latest - minutes * 60000;
     return points.filter(p => new Date(p.t).getTime() >= cutoff);
   }
@@ -509,7 +476,7 @@
       return;
     }
     const vals = points.map(p => p.v);
-    const cur = vals[vals.length - 1];
+    const cur = vals.at(-1);
     const min = Math.min(...vals);
     const max = Math.max(...vals);
     const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
@@ -529,25 +496,17 @@
     renderDetailChart();
   }
 
-  function closeDetailModal() {
-    openDetailMetric = null;
-    closeModal(document.getElementById('detail-modal'));
-  }
-
   function wireDetailModal() {
+    const dialog = document.getElementById('detail-modal');
     document.querySelectorAll('[data-metric]').forEach(card => {
       card.addEventListener('click', () => openDetailModal(card.dataset.metric));
-      card.addEventListener('keydown', e => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          openDetailModal(card.dataset.metric);
-        }
-      });
     });
-    document.getElementById('detail-modal-close').addEventListener('click', closeDetailModal);
-    document.getElementById('detail-modal').addEventListener('click', e => {
-      if (e.target === e.currentTarget) closeDetailModal();
-    });
+    document.getElementById('detail-modal-close').addEventListener('click', () => dialog.close());
+    wireBackdropDismiss(dialog);
+    wireModalFocusReturn(dialog);
+    // Clear the open metric whenever the dialog closes, however it was
+    // dismissed, so a stale metric doesn't linger for the next open.
+    dialog.addEventListener('close', () => { openDetailMetric = null; });
     document.querySelectorAll('#detail-ranges .range-button').forEach(b => {
       b.addEventListener('click', () => {
         detailRangeMinutes = Number(b.dataset.minutes);
@@ -671,7 +630,6 @@
 
   async function main() {
     wireThemeToggle();
-    wireModalKeys();
     wireUpdatesModal();
     wireDetailModal();
     wireAPIKeyModal();
