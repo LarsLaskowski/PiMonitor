@@ -7,6 +7,12 @@
 // right, PI/2 = down, PI = left, 3*PI/2 = up). The visible gauge arc runs
 // over the top of the circle, i.e. clockwise from PI (left) to 2*PI
 // (right) passing through 3*PI/2 (up) - so `anticlockwise` must be false.
+function gaugeColorVar(colorClass) {
+  if (colorClass === 'metric-crit') return '--crit';
+  if (colorClass === 'metric-warn') return '--warn';
+  return '--ok';
+}
+
 function drawGauge(canvas, value, max, colorClass) {
   const dpr = window.devicePixelRatio || 1;
   const cssWidth = canvas.clientWidth || 80;
@@ -35,8 +41,7 @@ function drawGauge(canvas, value, max, colorClass) {
   const endAngle = 2 * Math.PI; // right (3 o'clock), via the top
 
   const trackColor = getComputedStyle(document.documentElement).getPropertyValue('--gauge-track').trim() || 'rgba(0, 0, 0, 0.14)';
-  const colorVar = colorClass === 'metric-crit' ? '--crit' : colorClass === 'metric-warn' ? '--warn' : '--ok';
-  const fillColor = getComputedStyle(document.documentElement).getPropertyValue(colorVar).trim();
+  const fillColor = getComputedStyle(document.documentElement).getPropertyValue(gaugeColorVar(colorClass)).trim();
 
   // Background track (full top semicircle).
   ctx.beginPath();
