@@ -242,9 +242,31 @@ func (e *Engine) evalMetric(metric, resource string, value, warn, crit float64, 
 		e.states[key] = st
 	}
 	st.lastValue = value
+	st.updateThresholdState(value >= warn, value >= crit, now)
 
-	aboveWarn := value >= warn
-	aboveCrit := value >= crit
+	held := func(since time.Time) bool { return now.Sub(since) >= e.forDur }
+	next := nextLevel(st.active,
+		st.critAbove && held(st.critSince),  // critConfirmed
+		st.warnAbove && held(st.warnSince),  // warnConfirmed
+		!st.critAbove && held(st.critSince), // belowCritConfirmed
+		!st.warnAbove && held(st.warnSince), // belowWarnConfirmed
+	)
+	if next == st.active {
+		return nil
+	}
+	prev := st.active
+	st.active = next
+	st.activeSince = now
+	ev := e.recordEvent(st, prev, next, value, now)
+	return &ev
+}
+
+// updateThresholdState records how long the value has continuously been on
+// its current side of the warn/crit thresholds, resetting the "since" clock
+// whenever it crosses over. Tracking the two boundaries independently means
+// "value has been >= warn continuously for the debounce window" holds even
+// while the value oscillates in and out of the crit band.
+func (st *metricState) updateThresholdState(aboveWarn, aboveCrit bool, now time.Time) {
 	if !st.initialized || st.warnAbove != aboveWarn {
 		st.warnAbove = aboveWarn
 		st.warnSince = now
@@ -254,47 +276,36 @@ func (e *Engine) evalMetric(metric, resource string, value, warn, crit float64, 
 		st.critSince = now
 	}
 	st.initialized = true
+}
 
-	held := func(since time.Time) bool { return now.Sub(since) >= e.forDur }
-	critConfirmed := st.critAbove && held(st.critSince)
-	warnConfirmed := st.warnAbove && held(st.warnSince)
-	belowCritConfirmed := !st.critAbove && held(st.critSince)
-	belowWarnConfirmed := !st.warnAbove && held(st.warnSince)
-
-	next := st.active
-	switch st.active {
+// nextLevel applies the debounce state machine's transition table: a level
+// only changes once the corresponding signal has been confirmed (held past
+// the debounce window).
+func nextLevel(current Level, critConfirmed, warnConfirmed, belowCritConfirmed, belowWarnConfirmed bool) Level {
+	switch current {
 	case LevelOK:
 		switch {
 		case critConfirmed:
-			next = LevelCrit
+			return LevelCrit
 		case warnConfirmed:
-			next = LevelWarn
+			return LevelWarn
 		}
 	case LevelWarn:
 		switch {
 		case critConfirmed:
-			next = LevelCrit
+			return LevelCrit
 		case belowWarnConfirmed:
-			next = LevelOK
+			return LevelOK
 		}
 	case LevelCrit:
 		if belowCritConfirmed {
 			if belowWarnConfirmed {
-				next = LevelOK
-			} else {
-				next = LevelWarn
+				return LevelOK
 			}
+			return LevelWarn
 		}
 	}
-
-	if next != st.active {
-		prev := st.active
-		st.active = next
-		st.activeSince = now
-		ev := e.recordEvent(st, prev, next, value, now)
-		return &ev
-	}
-	return nil
+	return current
 }
 
 // pruneDisks drops disk states whose mountpoint is absent from the latest

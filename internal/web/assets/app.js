@@ -77,9 +77,9 @@
 
   function applyTheme(theme) {
     if (theme) {
-      document.documentElement.setAttribute('data-theme', theme);
+      document.documentElement.dataset.theme = theme;
     } else {
-      document.documentElement.removeAttribute('data-theme');
+      delete document.documentElement.dataset.theme;
     }
     updateThemeToggle();
     // Repaint canvas widgets that cached the previous palette's colors.
