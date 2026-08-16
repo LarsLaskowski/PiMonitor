@@ -277,11 +277,15 @@ When adding a test for this kind of code:
 
 ## Code coverage
 
-Coverage is collected in CI via `go test ./... -race -cover`; there is no separate
-coverage tool or configuration file. Run the same command locally before opening a PR
-that adds new logic, and make sure the new code path is actually exercised — a `-cover`
-run reporting an untouched new function is a signal the PR is missing a test, not
-something to ignore.
+Coverage is collected in CI via `go test ./... -race -cover`. Run the same command
+locally before opening a PR that adds new logic, and make sure the new code path is
+actually exercised — a `-cover` run reporting an untouched new function is a signal the
+PR is missing a test, not something to ignore.
+
+The separate `sonarqube` CI job (see [`ARCHITECTURE.md`](ARCHITECTURE.md)) re-runs the
+suite with `go test ./... -coverprofile=coverage.out` and uploads that profile to
+SonarCloud alongside the source analysis, configured by `sonar-project.properties` at the
+repo root. There is no additional local tooling for this — it only runs in CI.
 
 ## Checklist for new tests
 

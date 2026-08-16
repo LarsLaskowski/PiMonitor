@@ -34,6 +34,30 @@ jobs:
         with:
           version: v2.12.2
 
+  sonarqube:
+    name: SonarQube
+    runs-on: ubuntu-latest
+    # Dependabot runs do not receive repository secrets, so SONAR_TOKEN would be
+    # empty and the scan would fail; skip the job for those PRs.
+    if: ${{ github.actor != 'dependabot[bot]' }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          fetch-depth: 0 # disable shallow clone for better analysis relevancy
+
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Generate coverage
+        run: go test ./... -race -coverprofile=coverage.out
+
+      - name: SonarQube Scan
+        uses: SonarSource/sonarqube-scan-action@22918119ff8e1ca75a623e15c8296b6ea4fbe28f # v8.2.1
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
   cross-compile:
     runs-on: ubuntu-latest
     needs: build-test-lint
