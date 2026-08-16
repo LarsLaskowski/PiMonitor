@@ -45,7 +45,7 @@ Use this skill to resolve a reported GitHub issue in this repository.
 
 ## Notes
 
-- As with `create-pr`, do not add Claude/Anthropic attribution to commits or
-  PRs: no `Co-Authored-By: Claude ...` / `Claude-Session: ...` commit
-  trailers, and no "Generated with Claude Code" line or session link in the
+- As with `create-pr`, do not add Codex/Anthropic attribution to commits or
+  PRs: no `Co-Authored-By: Codex ...` / `Codex-Session: ...` commit
+  trailers, and no "Generated with Codex" line or session link in the
   PR body.

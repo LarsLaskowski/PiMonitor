@@ -1,6 +1,6 @@
-# CLAUDE.md
+# AGENTS.md
 
-Guidance for Claude Code (and human contributors) working in this repository.
+Guidance for Codex (and human contributors) working in this repository.
 
 ## Project Overview
 
@@ -61,7 +61,7 @@ so explicitly instead of skipping the test silently.
 
 ## Related Skills
 
-Project-specific Claude Code skills live under `.claude/skills/`:
+Project-specific Codex skills live under `.Codex/skills/`:
 
 - `create-pr` — run tests/lint locally, then open a PR following
   `.github/pull_request_template.md`.

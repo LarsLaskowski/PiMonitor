@@ -398,9 +398,12 @@ built-in defaults.
 
 ## Development
 
-See [`CLAUDE.md`](CLAUDE.md) for build/test conventions and project
-structure notes. Contributions are welcome - see the issue and pull
-request templates under `.github/` for what to include.
+See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for how the system is put together
+and why, [`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md) for the contribution workflow,
+[`docs/TESTS.md`](docs/TESTS.md) for test conventions (tests are mandatory for new
+code), and [`CLAUDE.md`](CLAUDE.md) for build/test commands and AI-agent
+guidance. Contributions are welcome - see the issue and pull request
+templates under `.github/` for what to include.
 
 ## License
 
