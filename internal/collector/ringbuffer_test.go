@@ -118,3 +118,29 @@ func TestRingBuffer_Empty(t *testing.T) {
 		t.Fatalf("expected empty snapshot, got %v", got)
 	}
 }
+
+func TestRingBuffer_Newest_EmptyReturnsFalse(t *testing.T) {
+	rb := NewRingBuffer[int](3)
+	if _, ok := rb.Newest(); ok {
+		t.Fatal("expected Newest to report false on an empty buffer")
+	}
+}
+
+func TestRingBuffer_Newest_ReturnsLastAdded(t *testing.T) {
+	rb := NewRingBuffer[int](3)
+	rb.Add(1)
+	rb.Add(2)
+	if got, ok := rb.Newest(); !ok || got != 2 {
+		t.Fatalf("Newest = (%v, %v), want (2, true)", got, ok)
+	}
+}
+
+func TestRingBuffer_Newest_AfterWraparound(t *testing.T) {
+	rb := NewRingBuffer[int](3)
+	for i := 1; i <= 5; i++ {
+		rb.Add(i)
+	}
+	if got, ok := rb.Newest(); !ok || got != 5 {
+		t.Fatalf("Newest after wraparound = (%v, %v), want (5, true)", got, ok)
+	}
+}

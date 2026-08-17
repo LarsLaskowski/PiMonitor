@@ -92,6 +92,18 @@ the first time a given device is seen. `RingBuffer[T]` (`ringbuffer.go`) is a fi
 capacity circular buffer with its own internal lock — safe to read concurrently with the
 collector's own tick, independent of the collector's outer `sync.RWMutex`.
 
+Entries are also removed: `evictStaleSeries`, called from `fastTick` for `diskHist`,
+`rxHist`, and `txHist`, deletes a device's series once its *newest* sample is older than
+the retained history window (`FastInterval * HistoryCapacity`) — without this, a churning
+`veth*` interface from container start/stop or a USB drive that gets unplugged would keep
+its full ring buffer (and keep showing up in `GET /api/v1/metrics/history`) forever. This
+deliberately differs from the alert engine's `pruneDisks` (see below), which drops state
+on a single absent sample: `DiskCollector.Collect` already skips a mountpoint that
+transiently fails to stat, so evicting history on the first miss would wipe a device's
+history over a passing blip rather than an actual disappearance — eviction is tied to the
+history window instead, so a one-tick miss is tolerated and only a sustained absence is
+treated as gone.
+
 `HistoryCapacity` (`config.Config.HistoryCapacity()`) is derived from
 `history_window_minutes / poll_interval_seconds`, not configured directly, and is capped
 at 1,000,000 points per series (`config.maxHistoryCapacity`) — `NewRingBuffer` allocates
