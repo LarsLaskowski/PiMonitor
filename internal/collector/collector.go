@@ -97,6 +97,13 @@ type Collector struct {
 
 	log *slog.Logger
 
+	// fastInterval is cfg.FastInterval clamped to a safe positive minimum
+	// (see clampInterval), computed once at construction so Run's ticker
+	// and fastTick's history-eviction window always agree, regardless of
+	// whether Run has been started yet (e.g. in tests calling fastTick
+	// directly).
+	fastInterval time.Duration
+
 	mu       sync.RWMutex
 	latest   Snapshot
 	cpuHist  *RingBuffer[HistoryPoint]
@@ -120,7 +127,7 @@ func New(cfg Config, log *slog.Logger) *Collector {
 	if cfg.AlertsEnabled {
 		alerts = alert.New(cfg.Thresholds, cfg.AlertFor)
 	}
-	return &Collector{
+	c := &Collector{
 		cfg:       cfg,
 		alerts:    alerts,
 		notifier:  cfg.Notifier,
@@ -147,6 +154,8 @@ func New(cfg Config, log *slog.Logger) *Collector {
 		rxHist:    make(map[string]*RingBuffer[HistoryPoint]),
 		txHist:    make(map[string]*RingBuffer[HistoryPoint]),
 	}
+	c.fastInterval = c.clampInterval(cfg.FastInterval, "FastInterval")
+	return c
 }
 
 // Run collects an initial sample immediately, then continues sampling on
@@ -166,11 +175,11 @@ func (c *Collector) Run(ctx context.Context) {
 
 	// Defense in depth: a non-positive interval panics time.NewTicker.
 	// config.Validate rejects such values at startup, but clamp here too so
-	// no future caller can crash the collector.
-	fastInterval := c.clampInterval(c.cfg.FastInterval, "FastInterval")
+	// no future caller can crash the collector. c.fastInterval was already
+	// clamped in New; only SlowInterval needs it here.
 	slowInterval := c.clampInterval(c.cfg.SlowInterval, "SlowInterval")
 
-	fastTicker := time.NewTicker(fastInterval)
+	fastTicker := time.NewTicker(c.fastInterval)
 	defer fastTicker.Stop()
 	slowTicker := time.NewTicker(slowInterval)
 	defer slowTicker.Stop()
@@ -366,7 +375,7 @@ func (c *Collector) fastTick(ctx context.Context) {
 	// tick: DiskCollector.Collect already skips mountpoints that fail to
 	// stat, so a device missing for one tick must keep its history rather
 	// than losing it immediately.
-	historyWindow := c.cfg.FastInterval * time.Duration(c.cfg.HistoryCapacity)
+	historyWindow := c.fastInterval * time.Duration(c.cfg.HistoryCapacity)
 	evictStaleSeries(c.diskHist, diskKeys, now, historyWindow)
 	evictStaleSeries(c.rxHist, netKeys, now, historyWindow)
 	evictStaleSeries(c.txHist, netKeys, now, historyWindow)
