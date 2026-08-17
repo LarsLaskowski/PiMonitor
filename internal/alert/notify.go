@@ -184,48 +184,59 @@ func (n *Notifier) dispatch(ctx context.Context, ev Event) {
 			n.log.Error("alert notification render failed", "url", wh.url, "error", err)
 			continue
 		}
-		n.deliver(ctx, wh, body)
+		if n.deliver(ctx, wh, body) {
+			n.recordSent(wh.url, ev)
+		}
 	}
 }
 
 // rateLimited reports whether delivering ev to url should be suppressed
-// because the previous delivery of the same metric to the same URL was too
-// recent, and records the time otherwise. The rate limit is keyed per
-// (url, metric, resource) so a fast-flapping metric can't flood a webhook,
-// while a distinct metric alerting in the same tick is still delivered. Only
-// firing events reach here (cleared events bypass the limiter in dispatch),
-// so it purely coalesces repeated escalations. The event timestamp (not wall
-// clock) drives the decision so it is deterministic and testable.
+// because the previous successful delivery of the same metric to the same
+// URL was too recent. The rate limit is keyed per (url, metric, resource) so
+// a fast-flapping metric can't flood a webhook, while a distinct metric
+// alerting in the same tick is still delivered. Only firing events reach
+// here (cleared events bypass the limiter in dispatch), so it purely
+// coalesces repeated escalations. The event timestamp (not wall clock) drives
+// the decision so it is deterministic and testable.
 func (n *Notifier) rateLimited(url string, ev Event) bool {
 	if n.minInterval <= 0 {
 		return false
 	}
 	key := url + "\x00" + ev.Metric + "\x00" + ev.Resource
-	if last, ok := n.lastSent[key]; ok && ev.At.Sub(last) < n.minInterval {
-		return true
+	last, ok := n.lastSent[key]
+	return ok && ev.At.Sub(last) < n.minInterval
+}
+
+// recordSent stamps the last-delivery time for (url, metric, resource) after
+// a successful delivery, so the rate limiter counts deliveries rather than
+// attempts: a failed delivery must not suppress the next firing.
+func (n *Notifier) recordSent(url string, ev Event) {
+	if n.minInterval <= 0 {
+		return
 	}
+	key := url + "\x00" + ev.Metric + "\x00" + ev.Resource
 	n.lastSent[key] = ev.At
-	return false
 }
 
 // deliver POSTs body to a webhook, retrying with exponential backoff on
 // failure until it succeeds, exhausts maxRetries, or ctx is canceled. It
-// always returns without panicking so a dead endpoint can't crash the worker.
-func (n *Notifier) deliver(ctx context.Context, wh webhook, body []byte) {
+// reports whether delivery ultimately succeeded, and always returns without
+// panicking so a dead endpoint can't crash the worker.
+func (n *Notifier) deliver(ctx context.Context, wh webhook, body []byte) bool {
 	backoff := n.backoff
 	for attempt := 0; ; attempt++ {
 		if err := n.post(ctx, wh, body); err == nil {
-			return
+			return true
 		} else if attempt >= n.maxRetries {
 			n.log.Error("alert notification giving up after retries",
 				"url", wh.url, "attempts", attempt+1, "error", err)
-			return
+			return false
 		} else {
 			n.log.Warn("alert notification delivery failed, will retry",
 				"url", wh.url, "attempt", attempt+1, "error", err)
 		}
 		if !sleepCtx(ctx, backoff) {
-			return // context canceled during backoff
+			return false // context canceled during backoff
 		}
 		backoff *= 2
 	}
