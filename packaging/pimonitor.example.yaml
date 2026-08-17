@@ -57,6 +57,12 @@ pi_model_enabled: true
 # the config manually, apply the same permissions:
 #   sudo chown root:pimonitor /etc/pimonitor/config.yaml
 #   sudo chmod 640 /etc/pimonitor/config.yaml
+#
+# Instead of setting it here you can export PIMONITOR_API_KEY, which takes
+# precedence over this value; with systemd, point EnvironmentFile= at a file
+# with the same restricted permissions. Do NOT use the -api-key flag outside
+# local development: a process's command line is world-readable through
+# /proc/<pid>/cmdline, so every local user could read the key.
 api_key: ""
 
 # Color-coding thresholds for the dashboard (and the load-average gauge

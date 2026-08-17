@@ -12,10 +12,20 @@ existing integrations against `/api/v1/...` keep working.
 
 By default, no authentication is required — PiMonitor is meant to run on a
 trusted local network. If you set `api_key` in `config.yaml` (or the
-`-api-key` flag), every `/api/v1/...` request must include one of:
+`PIMONITOR_API_KEY` environment variable), every `/api/v1/...` request must
+include one of:
 
 - `Authorization: Bearer <api_key>`
 - `X-Api-Key: <api_key>`
+
+The key can be supplied three ways, in increasing precedence: `api_key` in
+the config file, the `PIMONITOR_API_KEY` environment variable, and the
+`-api-key` flag. **Prefer the config file** — `install.sh` restricts it to
+mode `640 root:pimonitor`. `PIMONITOR_API_KEY` is the deployment-friendly
+alternative (systemd `EnvironmentFile=` pointing at a file with the same
+restricted permissions). The `-api-key` flag is for local development only:
+command lines are world-readable via `/proc/<pid>/cmdline`, so every local
+user on the machine can read a key passed that way.
 
 Requests without a valid key receive `401 Unauthorized`. `GET /healthz` is
 never gated by the API key, so external health checks keep working

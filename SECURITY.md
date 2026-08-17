@@ -54,6 +54,13 @@ reporters and reviewers have context:
   per browser and persists it in `localStorage` (an accepted trade-off —
   anyone with access to the browser profile can read it, and without TLS
   the key is visible on the wire either way).
+- **Supply the API key through the config file or the environment, not the
+  command line.** `/etc/pimonitor/config.yaml` is kept at mode `640
+  root:pimonitor` by `install.sh`; alternatively set `PIMONITOR_API_KEY`,
+  which systemd can load from an `EnvironmentFile=` with equally restricted
+  permissions. The `-api-key` flag is a development convenience only: a
+  process's command line is world-readable via `/proc/<pid>/cmdline`, so a
+  key passed that way is exposed to every local user on the machine.
 - Shell-outs (`apt list --upgradable`, optional `vcgencmd measure_temp`) are
   invoked with fixed argument lists (no user input is interpolated into
   shell commands), to avoid command injection.
