@@ -330,6 +330,7 @@ func (c *Collector) fastTick(ctx context.Context) {
 	c.memHist.Add(HistoryPoint{Timestamp: now, Value: mem.UsedPercent})
 	c.swapHist.Add(HistoryPoint{Timestamp: now, Value: swap.UsedPercent})
 
+	diskKeys := make(map[string]struct{}, len(disks))
 	for _, d := range disks {
 		rb, ok := c.diskHist[d.Mountpoint]
 		if !ok {
@@ -337,7 +338,9 @@ func (c *Collector) fastTick(ctx context.Context) {
 			c.diskHist[d.Mountpoint] = rb
 		}
 		rb.Add(HistoryPoint{Timestamp: now, Value: d.UsedPercent})
+		diskKeys[d.Mountpoint] = struct{}{}
 	}
+	netKeys := make(map[string]struct{}, len(netIfaces))
 	for _, n := range netIfaces {
 		rxRB, ok := c.rxHist[n.Name]
 		if !ok {
@@ -352,7 +355,21 @@ func (c *Collector) fastTick(ctx context.Context) {
 			c.txHist[n.Name] = txRB
 		}
 		txRB.Add(HistoryPoint{Timestamp: now, Value: n.TxBytesPerSec})
+		netKeys[n.Name] = struct{}{}
 	}
+
+	// Drop per-device series for mountpoints/interfaces that have vanished
+	// (unplugged USB drive, torn-down veth interface, ...), or diskHist/
+	// rxHist/txHist would otherwise grow without bound as devices churn. A
+	// device is only evicted once its *newest* sample falls outside the
+	// retained history window, not merely for being absent from this single
+	// tick: DiskCollector.Collect already skips mountpoints that fail to
+	// stat, so a device missing for one tick must keep its history rather
+	// than losing it immediately.
+	historyWindow := c.cfg.FastInterval * time.Duration(c.cfg.HistoryCapacity)
+	evictStaleSeries(c.diskHist, diskKeys, now, historyWindow)
+	evictStaleSeries(c.rxHist, netKeys, now, historyWindow)
+	evictStaleSeries(c.txHist, netKeys, now, historyWindow)
 
 	// Evaluate the freshly collected values against the alert thresholds.
 	// The engine has its own lock and never calls back into the collector,
@@ -392,6 +409,24 @@ func (c *Collector) Alerts() alert.Report {
 		return alert.Report{Enabled: false}
 	}
 	return c.alerts.Report()
+}
+
+// evictStaleSeries deletes entries from hist whose key is not in current
+// and whose newest sample is older than window. window <= 0 disables
+// eviction (no history window configured to measure staleness against).
+func evictStaleSeries(hist map[string]*RingBuffer[HistoryPoint], current map[string]struct{}, now time.Time, window time.Duration) {
+	if window <= 0 {
+		return
+	}
+	for key, rb := range hist {
+		if _, ok := current[key]; ok {
+			continue
+		}
+		newest, ok := rb.Newest()
+		if !ok || now.Sub(newest.Timestamp) > window {
+			delete(hist, key)
+		}
+	}
 }
 
 func (c *Collector) slowTick(ctx context.Context) {

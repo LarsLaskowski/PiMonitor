@@ -175,6 +175,54 @@ func TestCollector_Alerts_EvaluatedOnFastTick(t *testing.T) {
 	}
 }
 
+func TestCollector_History_EvictsStaleDeviceSeries(t *testing.T) {
+	c := New(Config{
+		FastInterval:    time.Second,
+		SlowInterval:    time.Minute,
+		HistoryCapacity: 3, // history window = 3s
+	}, nil)
+	window := c.cfg.FastInterval * time.Duration(c.cfg.HistoryCapacity)
+
+	base := time.Unix(1_700_000_000, 0)
+
+	// tick simulates one fastTick's disk bookkeeping: add a sample for
+	// every key in present, then evict devices missing for longer than the
+	// history window.
+	tick := func(now time.Time, present map[string]struct{}) {
+		for key := range present {
+			rb, ok := c.diskHist[key]
+			if !ok {
+				rb = NewRingBuffer[HistoryPoint](c.cfg.HistoryCapacity)
+				c.diskHist[key] = rb
+			}
+			rb.Add(HistoryPoint{Timestamp: now, Value: 1})
+		}
+		evictStaleSeries(c.diskHist, present, now, window)
+	}
+
+	// Both devices present for the first tick.
+	tick(base, map[string]struct{}{"/mnt/usb": {}, "/mnt/flaky": {}})
+
+	// /mnt/flaky misses a single tick (e.g. a transient stat error) one
+	// second later; it must keep its history.
+	tick(base.Add(time.Second), map[string]struct{}{"/mnt/usb": {}})
+	if _, ok := c.History().DiskUsedPercent["/mnt/flaky"]; !ok {
+		t.Fatal("expected device missing for a single tick to keep its history")
+	}
+
+	// Time advances well past the history window with /mnt/flaky still
+	// absent (e.g. the USB drive was unplugged for good).
+	tick(base.Add(window+time.Second), map[string]struct{}{"/mnt/usb": {}})
+
+	hist := c.History()
+	if _, ok := hist.DiskUsedPercent["/mnt/flaky"]; ok {
+		t.Fatal("expected stale device series to be evicted once its newest sample exceeds the history window")
+	}
+	if _, ok := hist.DiskUsedPercent["/mnt/usb"]; !ok {
+		t.Fatal("expected continuously present device to be unaffected by eviction")
+	}
+}
+
 func TestCollector_Run_StopsOnContextCancel(t *testing.T) {
 	c := New(Config{
 		FastInterval:    10 * time.Millisecond,
