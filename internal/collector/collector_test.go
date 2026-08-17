@@ -266,7 +266,7 @@ func TestCollector_FastTick_KeepsRecentlyMissingDeviceSeries(t *testing.T) {
 	c := New(Config{
 		FastInterval:    time.Second,
 		SlowInterval:    time.Minute,
-		HistoryCapacity: 3600, // history window = 1h, far beyond any single tick's duration
+		HistoryCapacity: 3, // history window = 3s
 		NetworkEnabled:  true,
 	}, nil)
 
