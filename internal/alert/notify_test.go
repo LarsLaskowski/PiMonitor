@@ -355,6 +355,61 @@ func TestNotifier_RateLimitIsPerMetric(t *testing.T) {
 	}
 }
 
+// A delivery that fails all retries must not be treated as "sent" for rate
+// limiting purposes: the next firing of the same metric, even inside the
+// rate-limit window, must still be delivered once the endpoint recovers
+// (regression test for #62).
+func TestNotifier_RateLimitDoesNotCountFailedDelivery(t *testing.T) {
+	var failing atomic.Bool
+	failing.Store(true)
+	ch := make(chan receivedRequest, 16)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		if failing.Load() {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		ch <- receivedRequest{body: body, contentType: r.Header.Get("Content-Type")}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	n, err := NewNotifier(config.Alerts{
+		Webhooks:                  []config.Webhook{{URL: srv.URL}},
+		NotifyMinIntervalSeconds:  60,
+		NotifyMaxRetries:          0,
+		NotifyRetryBackoffSeconds: 0.001,
+	}, nil)
+	if err != nil {
+		t.Fatalf("NewNotifier: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	n.Start(ctx)
+
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	n.Notify([]Event{firedEvent(base)})
+
+	// The first delivery fails; no request is ever pushed onto ch for it, so
+	// give the worker time to exhaust its (zero) retries before proceeding.
+	time.Sleep(50 * time.Millisecond)
+
+	// The endpoint recovers, and a second firing of the same metric arrives
+	// 1s later — deep inside the 60s rate-limit window. Because the first
+	// delivery failed, this one must still go out.
+	failing.Store(false)
+	n.Notify([]Event{firedEvent(base.Add(time.Second))})
+
+	req := waitForRequest(t, ch)
+	var got eventView
+	if err := json.Unmarshal(req.body, &got); err != nil {
+		t.Fatalf("bad payload: %v", err)
+	}
+	if !got.At.Equal(base.Add(time.Second)) {
+		t.Fatalf("expected the second firing delivered after the first failed, got %+v", got)
+	}
+}
+
 func TestEventReaches(t *testing.T) {
 	cases := []struct {
 		name string
