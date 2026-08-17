@@ -264,8 +264,16 @@ same warn/crit cutoffs the server-side alert engine evaluates against (`>=`), an
 ## Configuration (`internal/config`)
 
 `config.Load` resolves `Config` in strictly increasing precedence: **built-in defaults**
-(`Default()`) → **optional YAML file** (`-config`) → **CLI flags** (`-listen`,
-`-log-level`, `-api-key`). YAML decoding uses `KnownFields(true)`, so an unrecognized key
+(`Default()`) → **optional YAML file** (`-config`) → **environment**
+(`PIMONITOR_API_KEY`) → **CLI flags** (`-listen`, `-log-level`, `-api-key`). The
+environment layer exists only for the API key: the `-api-key` flag leaks the secret into
+the process list (`/proc/<pid>/cmdline` is world-readable), whereas `PIMONITOR_API_KEY`
+can be delivered by systemd's `EnvironmentFile=` from a root-only file, and the config
+file itself is kept at mode `640 root:pimonitor` by `install.sh`. An unset *or empty*
+`PIMONITOR_API_KEY` changes nothing, mirroring the empty-flag default, so exporting it
+blank cannot accidentally turn off an `api_key` set in the file. `Load` delegates to an
+unexported `load(args, lookupEnv)` so the precedence rules are testable without mutating
+the process environment. YAML decoding uses `KnownFields(true)`, so an unrecognized key
 (e.g. a typo like `api_kay`) fails config loading outright at startup instead of silently
 falling back to a default that could be security-relevant (e.g. no authentication because
 the intended `api_key` was never actually applied).

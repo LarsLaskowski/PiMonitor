@@ -396,6 +396,14 @@ or CLI flags (`-listen`, `-log-level`, `-api-key`, `-config`, `-version`).
 Flags take precedence over the config file, which takes precedence over
 built-in defaults.
 
+The API key additionally reads the `PIMONITOR_API_KEY` environment variable,
+which sits between the config file and the flags in precedence. Set the key
+via `api_key` in the config file (kept at mode `640 root:pimonitor` by the
+installer), or via `PIMONITOR_API_KEY` from a systemd `EnvironmentFile=` with
+the same restricted permissions. **The `-api-key` flag is for local
+development only** — command lines are world-readable through
+`/proc/<pid>/cmdline`, so any local user could read the key.
+
 ## Development
 
 See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for how the system is put together
