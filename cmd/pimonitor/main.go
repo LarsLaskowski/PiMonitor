@@ -47,6 +47,9 @@ func run(args []string) error {
 	if err != nil {
 		return fmt.Errorf("configure alert webhooks: %w", err)
 	}
+	if notifier != nil && !cfg.Alerts.Enabled {
+		log.Warn("alert webhooks configured but alerts.enabled is false — no notifications will be sent")
+	}
 
 	collCfg := collector.Config{
 		FastInterval:          cfg.FastInterval(),

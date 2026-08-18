@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/larslaskowski/pimonitor/internal/alert"
 	"github.com/larslaskowski/pimonitor/internal/config"
 )
 
@@ -172,6 +173,33 @@ func TestCollector_Alerts_EvaluatedOnFastTick(t *testing.T) {
 	}
 	if !haveCPU || !haveMemory || !haveSwap {
 		t.Fatalf("expected cpu, memory, and swap alert states, got %+v", report.States)
+	}
+}
+
+// TestCollector_Notifier_NotWiredWhenAlertsDisabled ensures a notifier built
+// from configured webhooks is never wired in while the alert engine is
+// disabled, since a disabled engine never produces events to deliver.
+func TestCollector_Notifier_NotWiredWhenAlertsDisabled(t *testing.T) {
+	notifier, err := alert.NewNotifier(config.Alerts{
+		Webhooks: []config.Webhook{{URL: "http://example.invalid/webhook"}},
+	}, nil)
+	if err != nil {
+		t.Fatalf("NewNotifier: %v", err)
+	}
+	if notifier == nil {
+		t.Fatal("expected a non-nil notifier for a configured webhook")
+	}
+
+	c := New(Config{
+		FastInterval:    time.Second,
+		SlowInterval:    time.Minute,
+		HistoryCapacity: 10,
+		AlertsEnabled:   false,
+		Notifier:        notifier,
+	}, nil)
+
+	if c.notifier != nil {
+		t.Fatal("expected notifier to stay unwired when AlertsEnabled is false")
 	}
 }
 

@@ -92,7 +92,9 @@ type Collector struct {
 
 	// alerts is nil when alerting is disabled.
 	alerts *alert.Engine
-	// notifier is nil when no webhooks are configured.
+	// notifier is nil when no webhooks are configured, or when alerting is
+	// disabled (a disabled engine never produces events, so starting the
+	// worker would only leave it idling forever).
 	notifier *alert.Notifier
 
 	log *slog.Logger
@@ -124,13 +126,15 @@ func New(cfg Config, log *slog.Logger) *Collector {
 		log = slog.Default()
 	}
 	var alerts *alert.Engine
+	var notifier *alert.Notifier
 	if cfg.AlertsEnabled {
 		alerts = alert.New(cfg.Thresholds, cfg.AlertFor)
+		notifier = cfg.Notifier
 	}
 	c := &Collector{
 		cfg:       cfg,
 		alerts:    alerts,
-		notifier:  cfg.Notifier,
+		notifier:  notifier,
 		cpu:       NewCPUCollector(),
 		cpuFreq:   NewCPUFreqCollector(),
 		loadAvg:   NewLoadAvgCollector(),
