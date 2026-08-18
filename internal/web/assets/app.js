@@ -218,7 +218,7 @@
 
     // Temperature
     const tempEl = document.getElementById('temp-value');
-    if (snap.temperature?.celsius) {
+    if (snap.temperature?.zone) {
       setText('temp-value', snap.temperature.celsius.toFixed(1) + ' °C');
       tempEl.className = 'metric-value ' + levelClass(snap.temperature.celsius, t.temperature_warn_c, t.temperature_crit_c);
     } else {
