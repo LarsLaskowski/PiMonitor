@@ -3,6 +3,8 @@ package alert
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -430,4 +432,151 @@ func TestEventReaches(t *testing.T) {
 			}
 		})
 	}
+}
+
+// A permanent client error (e.g. 404 from a revoked webhook URL) must not be
+// retried: re-POSTing the identical body cannot change the answer, and the
+// retry budget would only delay this webhook's remaining events
+// (regression test for #63).
+func TestNotifier_DoesNotRetryPermanentClientError(t *testing.T) {
+	var attempts int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&attempts, 1)
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	n, err := NewNotifier(config.Alerts{
+		Webhooks:                  []config.Webhook{{URL: srv.URL}},
+		NotifyMaxRetries:          3,
+		NotifyRetryBackoffSeconds: 0.001,
+	}, nil)
+	if err != nil {
+		t.Fatalf("NewNotifier: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	n.Start(ctx)
+
+	n.Notify([]Event{firedEvent(time.Now())})
+
+	// Give the worker ample time to run any retries it might (wrongly) attempt.
+	time.Sleep(100 * time.Millisecond)
+	if got := atomic.LoadInt32(&attempts); got != 1 {
+		t.Fatalf("expected exactly 1 attempt for a 404, got %d", got)
+	}
+}
+
+// 429 Too Many Requests explicitly invites a retry, so unlike other 4xx it
+// must still consume the retry budget.
+func TestNotifier_RetriesRetryableClientError(t *testing.T) {
+	var attempts int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&attempts, 1)
+		w.WriteHeader(http.StatusTooManyRequests)
+	}))
+	defer srv.Close()
+
+	n, err := NewNotifier(config.Alerts{
+		Webhooks:                  []config.Webhook{{URL: srv.URL}},
+		NotifyMaxRetries:          2,
+		NotifyRetryBackoffSeconds: 0.001,
+	}, nil)
+	if err != nil {
+		t.Fatalf("NewNotifier: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	n.Start(ctx)
+
+	n.Notify([]Event{firedEvent(time.Now())})
+
+	deadline := time.After(2 * time.Second)
+	for atomic.LoadInt32(&attempts) < 3 {
+		select {
+		case <-deadline:
+			t.Fatalf("expected 3 attempts (1 + 2 retries) for a 429, got %d", atomic.LoadInt32(&attempts))
+		case <-time.After(time.Millisecond):
+		}
+	}
+}
+
+func TestRetryable(t *testing.T) {
+	cases := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{"transport error", errors.New("connection refused"), true},
+		{"400 bad request", &statusError{code: http.StatusBadRequest}, false},
+		{"404 not found", &statusError{code: http.StatusNotFound}, false},
+		{"410 gone", &statusError{code: http.StatusGone}, false},
+		{"408 request timeout", &statusError{code: http.StatusRequestTimeout}, true},
+		{"429 too many requests", &statusError{code: http.StatusTooManyRequests}, true},
+		{"500 internal server error", &statusError{code: http.StatusInternalServerError}, true},
+		{"503 service unavailable", &statusError{code: http.StatusServiceUnavailable}, true},
+		{"304 not modified", &statusError{code: http.StatusNotModified}, true},
+		{"wrapped 403", fmt.Errorf("post failed: %w", &statusError{code: http.StatusForbidden}), false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := retryable(c.err); got != c.want {
+				t.Fatalf("retryable(%v) = %v, want %v", c.err, got, c.want)
+			}
+		})
+	}
+}
+
+// A hung webhook must not delay deliveries to the other configured webhooks:
+// each destination drains its own queue on its own goroutine, so a healthy
+// endpoint gets its event while a dead one is still blocked
+// (regression test for #63).
+func TestNotifier_SlowWebhookDoesNotBlockOthers(t *testing.T) {
+	release := make(chan struct{})
+	slow := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		<-release
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer slow.Close()
+	defer close(release)
+
+	fast, ch := newCapturingServer(t, http.StatusOK)
+
+	n, err := NewNotifier(config.Alerts{
+		Webhooks: []config.Webhook{{URL: slow.URL}, {URL: fast.URL}},
+	}, nil)
+	if err != nil {
+		t.Fatalf("NewNotifier: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	n.Start(ctx)
+
+	n.Notify([]Event{firedEvent(time.Now())})
+
+	// The fast webhook must be delivered while the slow one is still hanging.
+	waitForRequest(t, ch)
+}
+
+// Rate-limit state is per webhook, so a delivery to one destination must not
+// suppress the same event on another.
+func TestNotifier_RateLimitStateIsPerWebhook(t *testing.T) {
+	first, ch1 := newCapturingServer(t, http.StatusOK)
+	second, ch2 := newCapturingServer(t, http.StatusOK)
+
+	n, err := NewNotifier(config.Alerts{
+		Webhooks:                 []config.Webhook{{URL: first.URL}, {URL: second.URL}},
+		NotifyMinIntervalSeconds: 60,
+	}, nil)
+	if err != nil {
+		t.Fatalf("NewNotifier: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	n.Start(ctx)
+
+	n.Notify([]Event{firedEvent(time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))})
+
+	waitForRequest(t, ch1)
+	waitForRequest(t, ch2)
 }

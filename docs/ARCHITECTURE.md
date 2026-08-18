@@ -176,17 +176,30 @@ so the server-reported alert state always agrees with what the dashboard visuall
 
 `alert.Notifier` POSTs alert transition events to zero or more configured HTTP webhooks
 (Slack, Discord, Home Assistant, ntfy, or any endpoint accepting a JSON/templated body).
-Delivery is fully decoupled from collection: `Notify` only enqueues events onto a bounded
-channel (`defaultNotifyQueueSize` = 256) and returns immediately; a single background
-worker goroutine (`Start`/`dispatch`) drains the queue and performs the actual (retrying,
-potentially slow) HTTP calls. This guarantees a hung or failing webhook endpoint can never
-stall the collector's fast tick — if the queue fills up (a persistent backlog of slow
-deliveries), further events are dropped with a logged warning rather than blocking.
+Delivery is fully decoupled from collection: `Notify` only enqueues events and returns
+immediately; background worker goroutines (`Start`/`dispatch`) drain the queues and
+perform the actual (retrying, potentially slow) HTTP calls. This guarantees a hung or
+failing webhook endpoint can never stall the collector's fast tick — if a queue fills up
+(a persistent backlog of slow deliveries), further events are dropped with a logged
+warning rather than blocking.
+
+**Each webhook gets its own bounded queue (`defaultNotifyQueueSize` = 256) and its own
+worker** (`webhookWorker`). Delivery to one destination is therefore never held up by
+another: a webhook pointing at a dead host can only delay — and only ever drop — its own
+events. `Notify` applies the severity filter inline (it is pure and cheap) and fans the
+event out onto the queue of every webhook it reaches.
 
 Per-webhook behavior: a severity filter (`min_level`), an optional
 `text/template`-rendered body (defaulting to a fixed JSON payload when unset), retry with
-exponential backoff up to `notify_max_retries`, and a per-`(url, metric, resource)`
-rate limiter (`notify_min_interval_seconds`) that coalesces repeated firings. `cleared`
+exponential backoff up to `notify_max_retries`, and a per-`(metric, resource)`
+rate limiter (`notify_min_interval_seconds`) that coalesces repeated firings.
+
+**Only retryable failures consume the retry budget.** Transport errors (DNS, refused
+connections, timeouts) and 5xx responses are transient, as are `408 Request Timeout` and
+`429 Too Many Requests`, which explicitly invite a retry. Every other 4xx is a permanent
+rejection of that exact request — a revoked webhook URL, a malformed payload — so
+`deliver` gives up after the first attempt instead of re-POSTing an identical body that
+cannot succeed. `cleared`
 events deliberately bypass the rate limiter — a recovery signal must always reach a
 state-based consumer (e.g. a Home Assistant `binary_sensor`) so it can never get stuck
 reporting an alert that has actually cleared; only repeated *firings* are coalesced.
