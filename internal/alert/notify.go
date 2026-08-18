@@ -3,10 +3,15 @@ package alert
 // notify.go delivers alert transition events to configured HTTP webhooks.
 //
 // Delivery is fully decoupled from metric collection: Notify only enqueues
-// events onto a bounded channel and returns immediately, and a single
-// background worker drains the queue and performs the (potentially slow,
-// retrying) HTTP POSTs. This guarantees that a hung or failing webhook can
-// never block the collector's fast tick.
+// events onto bounded channels and returns immediately, and background workers
+// drain those queues and perform the (potentially slow, retrying) HTTP POSTs.
+// This guarantees that a hung or failing webhook can never block the
+// collector's fast tick.
+//
+// Each webhook gets its own queue and worker, so a dead or slow endpoint can
+// only delay its own deliveries — it can never head-of-line-block the other
+// webhooks. Attempts that fail with a permanent client error (most 4xx) are
+// not retried at all, since re-POSTing the same body cannot change the answer.
 //
 // A single generic webhook — a URL plus an optional Go text/template body —
 // is enough to target Slack, Discord, Home Assistant, ntfy, and similar
@@ -16,6 +21,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -47,18 +53,27 @@ type webhook struct {
 // with NewNotifier, call Start once to launch its worker, and feed it events
 // via Notify. It is safe for concurrent use.
 type Notifier struct {
-	webhooks    []webhook
+	workers     []*webhookWorker
 	client      *http.Client
 	maxRetries  int
 	backoff     time.Duration
 	minInterval time.Duration
 	log         *slog.Logger
 
-	queue chan Event
-	wg    sync.WaitGroup
+	wg sync.WaitGroup
+}
 
-	// lastSent tracks the last delivery time per webhook URL for rate
-	// limiting. Only the worker goroutine touches it, so it needs no lock.
+// webhookWorker owns everything that belongs to exactly one destination: its
+// resolved config, its own bounded queue, and its rate-limiting state. Giving
+// every webhook a private queue and goroutine is what keeps one unreachable
+// endpoint from delaying deliveries to the healthy ones.
+type webhookWorker struct {
+	wh    webhook
+	queue chan Event
+
+	// lastSent tracks the last delivery time per (metric, resource) for rate
+	// limiting. Only this webhook's own goroutine touches it, so it needs no
+	// lock.
 	lastSent map[string]time.Time
 }
 
@@ -74,7 +89,7 @@ func NewNotifier(cfg config.Alerts, log *slog.Logger) (*Notifier, error) {
 		log = slog.Default()
 	}
 
-	webhooks := make([]webhook, 0, len(cfg.Webhooks))
+	workers := make([]*webhookWorker, 0, len(cfg.Webhooks))
 	for i, w := range cfg.Webhooks {
 		wh := webhook{
 			url:         w.URL,
@@ -95,18 +110,20 @@ func NewNotifier(cfg config.Alerts, log *slog.Logger) (*Notifier, error) {
 			}
 			wh.tmpl = tmpl
 		}
-		webhooks = append(webhooks, wh)
+		workers = append(workers, &webhookWorker{
+			wh:       wh,
+			queue:    make(chan Event, defaultNotifyQueueSize),
+			lastSent: make(map[string]time.Time),
+		})
 	}
 
 	return &Notifier{
-		webhooks:    webhooks,
+		workers:     workers,
 		client:      &http.Client{},
 		maxRetries:  cfg.NotifyMaxRetries,
 		backoff:     time.Duration(cfg.NotifyRetryBackoffSeconds * float64(time.Second)),
 		minInterval: time.Duration(cfg.NotifyMinIntervalSeconds * float64(time.Second)),
 		log:         log,
-		queue:       make(chan Event, defaultNotifyQueueSize),
-		lastSent:    make(map[string]time.Time),
 	}, nil
 }
 
@@ -121,117 +138,134 @@ func parseMinLevel(s string) Level {
 	}
 }
 
-// Start launches the background delivery worker. It returns immediately; the
-// worker runs until ctx is canceled, at which point in-flight retries stop
-// promptly and any queued-but-undelivered events are dropped. Call Start at
-// most once.
+// Start launches one background delivery worker per configured webhook. It
+// returns immediately; the workers run until ctx is canceled, at which point
+// in-flight retries stop promptly and any queued-but-undelivered events are
+// dropped. Call Start at most once.
 func (n *Notifier) Start(ctx context.Context) {
-	n.wg.Add(1)
-	go func() {
-		defer n.wg.Done()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case ev := <-n.queue:
-				n.dispatch(ctx, ev)
+	for _, w := range n.workers {
+		n.wg.Add(1)
+		go func(w *webhookWorker) {
+			defer n.wg.Done()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case ev := <-w.queue:
+					n.dispatch(ctx, w, ev)
+				}
 			}
-		}
-	}()
+		}(w)
+	}
 }
 
-// Stop waits for the delivery worker to exit. It must be called only after the
-// context passed to Start has been canceled, otherwise it blocks until that
-// happens; any events still queued at cancellation are dropped, since delivery
-// is best-effort. It joins the worker goroutine so a caller can be sure no
-// delivery is still in flight once Stop returns.
+// Stop waits for the delivery workers to exit. It must be called only after
+// the context passed to Start has been canceled, otherwise it blocks until
+// that happens; any events still queued at cancellation are dropped, since
+// delivery is best-effort. It joins the worker goroutines so a caller can be
+// sure no delivery is still in flight once Stop returns.
 func (n *Notifier) Stop() {
 	n.wg.Wait()
 }
 
-// Notify enqueues events for asynchronous delivery. It never blocks: if the
-// queue is full (a backlog of slow deliveries), the event is dropped with a
-// warning rather than stalling the collector.
+// Notify fans each event out onto the queue of every webhook it matches,
+// applying the (cheap, stateless) per-webhook severity filter inline. It never
+// blocks: if a webhook's queue is full (a backlog of slow deliveries to that
+// endpoint), the event is dropped for that webhook with a warning rather than
+// stalling the collector — and only that webhook is affected.
 func (n *Notifier) Notify(events []Event) {
 	for _, ev := range events {
-		select {
-		case n.queue <- ev:
-		default:
-			n.log.Warn("alert notification queue full, dropping event",
-				"metric", ev.Metric, "resource", ev.Resource, "kind", ev.Kind)
+		for _, w := range n.workers {
+			if !eventReaches(ev, w.wh.minLevel) {
+				continue
+			}
+			select {
+			case w.queue <- ev:
+			default:
+				n.log.Warn("alert notification queue full, dropping event",
+					"url", w.wh.url, "metric", ev.Metric, "resource", ev.Resource, "kind", ev.Kind)
+			}
 		}
 	}
 }
 
-// dispatch delivers one event to every webhook it matches, applying the
-// per-webhook severity filter and rate limit.
-func (n *Notifier) dispatch(ctx context.Context, ev Event) {
-	for _, wh := range n.webhooks {
-		if !eventReaches(ev, wh.minLevel) {
-			continue
-		}
-		// cleared events bypass the rate limiter: a recovery signal must
-		// always be delivered so a state-based consumer (e.g. a Home Assistant
-		// binary_sensor) can never get stuck reporting an alert that has
-		// actually cleared. The limiter only coalesces repeated firings.
-		if ev.Kind != KindCleared && n.rateLimited(wh.url, ev) {
-			n.log.Warn("alert notification rate-limited, dropping event",
-				"url", wh.url, "metric", ev.Metric, "resource", ev.Resource, "kind", ev.Kind)
-			continue
-		}
-		body, err := renderBody(wh, ev)
-		if err != nil {
-			n.log.Error("alert notification render failed", "url", wh.url, "error", err)
-			continue
-		}
-		if n.deliver(ctx, wh, body) {
-			n.recordSent(wh.url, ev)
-		}
+// dispatch delivers one event to one webhook, applying that webhook's rate
+// limit. It runs on the webhook's own worker goroutine.
+func (n *Notifier) dispatch(ctx context.Context, w *webhookWorker, ev Event) {
+	// cleared events bypass the rate limiter: a recovery signal must always be
+	// delivered so a state-based consumer (e.g. a Home Assistant
+	// binary_sensor) can never get stuck reporting an alert that has actually
+	// cleared. The limiter only coalesces repeated firings.
+	if ev.Kind != KindCleared && n.rateLimited(w, ev) {
+		n.log.Warn("alert notification rate-limited, dropping event",
+			"url", w.wh.url, "metric", ev.Metric, "resource", ev.Resource, "kind", ev.Kind)
+		return
+	}
+	body, err := renderBody(w.wh, ev)
+	if err != nil {
+		n.log.Error("alert notification render failed", "url", w.wh.url, "error", err)
+		return
+	}
+	if n.deliver(ctx, w.wh, body) {
+		n.recordSent(w, ev)
 	}
 }
 
-// rateLimited reports whether delivering ev to url should be suppressed
-// because the previous successful delivery of the same metric to the same
-// URL was too recent. The rate limit is keyed per (url, metric, resource) so
-// a fast-flapping metric can't flood a webhook, while a distinct metric
-// alerting in the same tick is still delivered. Only firing events reach
-// here (cleared events bypass the limiter in dispatch), so it purely
-// coalesces repeated escalations. The event timestamp (not wall clock) drives
-// the decision so it is deterministic and testable.
-func (n *Notifier) rateLimited(url string, ev Event) bool {
+// rateLimited reports whether delivering ev to w should be suppressed because
+// the previous successful delivery of the same metric to the same webhook was
+// too recent. The state lives on the worker and is keyed per
+// (metric, resource) so a fast-flapping metric can't flood a webhook, while a
+// distinct metric alerting in the same tick is still delivered. Only firing
+// events reach here (cleared events bypass the limiter in dispatch), so it
+// purely coalesces repeated escalations. The event timestamp (not wall clock)
+// drives the decision so it is deterministic and testable.
+func (n *Notifier) rateLimited(w *webhookWorker, ev Event) bool {
 	if n.minInterval <= 0 {
 		return false
 	}
-	key := url + "\x00" + ev.Metric + "\x00" + ev.Resource
-	last, ok := n.lastSent[key]
+	last, ok := w.lastSent[rateLimitKey(ev)]
 	return ok && ev.At.Sub(last) < n.minInterval
 }
 
-// recordSent stamps the last-delivery time for (url, metric, resource) after
-// a successful delivery, so the rate limiter counts deliveries rather than
+// recordSent stamps the last-delivery time for (metric, resource) after a
+// successful delivery, so the rate limiter counts deliveries rather than
 // attempts: a failed delivery must not suppress the next firing.
-func (n *Notifier) recordSent(url string, ev Event) {
+func (n *Notifier) recordSent(w *webhookWorker, ev Event) {
 	if n.minInterval <= 0 {
 		return
 	}
-	key := url + "\x00" + ev.Metric + "\x00" + ev.Resource
-	n.lastSent[key] = ev.At
+	w.lastSent[rateLimitKey(ev)] = ev.At
+}
+
+// rateLimitKey identifies the alert stream an event belongs to within one
+// webhook. The NUL separator keeps metric and resource unambiguous.
+func rateLimitKey(ev Event) string {
+	return ev.Metric + "\x00" + ev.Resource
 }
 
 // deliver POSTs body to a webhook, retrying with exponential backoff on
-// failure until it succeeds, exhausts maxRetries, or ctx is canceled. It
-// reports whether delivery ultimately succeeded, and always returns without
-// panicking so a dead endpoint can't crash the worker.
+// failure until it succeeds, exhausts maxRetries, hits a permanent error, or
+// ctx is canceled. It reports whether delivery ultimately succeeded, and
+// always returns without panicking so a dead endpoint can't crash the worker.
 func (n *Notifier) deliver(ctx context.Context, wh webhook, body []byte) bool {
 	backoff := n.backoff
 	for attempt := 0; ; attempt++ {
-		if err := n.post(ctx, wh, body); err == nil {
+		err := n.post(ctx, wh, body)
+		switch {
+		case err == nil:
 			return true
-		} else if attempt >= n.maxRetries {
+		case !retryable(err):
+			// A rejected request (bad URL, bad payload, revoked webhook) will
+			// be rejected again identically, so burning the retry budget only
+			// delays this webhook's remaining events for no benefit.
+			n.log.Error("alert notification rejected, not retrying",
+				"url", wh.url, "attempts", attempt+1, "error", err)
+			return false
+		case attempt >= n.maxRetries:
 			n.log.Error("alert notification giving up after retries",
 				"url", wh.url, "attempts", attempt+1, "error", err)
 			return false
-		} else {
+		default:
 			n.log.Warn("alert notification delivery failed, will retry",
 				"url", wh.url, "attempt", attempt+1, "error", err)
 		}
@@ -240,6 +274,30 @@ func (n *Notifier) deliver(ctx context.Context, wh webhook, body []byte) bool {
 		}
 		backoff *= 2
 	}
+}
+
+// statusError is a non-2xx webhook response.
+type statusError struct{ code int }
+
+func (e *statusError) Error() string { return fmt.Sprintf("webhook returned status %d", e.code) }
+
+// retryable reports whether a failed delivery attempt is worth repeating.
+// Transport failures (DNS, refused connections, timeouts) are transient by
+// nature, so they always are. HTTP status errors only are when the server
+// might answer differently for an identical request: 5xx (server-side
+// trouble), plus 408 Request Timeout and 429 Too Many Requests, which
+// explicitly invite a retry. Every other 4xx is a permanent rejection of this
+// request.
+func retryable(err error) bool {
+	var se *statusError
+	if !errors.As(err, &se) {
+		return true
+	}
+	switch se.code {
+	case http.StatusRequestTimeout, http.StatusTooManyRequests:
+		return true
+	}
+	return se.code < 400 || se.code >= 500
 }
 
 // post performs a single delivery attempt, returning an error for a transport
@@ -260,7 +318,7 @@ func (n *Notifier) post(ctx context.Context, wh webhook, body []byte) error {
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("webhook returned status %d", resp.StatusCode)
+		return &statusError{code: resp.StatusCode}
 	}
 	return nil
 }
