@@ -47,9 +47,7 @@ func run(args []string) error {
 	if err != nil {
 		return fmt.Errorf("configure alert webhooks: %w", err)
 	}
-	if notifier != nil && !cfg.Alerts.Enabled {
-		log.Warn("alert webhooks configured but alerts.enabled is false — no notifications will be sent")
-	}
+	warnIfNotifierInert(log, cfg.Alerts, notifier)
 
 	collCfg := collector.Config{
 		FastInterval:          cfg.FastInterval(),
@@ -132,6 +130,16 @@ func run(args []string) error {
 		return nil
 	case err := <-serveErr:
 		return err
+	}
+}
+
+// warnIfNotifierInert logs a startup warning when webhooks are configured
+// (notifier is non-nil) but alerts.enabled is false: a disabled alert engine
+// never produces the transition events those webhooks would need, so the
+// combination silently never fires without this hint.
+func warnIfNotifierInert(log *slog.Logger, alerts config.Alerts, notifier *alert.Notifier) {
+	if notifier != nil && !alerts.Enabled {
+		log.Warn("alert webhooks configured but alerts.enabled is false — no notifications will be sent")
 	}
 }
 
