@@ -80,6 +80,29 @@ func TestCollector_Disks_NeverMarshalsAsNull(t *testing.T) {
 	assertDisksMarshalsAsEmptyArray(t, c.Snapshot())
 }
 
+// TestCollector_FastTick_DiskCollectionErrorYieldsEmptyNotNilDisks covers
+// the failed-collection path directly: DiskCollector.Collect returns
+// (nil, err) when /proc/mounts can't be read, and fastTick must still
+// normalize that nil into a non-nil empty slice rather than storing it
+// verbatim.
+func TestCollector_FastTick_DiskCollectionErrorYieldsEmptyNotNilDisks(t *testing.T) {
+	c := newTestCollector()
+	c.disk = &DiskCollector{
+		mountsPath:     "/nonexistent/proc/mounts",
+		excludedFSType: defaultExcludedFSTypes,
+	}
+
+	c.fastTick(context.Background())
+
+	snap := c.Snapshot()
+	if snap.Disks == nil {
+		t.Fatal("expected Snapshot.Disks to be non-nil even when disk collection fails")
+	}
+	if len(snap.Disks) != 0 {
+		t.Fatalf("expected 0 disks after a failed collection, got %d", len(snap.Disks))
+	}
+}
+
 func TestCollector_FastTick_BuildsHistory(t *testing.T) {
 	c := newTestCollector()
 	ctx := context.Background()
