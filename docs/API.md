@@ -37,6 +37,14 @@ key in the browser's `localStorage` and sends it as `X-Api-Key` on every
 request. Setting a key therefore does not disable the dashboard — each
 browser just has to unlock it once.
 
+## Compression
+
+`/api/v1/...` responses are gzip-compressed when the request sends
+`Accept-Encoding: gzip` (the response then carries `Content-Encoding: gzip`
+and `Vary: Accept-Encoding`); the JSON body is unchanged, only its wire
+encoding differs. Requests without that header receive the identity
+(uncompressed) response, so existing clients keep working unmodified.
+
 ## Endpoints
 
 ### `GET /healthz`

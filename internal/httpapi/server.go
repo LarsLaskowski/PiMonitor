@@ -83,10 +83,10 @@ func New(metrics MetricsProvider, cfg Config, staticHandler http.Handler, log *s
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", s.handleHealthz)
-	mux.Handle("GET /api/v1/metrics", s.withAPIKey(http.HandlerFunc(s.handleMetrics)))
-	mux.Handle("GET /api/v1/metrics/history", s.withAPIKey(http.HandlerFunc(s.handleHistory)))
-	mux.Handle("GET /api/v1/alerts", s.withAPIKey(http.HandlerFunc(s.handleAlerts)))
-	mux.Handle("GET /api/v1/config", s.withAPIKey(http.HandlerFunc(s.handleConfig)))
+	mux.Handle("GET /api/v1/metrics", s.withGzip(s.withAPIKey(http.HandlerFunc(s.handleMetrics))))
+	mux.Handle("GET /api/v1/metrics/history", s.withGzip(s.withAPIKey(http.HandlerFunc(s.handleHistory))))
+	mux.Handle("GET /api/v1/alerts", s.withGzip(s.withAPIKey(http.HandlerFunc(s.handleAlerts))))
+	mux.Handle("GET /api/v1/config", s.withGzip(s.withAPIKey(http.HandlerFunc(s.handleConfig))))
 	if staticHandler != nil {
 		mux.Handle("/", staticHandler)
 	}
