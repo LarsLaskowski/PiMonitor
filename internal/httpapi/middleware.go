@@ -1,10 +1,13 @@
 package httpapi
 
 import (
+	"compress/gzip"
 	"crypto/sha256"
 	"crypto/subtle"
+	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -73,6 +76,57 @@ func providedAPIKey(r *http.Request) string {
 		return strings.TrimPrefix(auth, "Bearer ")
 	}
 	return ""
+}
+
+// gzipWriterPool amortizes gzip.Writer allocation across requests: writers
+// are relatively expensive to construct, and the API can be polled every
+// few seconds by the dashboard and third-party integrations alike.
+var gzipWriterPool = sync.Pool{
+	New: func() any {
+		gw, _ := gzip.NewWriterLevel(io.Discard, gzip.BestSpeed)
+		return gw
+	},
+}
+
+// gzipResponseWriter wraps an http.ResponseWriter so that Write goes
+// through a pooled *gzip.Writer instead of straight to the connection.
+// WriteHeader is forwarded unchanged via the embedded ResponseWriter.
+type gzipResponseWriter struct {
+	http.ResponseWriter
+	gw *gzip.Writer
+}
+
+func (w *gzipResponseWriter) Write(b []byte) (int, error) {
+	return w.gw.Write(b)
+}
+
+// withGzip transparently gzip-compresses responses for clients that
+// advertise support via Accept-Encoding. Responses to history/metrics
+// payloads are highly repetitive JSON and compress roughly 10x, which
+// matters on a Pi Zero polled over Wi-Fi. Clients that don't send
+// Accept-Encoding: gzip (naive/older /api/v1 consumers) receive identity
+// responses unchanged, so this is backward compatible.
+func (s *Server) withGzip(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		h := w.Header()
+		h.Set("Content-Encoding", "gzip")
+		h.Set("Vary", "Accept-Encoding")
+		h.Del("Content-Length")
+
+		gw := gzipWriterPool.Get().(*gzip.Writer)
+		gw.Reset(w)
+		defer func() {
+			_ = gw.Close()
+			gzipWriterPool.Put(gw)
+		}()
+
+		next.ServeHTTP(&gzipResponseWriter{ResponseWriter: w, gw: gw}, r)
+	})
 }
 
 // statusRecorder captures the status code written by a downstream
