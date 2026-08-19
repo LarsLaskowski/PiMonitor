@@ -195,7 +195,9 @@ func (c *DiskCollector) Collect() ([]Disk, error) {
 	order, byMountpoint := dedupeMounts(entries)
 
 	now := c.clock()
-	var disks []Disk
+	// Always non-nil (even with zero entries) so Snapshot.Disks marshals as
+	// [] rather than null, matching docs/API.md.
+	disks := make([]Disk, 0, len(order))
 	for _, mp := range order {
 		e := byMountpoint[mp]
 		if c.excludedFSType[e.fstype] {

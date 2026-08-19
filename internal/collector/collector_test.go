@@ -2,6 +2,7 @@ package collector
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -44,6 +45,39 @@ func TestCollector_FastTick_PopulatesSnapshot(t *testing.T) {
 	if snap.System.KernelVersion == "" {
 		t.Fatal("expected KernelVersion to be populated by collectSysInfo")
 	}
+}
+
+// TestCollector_Disks_NeverMarshalsAsNull covers issue #70: docs/API.md
+// documents disks as reading as an empty array before the first fast tick,
+// but a nil []Disk marshals to JSON null, not []. Snapshot.Disks must stay
+// a non-nil (possibly empty) slice both before the first tick and after.
+func TestCollector_Disks_NeverMarshalsAsNull(t *testing.T) {
+	c := newTestCollector()
+
+	assertDisksMarshalsAsEmptyArray := func(t *testing.T, snap Snapshot) {
+		t.Helper()
+		if snap.Disks == nil {
+			t.Fatal("expected Snapshot.Disks to be non-nil")
+		}
+		b, err := json.Marshal(snap)
+		if err != nil {
+			t.Fatalf("json.Marshal: %v", err)
+		}
+		var raw map[string]json.RawMessage
+		if err := json.Unmarshal(b, &raw); err != nil {
+			t.Fatalf("json.Unmarshal: %v", err)
+		}
+		if got := string(raw["disks"]); got == "null" {
+			t.Fatalf(`expected "disks" to marshal as [], got %s`, got)
+		}
+	}
+
+	// Before the first fast tick completes.
+	assertDisksMarshalsAsEmptyArray(t, c.Snapshot())
+
+	// After a tick.
+	c.fastTick(context.Background())
+	assertDisksMarshalsAsEmptyArray(t, c.Snapshot())
 }
 
 func TestCollector_FastTick_BuildsHistory(t *testing.T) {
