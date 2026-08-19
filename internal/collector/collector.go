@@ -132,7 +132,10 @@ func New(cfg Config, log *slog.Logger) *Collector {
 		notifier = cfg.Notifier
 	}
 	c := &Collector{
-		cfg:       cfg,
+		cfg: cfg,
+		// Disks starts as [] rather than nil so it marshals as [] (not
+		// null) before the first fast tick completes, matching docs/API.md.
+		latest:    Snapshot{Disks: []Disk{}},
 		alerts:    alerts,
 		notifier:  notifier,
 		cpu:       NewCPUCollector(),
@@ -365,6 +368,11 @@ func (c *Collector) fastTick(ctx context.Context) {
 	c.latest.Throttled = s.throttled
 	c.latest.Memory = s.mem
 	c.latest.Swap = s.swap
+	if s.disks == nil {
+		// A failed collection (e.g. /proc/mounts unreadable) leaves s.disks
+		// nil; keep Snapshot.Disks marshaling as [] rather than null.
+		s.disks = []Disk{}
+	}
 	c.latest.Disks = s.disks
 	c.latest.Network = s.netIfaces
 

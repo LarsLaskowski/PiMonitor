@@ -263,6 +263,36 @@ func TestDiskCollector_Collect_SkipsFailingStatfs(t *testing.T) {
 	if len(disks) != 0 {
 		t.Fatalf("expected 0 disks when all statfs calls fail, got %d", len(disks))
 	}
+	if disks == nil {
+		t.Fatal("expected non-nil empty slice (marshals as [], not null), got nil")
+	}
+}
+
+func TestDiskCollector_Collect_NoMountsReturnsEmptyNotNilSlice(t *testing.T) {
+	// Only pseudo filesystems, all excluded by default: order/byMountpoint
+	// end up empty, but Collect must still return a non-nil slice so
+	// Snapshot.Disks marshals as [] rather than null (issue #70).
+	fixture := "proc /proc proc rw,nosuid,nodev,noexec,relatime 0 0\n"
+	mountsPath := writeMountsFixture(t, fixture)
+
+	c := &DiskCollector{
+		mountsPath:     mountsPath,
+		excludedFSType: defaultExcludedFSTypes,
+		statfs: func(path string, buf *syscall.Statfs_t) error {
+			return os.ErrNotExist
+		},
+	}
+
+	disks, err := c.Collect()
+	if err != nil {
+		t.Fatalf("Collect: %v", err)
+	}
+	if disks == nil {
+		t.Fatal("expected non-nil empty slice when no mountpoints qualify, got nil")
+	}
+	if len(disks) != 0 {
+		t.Fatalf("expected 0 disks, got %d", len(disks))
+	}
 }
 
 func TestDiskCollector_Collect_HungStatfsTimesOutAndCoolsDown(t *testing.T) {
