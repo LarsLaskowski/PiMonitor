@@ -212,9 +212,9 @@
     setText('cpu-info', lastCPUCount + (lastCPUCount === 1 ? ' core' : ' cores') + (cpuModel ? ' · ' + cpuModel : ''));
 
     // Load average gauges
-    renderGauge('gauge-load1', 'load1-value', snap.load_average.load1);
-    renderGauge('gauge-load5', 'load5-value', snap.load_average.load5);
-    renderGauge('gauge-load15', 'load15-value', snap.load_average.load15);
+    renderGauge('gauge-load1', 'load1-value', snap.load_average.load1, t.cpu_warn_percent, t.cpu_crit_percent);
+    renderGauge('gauge-load5', 'load5-value', snap.load_average.load5, t.cpu_warn_percent, t.cpu_crit_percent);
+    renderGauge('gauge-load15', 'load15-value', snap.load_average.load15, t.cpu_warn_percent, t.cpu_crit_percent);
 
     // Temperature
     const tempEl = document.getElementById('temp-value');
@@ -516,9 +516,9 @@
     });
   }
 
-  function renderGauge(canvasId, valueId, value) {
+  function renderGauge(canvasId, valueId, value, warnPercent, critPercent) {
     const canvas = document.getElementById(canvasId);
-    const cls = levelClass(value, lastCPUCount * 0.7, lastCPUCount * 1.0);
+    const cls = levelClass(value, lastCPUCount * warnPercent / 100, lastCPUCount * critPercent / 100);
     drawGauge(canvas, value, Math.max(lastCPUCount, 1), cls);
     setText(valueId, value.toFixed(2));
   }
