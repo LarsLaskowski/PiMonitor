@@ -102,6 +102,52 @@ func TestTemperatureCollector_Collect(t *testing.T) {
 	}
 }
 
+func TestTemperatureCollector_Collect_WithGPUTemp(t *testing.T) {
+	root := t.TempDir()
+	writeThermalZone(t, root, "thermal_zone0", "cpu-thermal", "50000")
+	scriptDir := t.TempDir()
+	path := writeFakeVcgencmd(t, scriptDir, "fake-vcgencmd", `echo "temp=42.8'C"`)
+
+	c := &TemperatureCollector{
+		zonePath: filepath.Join(root, "thermal_zone0"),
+		zoneType: "cpu-thermal",
+		vcg:      &vcgencmdRunner{detected: true, path: path},
+	}
+	temp, gpuTemp, err := c.Collect(context.Background())
+	if err != nil {
+		t.Fatalf("Collect: %v", err)
+	}
+	if diffFloat(temp.Celsius, 50.0) > 0.001 {
+		t.Fatalf("Celsius = %v, want 50.0", temp.Celsius)
+	}
+	if gpuTemp == nil || diffFloat(gpuTemp.Celsius, 42.8) > 0.001 {
+		t.Fatalf("gpuTemp = %+v, want Celsius=42.8", gpuTemp)
+	}
+}
+
+func TestTemperatureCollector_Collect_VcgencmdExecFails(t *testing.T) {
+	root := t.TempDir()
+	writeThermalZone(t, root, "thermal_zone0", "cpu-thermal", "50000")
+	scriptDir := t.TempDir()
+	path := writeFakeVcgencmd(t, scriptDir, "fake-vcgencmd", "exit 1")
+
+	c := &TemperatureCollector{
+		zonePath: filepath.Join(root, "thermal_zone0"),
+		zoneType: "cpu-thermal",
+		vcg:      &vcgencmdRunner{detected: true, path: path},
+	}
+	temp, gpuTemp, err := c.Collect(context.Background())
+	if err != nil {
+		t.Fatalf("Collect: %v", err)
+	}
+	if diffFloat(temp.Celsius, 50.0) > 0.001 {
+		t.Fatalf("Celsius = %v, want 50.0", temp.Celsius)
+	}
+	if gpuTemp != nil {
+		t.Fatalf("expected no GPU temp when vcgencmd exec fails, got %+v", gpuTemp)
+	}
+}
+
 func TestTemperatureCollector_Collect_NoZoneDetected(t *testing.T) {
 	c := &TemperatureCollector{}
 	if _, _, err := c.Collect(context.Background()); err == nil {
