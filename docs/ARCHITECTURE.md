@@ -125,6 +125,18 @@ points per series so a corrupt or malicious file cannot trigger an oversized all
 - **Written**: on every `slowTick` (i.e. every `updates_check_minutes`) and once more on
   clean shutdown (`ctx.Done()` in `Run`), so a clean stop loses at most the points
   collected since the last fast tick.
+- **Written asynchronously**: `persistHistory` snapshots `Collector.History()` on the
+  calling goroutine (a consistent point-in-time view), then hands the encode-and-write off
+  to a background goroutine tracked by `Collector.persistWG`. On a Pi the atomic write's
+  `fsync` can stall the SD card for hundreds of milliseconds, and `Run`'s `time.Ticker`
+  drops rather than queues any fast tick that falls due meanwhile — running the write
+  inline on the tick goroutine would silently punch a hole in the very history being
+  persisted. A buffered try-lock (`Collector.persisting`) skips — rather than queues — a
+  flush while a previous write is still in flight, since the next flush writes newer data
+  anyway. `Run`'s `ctx.Done()` branch calls `persistWG.Wait()` after the final
+  `persistHistory()` so the last flush is guaranteed to land before `Run` returns; this is
+  bounded by `cmd/pimonitor/main.go`'s shutdown context (it selects on `collDone` vs.
+  `shutdownCtx.Done()`), so a stuck fsync cannot hang the process.
 - **Written atomically**: `writeFileAtomic` writes to a temp file in the same directory,
   `fsync`s it, then renames it over the target path — a crash mid-write can never leave a
   partially written history file behind.
