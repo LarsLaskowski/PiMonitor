@@ -90,13 +90,15 @@ func TestParseThrottled_Malformed(t *testing.T) {
 }
 
 func TestThrottledCollector_Collect_NoVcgencmd(t *testing.T) {
-	// A collector that has never found vcgencmd (and whose throttled
+	// A collector whose vcg runner has never found vcgencmd (and whose
 	// re-detection window has not elapsed) must report no reading rather
 	// than failing, so the throttled object is simply omitted off-Pi.
 	now := time.Unix(1_700_000_000, 0)
 	c := &ThrottledCollector{
-		now:                func() time.Time { return now },
-		lastVcgencmdDetect: now, // suppress the LookPath retry in this test
+		vcg: &vcgencmdRunner{
+			now:        func() time.Time { return now },
+			lastDetect: now, // suppress the LookPath retry in this test
+		},
 	}
 	got, err := c.Collect(context.Background())
 	if err != nil {
@@ -104,5 +106,20 @@ func TestThrottledCollector_Collect_NoVcgencmd(t *testing.T) {
 	}
 	if got != nil {
 		t.Fatalf("expected no throttled reading without vcgencmd, got %+v", got)
+	}
+}
+
+func TestThrottledCollector_Collect_NilRunner(t *testing.T) {
+	// A collector with no vcg runner at all (vcgencmd disabled for this
+	// collector) must also degrade to no reading rather than panicking.
+	c := &ThrottledCollector{}
+
+	got, err := c.Collect(context.Background())
+
+	if err != nil {
+		t.Fatalf("Collect: %v", err)
+	}
+	if got != nil {
+		t.Fatalf("expected no throttled reading with nil vcg runner, got %+v", got)
 	}
 }

@@ -115,9 +115,9 @@ func TestTemperatureCollector_Collect_RedetectsZone(t *testing.T) {
 
 	now := time.Unix(1_700_000_000, 0)
 	c := &TemperatureCollector{
-		zoneGlob:         glob,
-		now:              func() time.Time { return now },
-		vcgencmdDetected: true, // skip vcgencmd lookup in this test
+		zoneGlob: glob,
+		now:      func() time.Time { return now },
+		// vcg left nil: skips vcgencmd entirely for this test.
 	}
 
 	// No zone exists yet: Collect must fail.
@@ -151,9 +151,9 @@ func TestTemperatureCollector_Collect_RedetectsAfterZoneVanishes(t *testing.T) {
 
 	now := time.Unix(1_700_000_000, 0)
 	c := &TemperatureCollector{
-		zoneGlob:         glob,
-		now:              func() time.Time { return now },
-		vcgencmdDetected: true, // skip vcgencmd lookup in this test
+		zoneGlob: glob,
+		now:      func() time.Time { return now },
+		// vcg left nil: skips vcgencmd entirely for this test.
 	}
 
 	// A zone exists at first and is cached by Collect.
