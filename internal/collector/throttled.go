@@ -2,12 +2,10 @@ package collector
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"os/exec"
 	"strconv"
 	"strings"
-	"sync"
-	"time"
 )
 
 // Bit positions in the bitmask reported by `vcgencmd get_throttled`. The
@@ -31,70 +29,39 @@ const (
 // systems without vcgencmd (e.g. development machines) it degrades to no
 // reading rather than failing.
 //
-// The vcgencmd path is resolved lazily and re-resolved (throttled to at most
-// once per detectRetryInterval) while it is still missing, mirroring
-// TemperatureCollector, so a firmware tool that appears after startup is
-// picked up without restarting the collector.
+// vcgencmd detection/execution is delegated to a vcgencmdRunner shared with
+// TemperatureCollector, so the lazy detection/re-detection logic and the
+// exec.LookPath("vcgencmd") call both live and run in one place rather than
+// being duplicated per collector.
 type ThrottledCollector struct {
-	mu                 sync.Mutex
-	now                func() time.Time
-	vcgencmdPath       string // empty if vcgencmd is not available
-	vcgencmdDetected   bool   // whether a vcgencmd lookup has ever succeeded
-	lastVcgencmdDetect time.Time
+	vcg *vcgencmdRunner // nil disables collection entirely
 }
 
-// NewThrottledCollector checks whether vcgencmd is available. A missing
-// vcgencmd is not fatal: Collect simply returns no reading until vcgencmd
-// appears (re-detection is retried at most once per detectRetryInterval).
-func NewThrottledCollector() *ThrottledCollector {
-	c := &ThrottledCollector{now: time.Now}
-	c.redetectVcgencmdLocked()
-	return c
+// NewThrottledCollector wraps vcg, the vcgencmd runner shared with
+// TemperatureCollector. A missing vcgencmd is not fatal: Collect simply
+// returns no reading until vcgencmd appears (re-detection is retried by vcg
+// at most once per detectRetryInterval). Pass nil to disable collection.
+func NewThrottledCollector(vcg *vcgencmdRunner) *ThrottledCollector {
+	return &ThrottledCollector{vcg: vcg}
 }
 
-// redetectVcgencmdLocked retries exec.LookPath("vcgencmd") if it has never
-// been found, throttled to at most once per detectRetryInterval. Caller must
-// hold c.mu (the constructor is single-threaded, so it also qualifies).
-func (c *ThrottledCollector) redetectVcgencmdLocked() {
-	if c.vcgencmdDetected {
-		return
-	}
-	now := c.now()
-	if !c.lastVcgencmdDetect.IsZero() && now.Sub(c.lastVcgencmdDetect) < detectRetryInterval {
-		return
-	}
-	c.lastVcgencmdDetect = now
-	if path, err := exec.LookPath("vcgencmd"); err == nil {
-		c.vcgencmdPath = path
-		c.vcgencmdDetected = true
-	}
-}
-
-// Collect runs `vcgencmd get_throttled` and decodes the bitmask. It returns
-// (nil, nil) when vcgencmd is not available, so the throttled object is
-// simply omitted from the snapshot off-Pi.
+// Collect runs `vcgencmd get_throttled` (via the shared vcg runner) and
+// decodes the bitmask. It returns (nil, nil) when vcgencmd is not
+// available, so the throttled object is simply omitted from the snapshot
+// off-Pi.
 func (c *ThrottledCollector) Collect(ctx context.Context) (*Throttled, error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	// Collectors built as struct literals in tests may not set the clock.
-	if c.now == nil {
-		c.now = time.Now
-	}
-
-	c.redetectVcgencmdLocked()
-	if c.vcgencmdPath == "" {
+	if c.vcg == nil {
 		return nil, nil
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-
-	out, err := exec.CommandContext(ctx, c.vcgencmdPath, "get_throttled").Output()
+	out, err := c.vcg.run(ctx, "get_throttled")
 	if err != nil {
-		return nil, fmt.Errorf("run vcgencmd get_throttled: %w", err)
+		if errors.Is(err, errVcgencmdUnavailable) {
+			return nil, nil
+		}
+		return nil, err
 	}
-	t, err := parseThrottled(string(out))
+	t, err := parseThrottled(out)
 	if err != nil {
 		return nil, err
 	}

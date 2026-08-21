@@ -131,6 +131,10 @@ func New(cfg Config, log *slog.Logger) *Collector {
 		alerts = alert.New(cfg.Thresholds, cfg.AlertFor)
 		notifier = cfg.Notifier
 	}
+	// TemperatureCollector and ThrottledCollector both shell out to
+	// vcgencmd; sharing one runner means vcgencmd is detected once instead
+	// of once per collector.
+	vcg := newVcgencmdRunner(time.Now)
 	c := &Collector{
 		cfg: cfg,
 		// Disks starts as [] rather than nil so it marshals as [] (not
@@ -144,8 +148,8 @@ func New(cfg Config, log *slog.Logger) *Collector {
 		memory:    NewMemoryCollector(),
 		disk:      NewDiskCollector(),
 		network:   NewNetworkCollector(),
-		temp:      NewTemperatureCollector(),
-		throttled: NewThrottledCollector(),
+		temp:      NewTemperatureCollector(vcg),
+		throttled: NewThrottledCollector(vcg),
 		sysInfo:   NewSysInfoCollector(),
 		updates:   NewUpdatesCollector(cfg.UpdatesStaleThreshold),
 		uptime:    NewUptimeCollector(),
