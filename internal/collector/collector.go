@@ -118,6 +118,18 @@ type Collector struct {
 	diskHist map[string]*RingBuffer[HistoryPoint]
 	rxHist   map[string]*RingBuffer[HistoryPoint]
 	txHist   map[string]*RingBuffer[HistoryPoint]
+
+	// persistWG tracks in-flight persistHistory writes so Run's ctx.Done()
+	// branch can wait for the final flush before returning.
+	persistWG sync.WaitGroup
+	// persisting is a buffered try-lock (capacity 1): a successful send means
+	// no write is currently in flight. Used to skip an overlapping flush
+	// rather than queue it, since the next flush writes newer data anyway.
+	persisting chan struct{}
+	// writeFile performs the atomic write persistHistory hands off to a
+	// background goroutine. Defaults to writeFileAtomic; overridable in
+	// tests to control write timing without touching real disk I/O.
+	writeFile func(path string, data []byte) error
 }
 
 // New creates a Collector wired to the standard Linux metric sources.
@@ -164,6 +176,9 @@ func New(cfg Config, log *slog.Logger) *Collector {
 		diskHist:  make(map[string]*RingBuffer[HistoryPoint]),
 		rxHist:    make(map[string]*RingBuffer[HistoryPoint]),
 		txHist:    make(map[string]*RingBuffer[HistoryPoint]),
+
+		persisting: make(chan struct{}, 1),
+		writeFile:  writeFileAtomic,
 	}
 	c.fastInterval = c.clampInterval(cfg.FastInterval, "FastInterval")
 	return c
@@ -199,8 +214,13 @@ func (c *Collector) Run(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			// Final flush so a clean shutdown (e.g. reboot for updates)
-			// loses at most the points since the last fast tick.
+			// loses at most the points since the last fast tick. persistHistory
+			// hands the write off to a background goroutine, so wait for it
+			// (and any still-running flush from the last slowTick) before
+			// returning: cmd/pimonitor/main.go bounds this by its shutdown
+			// context, so a stuck fsync cannot hang the process.
 			c.persistHistory()
+			c.persistWG.Wait()
 			return
 		case <-fastTicker.C:
 			c.fastTick(ctx)
