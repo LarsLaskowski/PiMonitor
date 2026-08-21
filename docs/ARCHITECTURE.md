@@ -249,12 +249,20 @@ server-side; it also echoes back the build-time `version` injected via
 
 ## Web dashboard (`internal/web`)
 
-`web.Handler()` embeds `internal/web/assets/*` (`index.html`, `app.js`, `chart.js`,
+`web.Handler(version)` embeds `internal/web/assets/*` (`index.html`, `app.js`, `chart.js`,
 `gauge.js`, `theme-init.js`, `style.css`) into the binary via `//go:embed` and serves them
 with `http.FileServerFS`. There is **no frontend build step** — no bundler, no npm
 toolchain, no framework — the assets are plain HTML/CSS/JS shipped as-is, consistent with
 the project's "prefer the standard library, minimize dependency surface" philosophy (see
 [`CONTRIBUTING.md`](CONTRIBUTING.md)).
+
+Because embedded files carry a zero `ModTime`, `http.FileServerFS` alone would emit no
+`Last-Modified`/`ETag` and no `Cache-Control`, forcing a full refetch of every asset on
+every page load. `Handler` wraps the file server to set `Cache-Control: no-cache` and an
+`Etag` derived from the build-time `version` (the same string injected via
+`-ldflags -X main.version=...` and echoed by `GET /api/v1/config`), so browsers
+revalidate with a cheap conditional request (a 304 when the version is unchanged) and
+still refetch immediately once an upgrade changes `version`.
 
 **Stored-XSS prevention is enforced by a repository rule, not just convention.**
 `internal/web/xss_test.go` (`TestAppJS_NoInnerHTMLInterpolation`) scans `app.js` at test
