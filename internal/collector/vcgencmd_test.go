@@ -3,7 +3,11 @@ package collector
 import (
 	"context"
 	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 )
@@ -85,6 +89,34 @@ func TestVcgencmdRunner_Run_CommandFails(t *testing.T) {
 	}
 	if errors.Is(err, errVcgencmdUnavailable) {
 		t.Fatalf("run() error = %v, want a real execution error, not errVcgencmdUnavailable", err)
+	}
+}
+
+func TestVcgencmdRunner_Run_DoesNotLeakParentEnvironment(t *testing.T) {
+	t.Setenv("PIMONITOR_API_KEY", "test-secret-should-not-leak")
+
+	dir := t.TempDir()
+	envFile := filepath.Join(dir, "env.out")
+	path := writeFakeVcgencmd(t, dir, "fake-vcgencmd", fmt.Sprintf("env > %q", envFile))
+	r := &vcgencmdRunner{detected: true, path: path}
+
+	if _, err := r.run(context.Background(), "measure_temp"); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+
+	out, err := os.ReadFile(envFile)
+	if err != nil {
+		t.Fatalf("read captured child environment: %v", err)
+	}
+	if strings.Contains(string(out), "PIMONITOR_API_KEY") {
+		t.Fatalf("child environment leaked PIMONITOR_API_KEY: %q", out)
+	}
+	// PATH is not required: path is already the absolute location resolved
+	// by exec.LookPath at detection time, so its absence here confirms the
+	// environment was built explicitly rather than inherited (PWD is set by
+	// the shell itself, not inherited, so its presence is expected).
+	if strings.Contains(string(out), "PATH=") {
+		t.Fatalf("child environment unexpectedly contains PATH: %q", out)
 	}
 }
 
