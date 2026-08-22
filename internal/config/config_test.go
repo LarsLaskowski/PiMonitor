@@ -207,6 +207,78 @@ func TestLoad_APIKeyOverride(t *testing.T) {
 	}
 }
 
+// envFunc builds a lookupEnv stub for load() from a fixed environment.
+func envFunc(env map[string]string) func(string) (string, bool) {
+	return func(key string) (string, bool) {
+		v, ok := env[key]
+		return v, ok
+	}
+}
+
+func TestLoad_APIKeyFromEnv(t *testing.T) {
+	result, err := load(nil, envFunc(map[string]string{APIKeyEnvVar: "env-secret"}))
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if result.Config.APIKey != "env-secret" {
+		t.Fatalf("APIKey = %q, want env-secret", result.Config.APIKey)
+	}
+}
+
+func TestLoad_APIKeyEnvOverridesConfigFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	writeFile(t, path, "api_key: \"file-secret\"\n")
+
+	result, err := load([]string{"-config", path}, envFunc(map[string]string{APIKeyEnvVar: "env-secret"}))
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if result.Config.APIKey != "env-secret" {
+		t.Fatalf("APIKey = %q, want env-secret (env must override the config file)", result.Config.APIKey)
+	}
+}
+
+func TestLoad_APIKeyFlagOverridesEnv(t *testing.T) {
+	result, err := load([]string{"-api-key", "flag-secret"}, envFunc(map[string]string{APIKeyEnvVar: "env-secret"}))
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if result.Config.APIKey != "flag-secret" {
+		t.Fatalf("APIKey = %q, want flag-secret (flag must override the env)", result.Config.APIKey)
+	}
+}
+
+func TestLoad_APIKeyEmptyEnvKeepsConfigFileValue(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	writeFile(t, path, "api_key: \"file-secret\"\n")
+
+	// An exported-but-empty PIMONITOR_API_KEY must not silently disable the
+	// authentication configured in the file.
+	result, err := load([]string{"-config", path}, envFunc(map[string]string{APIKeyEnvVar: ""}))
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if result.Config.APIKey != "file-secret" {
+		t.Fatalf("APIKey = %q, want file-secret", result.Config.APIKey)
+	}
+}
+
+// TestLoad_ReadsAPIKeyEnvVar covers the wiring of the exported Load to the
+// real process environment, which the load() tests above deliberately bypass.
+func TestLoad_ReadsAPIKeyEnvVar(t *testing.T) {
+	t.Setenv(APIKeyEnvVar, "env-secret")
+
+	result, err := Load(nil)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if result.Config.APIKey != "env-secret" {
+		t.Fatalf("APIKey = %q, want env-secret", result.Config.APIKey)
+	}
+}
+
 func TestValidate_DefaultIsValid(t *testing.T) {
 	if err := Default().Validate(); err != nil {
 		t.Fatalf("Default() must pass Validate(): %v", err)

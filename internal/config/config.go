@@ -338,16 +338,30 @@ type Result struct {
 	VersionRequested bool
 }
 
+// APIKeyEnvVar is the environment variable that overrides the REST API key.
+// It exists because the -api-key flag leaks the secret into the process
+// list (any local user can read /proc/<pid>/cmdline), while an environment
+// variable can be supplied by systemd via EnvironmentFile= from a
+// root-readable file. The config file remains the primary mechanism.
+const APIKeyEnvVar = "PIMONITOR_API_KEY"
+
 // Load resolves configuration from defaults, an optional YAML file
-// (-config), and flag overrides, in that order of increasing precedence.
+// (-config), the PIMONITOR_API_KEY environment variable, and flag
+// overrides, in that order of increasing precedence.
 func Load(args []string) (Result, error) {
+	return load(args, os.LookupEnv)
+}
+
+// load is Load with the environment injected, so tests can exercise the
+// precedence rules without mutating the process environment.
+func load(args []string, lookupEnv func(string) (string, bool)) (Result, error) {
 	cfg := Default()
 
 	fs := flag.NewFlagSet("pimonitor", flag.ContinueOnError)
 	configPath := fs.String("config", "", "path to YAML config file")
 	listenAddr := fs.String("listen", "", "override listen address, e.g. :8080")
 	logLevel := fs.String("log-level", "", "override log level (debug, info, warn, error)")
-	apiKey := fs.String("api-key", "", "override REST API key")
+	apiKey := fs.String("api-key", "", "override REST API key (development only: the value is visible in the process list to every local user; use api_key in the config file or "+APIKeyEnvVar+" instead)")
 	showVersion := fs.Bool("version", false, "print version and exit")
 
 	if err := fs.Parse(args); err != nil {
@@ -358,6 +372,16 @@ func Load(args []string) (Result, error) {
 		if err := loadYAMLFile(*configPath, &cfg); err != nil {
 			return Result{}, err
 		}
+	}
+
+	// The environment sits between the config file and the flags: it is the
+	// recommended override for deployments (systemd EnvironmentFile=), while
+	// an explicit -api-key on the command line still wins. An empty or unset
+	// variable changes nothing, mirroring how the empty flag default is
+	// treated, so exporting PIMONITOR_API_KEY="" cannot accidentally disable
+	// an api_key configured in the file.
+	if v, ok := lookupEnv(APIKeyEnvVar); ok && v != "" {
+		cfg.APIKey = v
 	}
 
 	if *listenAddr != "" {

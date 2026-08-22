@@ -2,9 +2,11 @@ package collector
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 	"time"
 
+	"github.com/larslaskowski/pimonitor/internal/alert"
 	"github.com/larslaskowski/pimonitor/internal/config"
 )
 
@@ -45,6 +47,62 @@ func TestCollector_FastTick_PopulatesSnapshot(t *testing.T) {
 	}
 }
 
+// TestCollector_Disks_NeverMarshalsAsNull covers issue #70: docs/API.md
+// documents disks as reading as an empty array before the first fast tick,
+// but a nil []Disk marshals to JSON null, not []. Snapshot.Disks must stay
+// a non-nil (possibly empty) slice both before the first tick and after.
+func TestCollector_Disks_NeverMarshalsAsNull(t *testing.T) {
+	c := newTestCollector()
+
+	assertDisksMarshalsAsEmptyArray := func(t *testing.T, snap Snapshot) {
+		t.Helper()
+		if snap.Disks == nil {
+			t.Fatal("expected Snapshot.Disks to be non-nil")
+		}
+		b, err := json.Marshal(snap)
+		if err != nil {
+			t.Fatalf("json.Marshal: %v", err)
+		}
+		var raw map[string]json.RawMessage
+		if err := json.Unmarshal(b, &raw); err != nil {
+			t.Fatalf("json.Unmarshal: %v", err)
+		}
+		if got := string(raw["disks"]); got == "null" {
+			t.Fatalf(`expected "disks" to marshal as [], got %s`, got)
+		}
+	}
+
+	// Before the first fast tick completes.
+	assertDisksMarshalsAsEmptyArray(t, c.Snapshot())
+
+	// After a tick.
+	c.fastTick(context.Background())
+	assertDisksMarshalsAsEmptyArray(t, c.Snapshot())
+}
+
+// TestCollector_FastTick_DiskCollectionErrorYieldsEmptyNotNilDisks covers
+// the failed-collection path directly: DiskCollector.Collect returns
+// (nil, err) when /proc/mounts can't be read, and fastTick must still
+// normalize that nil into a non-nil empty slice rather than storing it
+// verbatim.
+func TestCollector_FastTick_DiskCollectionErrorYieldsEmptyNotNilDisks(t *testing.T) {
+	c := newTestCollector()
+	c.disk = &DiskCollector{
+		mountsPath:     "/nonexistent/proc/mounts",
+		excludedFSType: defaultExcludedFSTypes,
+	}
+
+	c.fastTick(context.Background())
+
+	snap := c.Snapshot()
+	if snap.Disks == nil {
+		t.Fatal("expected Snapshot.Disks to be non-nil even when disk collection fails")
+	}
+	if len(snap.Disks) != 0 {
+		t.Fatalf("expected 0 disks after a failed collection, got %d", len(snap.Disks))
+	}
+}
+
 func TestCollector_FastTick_BuildsHistory(t *testing.T) {
 	c := newTestCollector()
 	ctx := context.Background()
@@ -59,6 +117,25 @@ func TestCollector_FastTick_BuildsHistory(t *testing.T) {
 	}
 	if len(hist.Load1) != 2 {
 		t.Fatalf("expected 2 load1 history points after 2 ticks, got %d", len(hist.Load1))
+	}
+}
+
+func TestCollector_HistoryGeneration_IncrementsOnFastTick(t *testing.T) {
+	c := newTestCollector()
+	ctx := context.Background()
+
+	if got := c.HistoryGeneration(); got != 0 {
+		t.Fatalf("HistoryGeneration before any tick = %d, want 0", got)
+	}
+
+	c.fastTick(ctx)
+	if got := c.HistoryGeneration(); got != 1 {
+		t.Fatalf("HistoryGeneration after 1 tick = %d, want 1", got)
+	}
+
+	c.fastTick(ctx)
+	if got := c.HistoryGeneration(); got != 2 {
+		t.Fatalf("HistoryGeneration after 2 ticks = %d, want 2", got)
 	}
 }
 
@@ -172,6 +249,176 @@ func TestCollector_Alerts_EvaluatedOnFastTick(t *testing.T) {
 	}
 	if !haveCPU || !haveMemory || !haveSwap {
 		t.Fatalf("expected cpu, memory, and swap alert states, got %+v", report.States)
+	}
+}
+
+// TestCollector_Notifier_NotWiredWhenAlertsDisabled ensures a notifier built
+// from configured webhooks is never wired in while the alert engine is
+// disabled, since a disabled engine never produces events to deliver.
+func TestCollector_Notifier_NotWiredWhenAlertsDisabled(t *testing.T) {
+	notifier, err := alert.NewNotifier(config.Alerts{
+		Webhooks: []config.Webhook{{URL: "http://example.invalid/webhook"}},
+	}, nil)
+	if err != nil {
+		t.Fatalf("NewNotifier: %v", err)
+	}
+	if notifier == nil {
+		t.Fatal("expected a non-nil notifier for a configured webhook")
+	}
+
+	c := New(Config{
+		FastInterval:    time.Second,
+		SlowInterval:    time.Minute,
+		HistoryCapacity: 10,
+		AlertsEnabled:   false,
+		Notifier:        notifier,
+	}, nil)
+
+	if c.notifier != nil {
+		t.Fatal("expected notifier to stay unwired when AlertsEnabled is false")
+	}
+}
+
+func TestEvictStaleSeries(t *testing.T) {
+	const window = 3 * time.Second
+	now := time.Unix(1_700_000_000, 0)
+
+	tests := []struct {
+		name        string
+		present     bool
+		age         time.Duration
+		wantEvicted bool
+	}{
+		{"present device is kept regardless of sample age", true, 10 * window, false},
+		{"absent device within the window is kept", false, window - time.Second, false},
+		{"absent device exactly at the window boundary is kept", false, window, false},
+		{"absent device past the window boundary is evicted", false, window + time.Nanosecond, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rb := NewRingBuffer[HistoryPoint](3)
+			rb.Add(HistoryPoint{Timestamp: now.Add(-tt.age), Value: 1})
+			hist := map[string]*RingBuffer[HistoryPoint]{"dev": rb}
+			current := map[string]struct{}{}
+			if tt.present {
+				current["dev"] = struct{}{}
+			}
+
+			evictStaleSeries(hist, current, now, window)
+
+			_, ok := hist["dev"]
+			if ok == tt.wantEvicted {
+				t.Fatalf("evictStaleSeries: entry present = %v, want evicted = %v", ok, tt.wantEvicted)
+			}
+		})
+	}
+}
+
+func TestEvictStaleSeries_ZeroWindowDisablesEviction(t *testing.T) {
+	rb := NewRingBuffer[HistoryPoint](3)
+	rb.Add(HistoryPoint{Timestamp: time.Unix(0, 0), Value: 1})
+	hist := map[string]*RingBuffer[HistoryPoint]{"dev": rb}
+
+	evictStaleSeries(hist, map[string]struct{}{}, time.Now(), 0)
+
+	if _, ok := hist["dev"]; !ok {
+		t.Fatal("expected a non-positive window to disable eviction")
+	}
+}
+
+// TestCollector_FastTick_EvictsStaleDeviceSeries drives eviction through the
+// production code path (fastTick), rather than calling evictStaleSeries
+// directly, so the wiring in fastTick itself — not just the helper — is
+// under test.
+func TestCollector_FastTick_EvictsStaleDeviceSeries(t *testing.T) {
+	c := New(Config{
+		FastInterval:    time.Second,
+		SlowInterval:    time.Minute,
+		HistoryCapacity: 3, // history window = 3s
+		NetworkEnabled:  true,
+	}, nil)
+
+	// A mountpoint/interface name the host running this test can never
+	// actually report, seeded with a sample far outside the history window.
+	const goneDevice = "pimonitor-test-gone"
+	stale := HistoryPoint{Timestamp: time.Now().Add(-time.Hour), Value: 1}
+	for _, m := range []map[string]*RingBuffer[HistoryPoint]{c.diskHist, c.rxHist, c.txHist} {
+		rb := NewRingBuffer[HistoryPoint](c.cfg.HistoryCapacity)
+		rb.Add(stale)
+		m[goneDevice] = rb
+	}
+
+	c.fastTick(context.Background())
+
+	hist := c.History()
+	if _, ok := hist.DiskUsedPercent[goneDevice]; ok {
+		t.Fatal("expected fastTick to evict the stale disk series")
+	}
+	if _, ok := hist.NetworkRxBytesPerSec[goneDevice]; ok {
+		t.Fatal("expected fastTick to evict the stale rx series")
+	}
+	if _, ok := hist.NetworkTxBytesPerSec[goneDevice]; ok {
+		t.Fatal("expected fastTick to evict the stale tx series")
+	}
+}
+
+// TestCollector_FastTick_KeepsRecentlyMissingDeviceSeries checks the
+// counterpart of the eviction rule through the same fastTick path: a device
+// missing for a single tick must not lose its history, matching
+// DiskCollector.Collect skipping mountpoints that transiently fail to stat.
+func TestCollector_FastTick_KeepsRecentlyMissingDeviceSeries(t *testing.T) {
+	c := New(Config{
+		FastInterval:    time.Second,
+		SlowInterval:    time.Minute,
+		HistoryCapacity: 3, // history window = 3s
+		NetworkEnabled:  true,
+	}, nil)
+
+	const flakyDevice = "pimonitor-test-flaky"
+	recent := HistoryPoint{Timestamp: time.Now(), Value: 1}
+	for _, m := range []map[string]*RingBuffer[HistoryPoint]{c.diskHist, c.rxHist, c.txHist} {
+		rb := NewRingBuffer[HistoryPoint](c.cfg.HistoryCapacity)
+		rb.Add(recent)
+		m[flakyDevice] = rb
+	}
+
+	c.fastTick(context.Background())
+
+	hist := c.History()
+	if _, ok := hist.DiskUsedPercent[flakyDevice]; !ok {
+		t.Fatal("expected fastTick to keep a disk series missing for only one tick")
+	}
+	if _, ok := hist.NetworkRxBytesPerSec[flakyDevice]; !ok {
+		t.Fatal("expected fastTick to keep an rx series missing for only one tick")
+	}
+	if _, ok := hist.NetworkTxBytesPerSec[flakyDevice]; !ok {
+		t.Fatal("expected fastTick to keep a tx series missing for only one tick")
+	}
+}
+
+// TestCollector_FastTick_EvictsWithNonPositiveFastInterval guards against
+// the eviction window silently collapsing to zero (which disables eviction,
+// see evictStaleSeries) for a Collector constructed with a non-positive
+// FastInterval. Run's ticker already defends against this case via
+// clampInterval; fastTick's history window must derive from the same
+// clamped value rather than the raw, unclamped config field.
+func TestCollector_FastTick_EvictsWithNonPositiveFastInterval(t *testing.T) {
+	c := New(Config{
+		FastInterval:    0, // invalid; clamped to 1s
+		SlowInterval:    time.Minute,
+		HistoryCapacity: 3, // clamped history window = 3s
+	}, nil)
+
+	const goneDevice = "pimonitor-test-gone"
+	stale := HistoryPoint{Timestamp: time.Now().Add(-time.Hour), Value: 1}
+	rb := NewRingBuffer[HistoryPoint](c.cfg.HistoryCapacity)
+	rb.Add(stale)
+	c.diskHist[goneDevice] = rb
+
+	c.fastTick(context.Background())
+
+	if _, ok := c.History().DiskUsedPercent[goneDevice]; ok {
+		t.Fatal("expected eviction to still apply when FastInterval is non-positive")
 	}
 }
 

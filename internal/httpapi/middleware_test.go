@@ -1,9 +1,15 @@
 package httpapi
 
 import (
+	"bytes"
+	"compress/gzip"
+	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/larslaskowski/pimonitor/internal/collector"
 )
 
 func TestSecurityHeaders_SetOnAllResponses(t *testing.T) {
@@ -44,7 +50,183 @@ func TestSecurityHeaders_SetOnUnauthorizedResponses(t *testing.T) {
 	if got := rec.Header().Get("X-Content-Type-Options"); got != "nosniff" {
 		t.Errorf("X-Content-Type-Options = %q, want %q on 401 response", got, "nosniff")
 	}
-	if got := rec.Header().Get("Content-Security-Policy"); got == "" {
+	if rec.Header().Get("Content-Security-Policy") == "" {
 		t.Error("Content-Security-Policy missing on 401 response")
+	}
+}
+
+func TestHandleHistory_GzipWhenAccepted(t *testing.T) {
+	s, fm := newTestServer(Config{})
+	fm.history = collector.History{}
+	for i := 0; i < 500; i++ {
+		fm.history.CPUPercent = append(fm.history.CPUPercent, collector.HistoryPoint{Value: 12.5})
+	}
+
+	plainReq := httptest.NewRequest(http.MethodGet, "/api/v1/metrics/history", nil)
+	plainRec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(plainRec, plainReq)
+	if plainRec.Header().Get("Content-Encoding") != "" {
+		t.Fatalf("Content-Encoding = %q without Accept-Encoding header, want empty", plainRec.Header().Get("Content-Encoding"))
+	}
+
+	gzipReq := httptest.NewRequest(http.MethodGet, "/api/v1/metrics/history", nil)
+	gzipReq.Header.Set("Accept-Encoding", "gzip")
+	gzipRec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(gzipRec, gzipReq)
+
+	if got := gzipRec.Header().Get("Content-Encoding"); got != "gzip" {
+		t.Fatalf("Content-Encoding = %q, want %q", got, "gzip")
+	}
+	if got := gzipRec.Header().Get("Vary"); got != "Accept-Encoding" {
+		t.Fatalf("Vary = %q, want %q", got, "Accept-Encoding")
+	}
+
+	zr, err := gzip.NewReader(bytes.NewReader(gzipRec.Body.Bytes()))
+	if err != nil {
+		t.Fatalf("gzip.NewReader: %v", err)
+	}
+	decompressed, err := io.ReadAll(zr)
+	if err != nil {
+		t.Fatalf("read decompressed body: %v", err)
+	}
+
+	var want, got collector.History
+	if err := json.Unmarshal(plainRec.Body.Bytes(), &want); err != nil {
+		t.Fatalf("unmarshal identity response: %v", err)
+	}
+	if err := json.Unmarshal(decompressed, &got); err != nil {
+		t.Fatalf("unmarshal decompressed response: %v", err)
+	}
+	if len(got.CPUPercent) != len(want.CPUPercent) {
+		t.Fatalf("decompressed CPUPercent length = %d, want %d", len(got.CPUPercent), len(want.CPUPercent))
+	}
+
+	if len(gzipRec.Body.Bytes()) >= len(plainRec.Body.Bytes()) {
+		t.Fatalf("gzip body (%d bytes) not smaller than identity body (%d bytes)", len(gzipRec.Body.Bytes()), len(plainRec.Body.Bytes()))
+	}
+}
+
+// TestWithMaxInFlight_RejectsBeyondLimit fills the semaphore with requests
+// that block on a channel the test controls, then asserts that exactly one
+// additional request is rejected with 503 and a Retry-After header. Uses
+// explicit channel synchronization rather than time.Sleep so the test is
+// deterministic (see docs/TESTS.md's guidance on concurrent code).
+func TestWithMaxInFlight_RejectsBeyondLimit(t *testing.T) {
+	const limit = 3
+	s := &Server{inFlight: make(chan struct{}, limit)}
+
+	release := make(chan struct{})
+	entered := make(chan struct{}, limit)
+	blocking := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		entered <- struct{}{}
+		<-release
+		w.WriteHeader(http.StatusOK)
+	})
+	handler := s.withMaxInFlight(blocking)
+
+	results := make(chan *httptest.ResponseRecorder, limit)
+	for i := 0; i < limit; i++ {
+		go func() {
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/x", nil))
+			results <- rec
+		}()
+	}
+	for i := 0; i < limit; i++ {
+		<-entered
+	}
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/x", nil))
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status beyond limit = %d, want %d", rec.Code, http.StatusServiceUnavailable)
+	}
+	if got := rec.Header().Get("Retry-After"); got != "1" {
+		t.Fatalf("Retry-After = %q, want %q", got, "1")
+	}
+
+	close(release)
+	for i := 0; i < limit; i++ {
+		blocked := <-results
+		if blocked.Code != http.StatusOK {
+			t.Fatalf("blocked request status = %d, want 200", blocked.Code)
+		}
+	}
+}
+
+// TestWithMaxInFlight_ReleasesPermit is the regression test for a missing
+// `defer func() { <-sem }()`: after every in-flight request has completed,
+// a subsequent request beyond the original limit must still succeed rather
+// than finding the semaphore permanently full.
+func TestWithMaxInFlight_ReleasesPermit(t *testing.T) {
+	const limit = 2
+	s := &Server{inFlight: make(chan struct{}, limit)}
+	handler := s.withMaxInFlight(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	for i := 0; i < limit; i++ {
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/x", nil))
+		if rec.Code != http.StatusOK {
+			t.Fatalf("request %d status = %d, want 200", i, rec.Code)
+		}
+	}
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/x", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status after permits should have been released = %d, want 200", rec.Code)
+	}
+}
+
+// TestWithMaxInFlight_AllowsTrafficBelowLimit guards against an off-by-one
+// making the limiter fire too eagerly: sequential requests below the limit
+// must all succeed.
+func TestWithMaxInFlight_AllowsTrafficBelowLimit(t *testing.T) {
+	const limit = 4
+	s := &Server{inFlight: make(chan struct{}, limit)}
+	handler := s.withMaxInFlight(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	for i := 0; i < limit-1; i++ {
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/x", nil))
+		if rec.Code != http.StatusOK {
+			t.Fatalf("request %d status = %d, want 200", i, rec.Code)
+		}
+	}
+}
+
+// TestHealthz_BypassesMaxInFlight documents the deliberate choice that
+// /healthz is not gated by withMaxInFlight: a monitoring system should
+// still be able to tell the process is alive while the API is shedding
+// load. Fills s.inFlight directly to the real defaultMaxInFlight capacity
+// (rather than via blocking goroutines) so the assertion is deterministic.
+func TestHealthz_BypassesMaxInFlight(t *testing.T) {
+	s, _ := newTestServer(Config{})
+	for i := 0; i < defaultMaxInFlight; i++ {
+		s.inFlight <- struct{}{}
+	}
+	defer func() {
+		for i := 0; i < defaultMaxInFlight; i++ {
+			<-s.inFlight
+		}
+	}()
+
+	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("healthz status while API in-flight limit is full = %d, want 200", rec.Code)
+	}
+
+	apiReq := httptest.NewRequest(http.MethodGet, "/api/v1/metrics", nil)
+	apiRec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(apiRec, apiReq)
+	if apiRec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("api status while in-flight limit is full = %d, want %d (sanity check that the fill above actually exercised the limiter)", apiRec.Code, http.StatusServiceUnavailable)
 	}
 }

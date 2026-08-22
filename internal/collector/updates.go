@@ -104,7 +104,18 @@ func (c *UpdatesCollector) Collect(ctx context.Context) (Updates, error) {
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, c.aptPath, "list", "--upgradable")
-	cmd.Env = append(os.Environ(), "DEBIAN_FRONTEND=noninteractive")
+	// apt localises its output via gettext; the parser above matches the
+	// English strings, so pin the locale rather than inheriting the
+	// operator's. LC_ALL beats LANG and LANGUAGE, but all three are set so
+	// no inherited value can leak through. PATH must be preserved because
+	// aptPath is typically the bare string "apt", resolved via PATH.
+	cmd.Env = []string{
+		"LC_ALL=C",
+		"LANG=C",
+		"LANGUAGE=",
+		"DEBIAN_FRONTEND=noninteractive",
+		"PATH=" + os.Getenv("PATH"),
+	}
 	out, err := cmd.Output()
 	if err != nil {
 		return Updates{}, fmt.Errorf("run apt list --upgradable: %w", err)

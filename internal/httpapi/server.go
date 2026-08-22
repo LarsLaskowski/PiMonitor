@@ -7,6 +7,7 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/larslaskowski/pimonitor/internal/alert"
@@ -19,8 +20,24 @@ import (
 type MetricsProvider interface {
 	Snapshot() collector.Snapshot
 	History() collector.History
+	// HistoryGeneration increments whenever History() would return a
+	// different result. handleHistory uses it to reuse a cached, already
+	// serialised response instead of redoing the deep copy and JSON encode
+	// on every request.
+	HistoryGeneration() uint64
 	Alerts() alert.Report
 }
+
+// defaultMaxInFlight bounds how many requests may be actively processing at
+// once across the /api/v1/... endpoints. GET /api/v1/metrics/history is the
+// most expensive of them: on a cache miss it deep-copies every retained
+// history ring buffer and JSON-encodes the result while holding the
+// collector's lock. Left unbounded, enough concurrent callers can starve
+// the collector's own tick on a single-core Pi. 16 is generous for the
+// intended use (one dashboard plus a handful of integrations) while
+// capping worst-case CPU and memory; it is deliberately a constant rather
+// than a config option to keep the config surface small.
+const defaultMaxInFlight = 16
 
 // Thresholds are the color-coding thresholds the frontend uses to render
 // metric cards as ok/warn/critical.
@@ -70,6 +87,16 @@ type Server struct {
 	metrics    MetricsProvider
 	cfg        Config
 	log        *slog.Logger
+
+	// inFlight is the semaphore withMaxInFlight acquires from; its capacity
+	// is defaultMaxInFlight. Shared across every /api/v1/... endpoint so the
+	// limit bounds total concurrent API work, not each endpoint separately.
+	inFlight chan struct{}
+
+	// historyCacheMu guards historyCacheGen/historyCacheJSON below.
+	historyCacheMu   sync.Mutex
+	historyCacheGen  uint64
+	historyCacheJSON []byte
 }
 
 // New builds a Server. staticHandler serves the embedded web dashboard
@@ -79,14 +106,18 @@ func New(metrics MetricsProvider, cfg Config, staticHandler http.Handler, log *s
 	if log == nil {
 		log = slog.Default()
 	}
-	s := &Server{metrics: metrics, cfg: cfg, log: log}
+	s := &Server{metrics: metrics, cfg: cfg, log: log, inFlight: make(chan struct{}, defaultMaxInFlight)}
 
 	mux := http.NewServeMux()
+	// /healthz and the static dashboard assets are intentionally not wrapped
+	// by withMaxInFlight: a monitoring system should still be able to tell
+	// the process is alive while the API is shedding load, and the shell
+	// the dashboard needs to render its "server busy" state must load too.
 	mux.HandleFunc("GET /healthz", s.handleHealthz)
-	mux.Handle("GET /api/v1/metrics", s.withAPIKey(http.HandlerFunc(s.handleMetrics)))
-	mux.Handle("GET /api/v1/metrics/history", s.withAPIKey(http.HandlerFunc(s.handleHistory)))
-	mux.Handle("GET /api/v1/alerts", s.withAPIKey(http.HandlerFunc(s.handleAlerts)))
-	mux.Handle("GET /api/v1/config", s.withAPIKey(http.HandlerFunc(s.handleConfig)))
+	mux.Handle("GET /api/v1/metrics", s.withMaxInFlight(s.withGzip(s.withAPIKey(http.HandlerFunc(s.handleMetrics)))))
+	mux.Handle("GET /api/v1/metrics/history", s.withMaxInFlight(s.withGzip(s.withAPIKey(http.HandlerFunc(s.handleHistory)))))
+	mux.Handle("GET /api/v1/alerts", s.withMaxInFlight(s.withGzip(s.withAPIKey(http.HandlerFunc(s.handleAlerts)))))
+	mux.Handle("GET /api/v1/config", s.withMaxInFlight(s.withGzip(s.withAPIKey(http.HandlerFunc(s.handleConfig)))))
 	if staticHandler != nil {
 		mux.Handle("/", staticHandler)
 	}

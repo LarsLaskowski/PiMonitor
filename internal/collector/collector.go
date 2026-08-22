@@ -92,23 +92,50 @@ type Collector struct {
 
 	// alerts is nil when alerting is disabled.
 	alerts *alert.Engine
-	// notifier is nil when no webhooks are configured.
+	// notifier is nil when no webhooks are configured, or when alerting is
+	// disabled (a disabled engine never produces events, so starting the
+	// worker would only leave it idling forever).
 	notifier *alert.Notifier
 
 	log *slog.Logger
 
-	mu       sync.RWMutex
-	latest   Snapshot
-	cpuHist  *RingBuffer[HistoryPoint]
-	l1Hist   *RingBuffer[HistoryPoint]
-	l5Hist   *RingBuffer[HistoryPoint]
-	l15Hist  *RingBuffer[HistoryPoint]
-	tempHist *RingBuffer[HistoryPoint]
-	memHist  *RingBuffer[HistoryPoint]
-	swapHist *RingBuffer[HistoryPoint]
-	diskHist map[string]*RingBuffer[HistoryPoint]
-	rxHist   map[string]*RingBuffer[HistoryPoint]
-	txHist   map[string]*RingBuffer[HistoryPoint]
+	// fastInterval is cfg.FastInterval clamped to a safe positive minimum
+	// (see clampInterval), computed once at construction so Run's ticker
+	// and fastTick's history-eviction window always agree, regardless of
+	// whether Run has been started yet (e.g. in tests calling fastTick
+	// directly).
+	fastInterval time.Duration
+
+	mu     sync.RWMutex
+	latest Snapshot
+	// historyGen counts fastTicks that have recorded at least one history
+	// point. HTTP handlers use it to detect whether the retained history has
+	// actually changed since a cached, already-serialised response was built,
+	// so a client polling faster than the collector ticks doesn't force a
+	// fresh deep-copy-and-encode of the whole window on every request.
+	historyGen uint64
+	cpuHist    *RingBuffer[HistoryPoint]
+	l1Hist     *RingBuffer[HistoryPoint]
+	l5Hist     *RingBuffer[HistoryPoint]
+	l15Hist    *RingBuffer[HistoryPoint]
+	tempHist   *RingBuffer[HistoryPoint]
+	memHist    *RingBuffer[HistoryPoint]
+	swapHist   *RingBuffer[HistoryPoint]
+	diskHist   map[string]*RingBuffer[HistoryPoint]
+	rxHist     map[string]*RingBuffer[HistoryPoint]
+	txHist     map[string]*RingBuffer[HistoryPoint]
+
+	// persistWG tracks in-flight persistHistory writes so Run's ctx.Done()
+	// branch can wait for the final flush before returning.
+	persistWG sync.WaitGroup
+	// persisting is a buffered try-lock (capacity 1): a successful send means
+	// no write is currently in flight. Used to skip an overlapping flush
+	// rather than queue it, since the next flush writes newer data anyway.
+	persisting chan struct{}
+	// writeFile performs the atomic write persistHistory hands off to a
+	// background goroutine. Defaults to writeFileAtomic; overridable in
+	// tests to control write timing without touching real disk I/O.
+	writeFile func(path string, data []byte) error
 }
 
 // New creates a Collector wired to the standard Linux metric sources.
@@ -117,21 +144,30 @@ func New(cfg Config, log *slog.Logger) *Collector {
 		log = slog.Default()
 	}
 	var alerts *alert.Engine
+	var notifier *alert.Notifier
 	if cfg.AlertsEnabled {
 		alerts = alert.New(cfg.Thresholds, cfg.AlertFor)
+		notifier = cfg.Notifier
 	}
-	return &Collector{
-		cfg:       cfg,
+	// TemperatureCollector and ThrottledCollector both shell out to
+	// vcgencmd; sharing one runner means vcgencmd is detected once instead
+	// of once per collector.
+	vcg := newVcgencmdRunner(time.Now)
+	c := &Collector{
+		cfg: cfg,
+		// Disks starts as [] rather than nil so it marshals as [] (not
+		// null) before the first fast tick completes, matching docs/API.md.
+		latest:    Snapshot{Disks: []Disk{}},
 		alerts:    alerts,
-		notifier:  cfg.Notifier,
+		notifier:  notifier,
 		cpu:       NewCPUCollector(),
 		cpuFreq:   NewCPUFreqCollector(),
 		loadAvg:   NewLoadAvgCollector(),
 		memory:    NewMemoryCollector(),
 		disk:      NewDiskCollector(),
 		network:   NewNetworkCollector(),
-		temp:      NewTemperatureCollector(),
-		throttled: NewThrottledCollector(),
+		temp:      NewTemperatureCollector(vcg),
+		throttled: NewThrottledCollector(vcg),
 		sysInfo:   NewSysInfoCollector(),
 		updates:   NewUpdatesCollector(cfg.UpdatesStaleThreshold),
 		uptime:    NewUptimeCollector(),
@@ -146,7 +182,12 @@ func New(cfg Config, log *slog.Logger) *Collector {
 		diskHist:  make(map[string]*RingBuffer[HistoryPoint]),
 		rxHist:    make(map[string]*RingBuffer[HistoryPoint]),
 		txHist:    make(map[string]*RingBuffer[HistoryPoint]),
+
+		persisting: make(chan struct{}, 1),
+		writeFile:  writeFileAtomic,
 	}
+	c.fastInterval = c.clampInterval(cfg.FastInterval, "FastInterval")
+	return c
 }
 
 // Run collects an initial sample immediately, then continues sampling on
@@ -166,11 +207,11 @@ func (c *Collector) Run(ctx context.Context) {
 
 	// Defense in depth: a non-positive interval panics time.NewTicker.
 	// config.Validate rejects such values at startup, but clamp here too so
-	// no future caller can crash the collector.
-	fastInterval := c.clampInterval(c.cfg.FastInterval, "FastInterval")
+	// no future caller can crash the collector. c.fastInterval was already
+	// clamped in New; only SlowInterval needs it here.
 	slowInterval := c.clampInterval(c.cfg.SlowInterval, "SlowInterval")
 
-	fastTicker := time.NewTicker(fastInterval)
+	fastTicker := time.NewTicker(c.fastInterval)
 	defer fastTicker.Stop()
 	slowTicker := time.NewTicker(slowInterval)
 	defer slowTicker.Stop()
@@ -179,8 +220,13 @@ func (c *Collector) Run(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			// Final flush so a clean shutdown (e.g. reboot for updates)
-			// loses at most the points since the last fast tick.
+			// loses at most the points since the last fast tick. persistHistory
+			// hands the write off to a background goroutine, so wait for it
+			// (and any still-running flush from the last slowTick) before
+			// returning: cmd/pimonitor/main.go bounds this by its shutdown
+			// context, so a stuck fsync cannot hang the process.
 			c.persistHistory()
+			c.persistWG.Wait()
 			return
 		case <-fastTicker.C:
 			c.fastTick(ctx)
@@ -244,6 +290,16 @@ func (c *Collector) History() History {
 	return h
 }
 
+// HistoryGeneration returns a counter that increments every time fastTick
+// records a new set of history points. Callers can compare successive
+// values to tell whether History() would return anything different without
+// having to call it (which deep-copies every ring buffer).
+func (c *Collector) HistoryGeneration() uint64 {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.historyGen
+}
+
 func (c *Collector) collectSysInfo() {
 	info := c.sysInfo.Collect()
 	if !c.cfg.DistroInfoEnabled {
@@ -263,73 +319,156 @@ func (c *Collector) collectSysInfo() {
 	c.latest.CPUCount = count
 }
 
-func (c *Collector) fastTick(ctx context.Context) {
-	now := time.Now()
+// fastTickSamples holds every metric fastTick reads before taking c.mu,
+// plus each source's error, so history and alerts can tell a real zero
+// value apart from a failed collection.
+type fastTickSamples struct {
+	now        time.Time
+	cpuUsage   CPUUsage
+	cpuErr     error
+	cpuFreq    []CPUCoreFrequency
+	load       LoadAverage
+	temp       Temperature
+	gpuTemp    *GPUTemperature
+	tempErr    error
+	throttled  *Throttled
+	mem        Memory
+	swap       Swap
+	memErr     error
+	disks      []Disk
+	diskErr    error
+	netIfaces  []NetworkInterface
+	uptimeSecs float64
+}
 
-	cpuUsage, cpuErr := c.cpu.Collect()
-	if cpuErr != nil {
-		c.log.Warn("cpu collection failed", "error", cpuErr)
+// collectFastTickSamples gathers every metric source fastTick needs. Each
+// source's error is logged here (but never aborts the tick) so a single
+// failing collector (e.g. no thermal zone on non-Pi hardware) leaves just
+// that field at its zero value rather than blocking the others.
+func (c *Collector) collectFastTickSamples(ctx context.Context) fastTickSamples {
+	var s fastTickSamples
+	s.now = time.Now()
+
+	s.cpuUsage, s.cpuErr = c.cpu.Collect()
+	if s.cpuErr != nil {
+		c.log.Warn("cpu collection failed", "error", s.cpuErr)
 	}
-	cpuFreq, cpuFreqErr := c.cpuFreq.Collect()
+	var cpuFreqErr error
+	s.cpuFreq, cpuFreqErr = c.cpuFreq.Collect()
 	if cpuFreqErr != nil {
 		c.log.Warn("cpu frequency collection failed", "error", cpuFreqErr)
 	}
-	load, err := c.loadAvg.Collect()
+	var err error
+	s.load, err = c.loadAvg.Collect()
 	if err != nil {
 		c.log.Warn("load average collection failed", "error", err)
 	}
-	temp, gpuTemp, tempErr := c.temp.Collect(ctx)
-	if tempErr != nil {
-		c.log.Warn("temperature collection failed", "error", tempErr)
+	s.temp, s.gpuTemp, s.tempErr = c.temp.Collect(ctx)
+	if s.tempErr != nil {
+		c.log.Warn("temperature collection failed", "error", s.tempErr)
 	}
-	throttled, throttledErr := c.throttled.Collect(ctx)
-	if throttledErr != nil {
-		c.log.Warn("throttled state collection failed", "error", throttledErr)
+	s.throttled, err = c.throttled.Collect(ctx)
+	if err != nil {
+		c.log.Warn("throttled state collection failed", "error", err)
 	}
-	mem, swap, memErr := c.memory.Collect()
-	if memErr != nil {
-		c.log.Warn("memory collection failed", "error", memErr)
+	s.mem, s.swap, s.memErr = c.memory.Collect()
+	if s.memErr != nil {
+		c.log.Warn("memory collection failed", "error", s.memErr)
 	}
-	disks, diskErr := c.disk.Collect()
-	if diskErr != nil {
-		c.log.Warn("disk collection failed", "error", diskErr)
+	s.disks, s.diskErr = c.disk.Collect()
+	if s.diskErr != nil {
+		c.log.Warn("disk collection failed", "error", s.diskErr)
 	}
-	var netIfaces []NetworkInterface
 	if c.cfg.NetworkEnabled {
-		netIfaces, err = c.network.Collect()
+		s.netIfaces, err = c.network.Collect()
 		if err != nil {
 			c.log.Warn("network collection failed", "error", err)
 		}
 	}
-	uptimeSecs, err := c.uptime.Collect()
+	s.uptimeSecs, err = c.uptime.Collect()
 	if err != nil {
 		c.log.Warn("uptime collection failed", "error", err)
 	}
+	return s
+}
+
+func (c *Collector) fastTick(ctx context.Context) {
+	s := c.collectFastTickSamples(ctx)
 
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	c.latest.Timestamp = now
-	c.latest.UptimeSeconds = uptimeSecs
-	c.latest.CPU = cpuUsage
-	c.latest.CPUFrequency = cpuFreq
-	c.latest.Load = load
-	c.latest.Temperature = temp
-	c.latest.GPUTemperature = gpuTemp
-	c.latest.Throttled = throttled
-	c.latest.Memory = mem
-	c.latest.Swap = swap
-	c.latest.Disks = disks
-	c.latest.Network = netIfaces
+	c.latest.Timestamp = s.now
+	c.latest.UptimeSeconds = s.uptimeSecs
+	c.latest.CPU = s.cpuUsage
+	c.latest.CPUFrequency = s.cpuFreq
+	c.latest.Load = s.load
+	c.latest.Temperature = s.temp
+	c.latest.GPUTemperature = s.gpuTemp
+	c.latest.Throttled = s.throttled
+	c.latest.Memory = s.mem
+	c.latest.Swap = s.swap
+	if s.disks == nil {
+		// A failed collection (e.g. /proc/mounts unreadable) leaves s.disks
+		// nil; keep Snapshot.Disks marshaling as [] rather than null.
+		s.disks = []Disk{}
+	}
+	c.latest.Disks = s.disks
+	c.latest.Network = s.netIfaces
 
-	c.cpuHist.Add(HistoryPoint{Timestamp: now, Value: cpuUsage.OverallPercent})
-	c.l1Hist.Add(HistoryPoint{Timestamp: now, Value: load.Load1})
-	c.l5Hist.Add(HistoryPoint{Timestamp: now, Value: load.Load5})
-	c.l15Hist.Add(HistoryPoint{Timestamp: now, Value: load.Load15})
-	c.tempHist.Add(HistoryPoint{Timestamp: now, Value: temp.Celsius})
-	c.memHist.Add(HistoryPoint{Timestamp: now, Value: mem.UsedPercent})
-	c.swapHist.Add(HistoryPoint{Timestamp: now, Value: swap.UsedPercent})
+	c.cpuHist.Add(HistoryPoint{Timestamp: s.now, Value: s.cpuUsage.OverallPercent})
+	c.l1Hist.Add(HistoryPoint{Timestamp: s.now, Value: s.load.Load1})
+	c.l5Hist.Add(HistoryPoint{Timestamp: s.now, Value: s.load.Load5})
+	c.l15Hist.Add(HistoryPoint{Timestamp: s.now, Value: s.load.Load15})
+	c.tempHist.Add(HistoryPoint{Timestamp: s.now, Value: s.temp.Celsius})
+	c.memHist.Add(HistoryPoint{Timestamp: s.now, Value: s.mem.UsedPercent})
+	c.swapHist.Add(HistoryPoint{Timestamp: s.now, Value: s.swap.UsedPercent})
 
+	c.recordDeviceHistory(s.now, s.disks, s.netIfaces)
+	c.historyGen++
+
+	// Evaluate the freshly collected values against the alert thresholds.
+	// The engine has its own lock and never calls back into the collector,
+	// so doing this while c.mu is held cannot deadlock. Metrics whose
+	// collection failed this tick are flagged invalid so a bogus zero can't
+	// spuriously clear a real alert; the engine keeps their previous state.
+	if c.alerts != nil {
+		diskSamples := make([]alert.DiskSample, len(s.disks))
+		for i, d := range s.disks {
+			diskSamples[i] = alert.DiskSample{Mountpoint: d.Mountpoint, UsedPercent: d.UsedPercent}
+		}
+		events := c.alerts.Evaluate(alert.Sample{
+			Timestamp:        s.now,
+			CPUPercent:       s.cpuUsage.OverallPercent,
+			CPUValid:         s.cpuErr == nil,
+			TemperatureC:     s.temp.Celsius,
+			TemperatureValid: s.tempErr == nil,
+			MemoryPercent:    s.mem.UsedPercent,
+			MemoryValid:      s.memErr == nil,
+			SwapPercent:      s.swap.UsedPercent,
+			SwapValid:        s.memErr == nil,
+			Disks:            diskSamples,
+			DisksValid:       s.diskErr == nil,
+		})
+		// Forward any transition events to the webhook notifier. Notify only
+		// enqueues (never blocks), so a slow webhook can't stall collection.
+		if c.notifier != nil && len(events) > 0 {
+			c.notifier.Notify(events)
+		}
+	}
+}
+
+// recordDeviceHistory adds this tick's samples to the per-device history
+// maps (diskHist, rxHist, txHist) and evicts entries for devices that have
+// vanished (unplugged USB drive, torn-down veth interface, ...), or those
+// maps would otherwise grow without bound as devices churn. A device is
+// only evicted once its *newest* sample falls outside the retained history
+// window, not merely for being absent from this single tick:
+// DiskCollector.Collect already skips mountpoints that fail to stat, so a
+// device missing for one tick must keep its history rather than losing it
+// immediately. Called from fastTick while c.mu is already held.
+func (c *Collector) recordDeviceHistory(now time.Time, disks []Disk, netIfaces []NetworkInterface) {
+	diskKeys := make(map[string]struct{}, len(disks))
 	for _, d := range disks {
 		rb, ok := c.diskHist[d.Mountpoint]
 		if !ok {
@@ -337,7 +476,9 @@ func (c *Collector) fastTick(ctx context.Context) {
 			c.diskHist[d.Mountpoint] = rb
 		}
 		rb.Add(HistoryPoint{Timestamp: now, Value: d.UsedPercent})
+		diskKeys[d.Mountpoint] = struct{}{}
 	}
+	netKeys := make(map[string]struct{}, len(netIfaces))
 	for _, n := range netIfaces {
 		rxRB, ok := c.rxHist[n.Name]
 		if !ok {
@@ -352,37 +493,13 @@ func (c *Collector) fastTick(ctx context.Context) {
 			c.txHist[n.Name] = txRB
 		}
 		txRB.Add(HistoryPoint{Timestamp: now, Value: n.TxBytesPerSec})
+		netKeys[n.Name] = struct{}{}
 	}
 
-	// Evaluate the freshly collected values against the alert thresholds.
-	// The engine has its own lock and never calls back into the collector,
-	// so doing this while c.mu is held cannot deadlock. Metrics whose
-	// collection failed this tick are flagged invalid so a bogus zero can't
-	// spuriously clear a real alert; the engine keeps their previous state.
-	if c.alerts != nil {
-		diskSamples := make([]alert.DiskSample, len(disks))
-		for i, d := range disks {
-			diskSamples[i] = alert.DiskSample{Mountpoint: d.Mountpoint, UsedPercent: d.UsedPercent}
-		}
-		events := c.alerts.Evaluate(alert.Sample{
-			Timestamp:        now,
-			CPUPercent:       cpuUsage.OverallPercent,
-			CPUValid:         cpuErr == nil,
-			TemperatureC:     temp.Celsius,
-			TemperatureValid: tempErr == nil,
-			MemoryPercent:    mem.UsedPercent,
-			MemoryValid:      memErr == nil,
-			SwapPercent:      swap.UsedPercent,
-			SwapValid:        memErr == nil,
-			Disks:            diskSamples,
-			DisksValid:       diskErr == nil,
-		})
-		// Forward any transition events to the webhook notifier. Notify only
-		// enqueues (never blocks), so a slow webhook can't stall collection.
-		if c.notifier != nil && len(events) > 0 {
-			c.notifier.Notify(events)
-		}
-	}
+	historyWindow := c.fastInterval * time.Duration(c.cfg.HistoryCapacity)
+	evictStaleSeries(c.diskHist, diskKeys, now, historyWindow)
+	evictStaleSeries(c.rxHist, netKeys, now, historyWindow)
+	evictStaleSeries(c.txHist, netKeys, now, historyWindow)
 }
 
 // Alerts returns the current alert states and recent transition events. When
@@ -392,6 +509,24 @@ func (c *Collector) Alerts() alert.Report {
 		return alert.Report{Enabled: false}
 	}
 	return c.alerts.Report()
+}
+
+// evictStaleSeries deletes entries from hist whose key is not in current
+// and whose newest sample is older than window. window <= 0 disables
+// eviction (no history window configured to measure staleness against).
+func evictStaleSeries(hist map[string]*RingBuffer[HistoryPoint], current map[string]struct{}, now time.Time, window time.Duration) {
+	if window <= 0 {
+		return
+	}
+	for key, rb := range hist {
+		if _, ok := current[key]; ok {
+			continue
+		}
+		newest, ok := rb.Newest()
+		if !ok || now.Sub(newest.Timestamp) > window {
+			delete(hist, key)
+		}
+	}
 }
 
 func (c *Collector) slowTick(ctx context.Context) {

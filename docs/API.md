@@ -12,10 +12,20 @@ existing integrations against `/api/v1/...` keep working.
 
 By default, no authentication is required — PiMonitor is meant to run on a
 trusted local network. If you set `api_key` in `config.yaml` (or the
-`-api-key` flag), every `/api/v1/...` request must include one of:
+`PIMONITOR_API_KEY` environment variable), every `/api/v1/...` request must
+include one of:
 
 - `Authorization: Bearer <api_key>`
 - `X-Api-Key: <api_key>`
+
+The key can be supplied three ways, in increasing precedence: `api_key` in
+the config file, the `PIMONITOR_API_KEY` environment variable, and the
+`-api-key` flag. **Prefer the config file** — `install.sh` restricts it to
+mode `640 root:pimonitor`. `PIMONITOR_API_KEY` is the deployment-friendly
+alternative (systemd `EnvironmentFile=` pointing at a file with the same
+restricted permissions). The `-api-key` flag is for local development only:
+command lines are world-readable via `/proc/<pid>/cmdline`, so every local
+user on the machine can read a key passed that way.
 
 Requests without a valid key receive `401 Unauthorized`. `GET /healthz` is
 never gated by the API key, so external health checks keep working
@@ -26,6 +36,28 @@ shows an "API key required" prompt on first load, then stores the entered
 key in the browser's `localStorage` and sends it as `X-Api-Key` on every
 request. Setting a key therefore does not disable the dashboard — each
 browser just has to unlock it once.
+
+## Compression
+
+`/api/v1/...` responses are gzip-compressed when the request sends
+`Accept-Encoding: gzip` (the response then carries `Content-Encoding: gzip`
+and `Vary: Accept-Encoding`); the JSON body is unchanged, only its wire
+encoding differs. Requests without that header receive the identity
+(uncompressed) response, so existing clients keep working unmodified.
+
+## Rate limiting
+
+Every `/api/v1/...` endpoint shares a single limit on how many requests may be actively
+processing at once. `GET /api/v1/metrics/history` is the expensive one — it can require
+copying and re-serialising the whole retained history window — so an unbounded number of
+concurrent callers could otherwise starve metric collection on constrained hardware such
+as a Raspberry Pi Zero.
+
+A request beyond the limit receives `503 Service Unavailable` with a `Retry-After: 1`
+header and a plain-text body, instead of being queued. Clients should treat this the same
+as any other transient server error: back off (the `Retry-After` value is in seconds) and
+retry. `GET /healthz` is never subject to this limit, so liveness checks keep working even
+while the API is shedding load.
 
 ## Endpoints
 

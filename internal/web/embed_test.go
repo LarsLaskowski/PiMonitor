@@ -8,7 +8,7 @@ import (
 )
 
 func TestHandler_ServesIndex(t *testing.T) {
-	h, err := Handler()
+	h, err := Handler("1.2.3")
 	if err != nil {
 		t.Fatalf("Handler: %v", err)
 	}
@@ -26,7 +26,7 @@ func TestHandler_ServesIndex(t *testing.T) {
 }
 
 func TestHandler_ServesStaticAssets(t *testing.T) {
-	h, err := Handler()
+	h, err := Handler("1.2.3")
 	if err != nil {
 		t.Fatalf("Handler: %v", err)
 	}
@@ -42,7 +42,7 @@ func TestHandler_ServesStaticAssets(t *testing.T) {
 }
 
 func TestHandler_ServesThemeToggle(t *testing.T) {
-	h, err := Handler()
+	h, err := Handler("1.2.3")
 	if err != nil {
 		t.Fatalf("Handler: %v", err)
 	}
@@ -72,7 +72,7 @@ func TestHandler_ServesThemeToggle(t *testing.T) {
 }
 
 func TestHandler_UnknownPath404s(t *testing.T) {
-	h, err := Handler()
+	h, err := Handler("1.2.3")
 	if err != nil {
 		t.Fatalf("Handler: %v", err)
 	}
@@ -81,5 +81,55 @@ func TestHandler_UnknownPath404s(t *testing.T) {
 	h.ServeHTTP(rec, req)
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want 404", rec.Code)
+	}
+}
+
+func TestHandler_SetsCacheHeaders(t *testing.T) {
+	h, err := Handler("1.2.3")
+	if err != nil {
+		t.Fatalf("Handler: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if got, want := rec.Header().Get("Cache-Control"), "no-cache"; got != want {
+		t.Errorf("Cache-Control = %q, want %q", got, want)
+	}
+	if got, want := rec.Header().Get("Etag"), `"1.2.3"`; got != want {
+		t.Errorf("Etag = %q, want %q", got, want)
+	}
+}
+
+func TestHandler_RevalidatesOnMatchingETag(t *testing.T) {
+	h, err := Handler("1.2.3")
+	if err != nil {
+		t.Fatalf("Handler: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set("If-None-Match", `"1.2.3"`)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotModified {
+		t.Fatalf("status = %d, want %d for a matching If-None-Match", rec.Code, http.StatusNotModified)
+	}
+}
+
+func TestHandler_RefetchesOnVersionChange(t *testing.T) {
+	h, err := Handler("2.0.0")
+	if err != nil {
+		t.Fatalf("Handler: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set("If-None-Match", `"1.2.3"`)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d when the client's cached ETag is stale", rec.Code, http.StatusOK)
 	}
 }

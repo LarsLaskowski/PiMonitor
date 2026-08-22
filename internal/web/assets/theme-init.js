@@ -7,9 +7,13 @@
 // render-blocking, it still runs before the first paint.
 (function () {
   try {
-    var stored = localStorage.getItem('pimonitor-theme');
+    const stored = localStorage.getItem('pimonitor-theme');
     if (stored === 'light' || stored === 'dark') {
-      document.documentElement.setAttribute('data-theme', stored);
+      document.documentElement.dataset.theme = stored;
     }
-  } catch (e) {}
+  } catch (e) {
+    // Private browsing or blocked storage: leave data-theme unset, same as
+    // when nothing was ever stored; the CSS prefers-color-scheme default
+    // still applies.
+  }
 })();

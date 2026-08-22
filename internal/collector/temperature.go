@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -77,35 +76,33 @@ func readThermalZoneMilliC(zonePath string) (float64, error) {
 // TemperatureCollector reads CPU temperature from sysfs, with an optional
 // vcgencmd-sourced GPU/SoC reading on Raspberry Pi OS.
 //
-// The thermal zone and vcgencmd path are resolved lazily and re-resolved
-// (throttled) when they are still missing, so a sensor or driver that
-// appears after the process started — e.g. a thermal module loaded late in
-// boot, or a zone path that changes across a kernel/driver update — is
-// picked up without restarting the collector.
+// The thermal zone is resolved lazily and re-resolved (throttled) when it
+// is still missing, so a sensor or driver that appears after the process
+// started — e.g. a thermal module loaded late in boot, or a zone path that
+// changes across a kernel/driver update — is picked up without restarting
+// the collector. vcgencmd detection is handled by the shared vcg runner,
+// which TemperatureCollector and ThrottledCollector both use.
 type TemperatureCollector struct {
 	zoneGlob string // sysfs glob for thermal zones (overridable in tests)
 
-	mu                 sync.Mutex
-	now                func() time.Time
-	zonePath           string
-	zoneType           string
-	lastZoneDetect     time.Time
-	vcgencmdPath       string // empty if vcgencmd is not available
-	vcgencmdDetected   bool   // whether a vcgencmd lookup has ever succeeded
-	lastVcgencmdDetect time.Time
+	mu             sync.Mutex
+	now            func() time.Time
+	zonePath       string
+	zoneType       string
+	lastZoneDetect time.Time
+	vcg            *vcgencmdRunner // nil disables the GPU/SoC reading
 }
 
-// NewTemperatureCollector auto-detects the CPU thermal zone and checks
-// whether vcgencmd is available. Detection failures are not fatal: the
-// collector still works, it just reports errors from Collect() until a
-// thermal zone appears (e.g. useful for local development off-Pi). If the
-// zone (or vcgencmd) is missing at construction, Collect re-attempts
-// detection at most once every detectRetryInterval, so a sensor that shows
-// up later is used automatically.
-func NewTemperatureCollector() *TemperatureCollector {
-	c := &TemperatureCollector{zoneGlob: thermalZoneGlob, now: time.Now}
+// NewTemperatureCollector auto-detects the CPU thermal zone. Detection
+// failure is not fatal: the collector still works, it just reports errors
+// from Collect() until a thermal zone appears (e.g. useful for local
+// development off-Pi). If the zone is missing at construction, Collect
+// re-attempts detection at most once every detectRetryInterval, so a sensor
+// that shows up later is used automatically. vcg is the vcgencmd runner
+// shared with ThrottledCollector; pass nil to disable the GPU/SoC reading.
+func NewTemperatureCollector(vcg *vcgencmdRunner) *TemperatureCollector {
+	c := &TemperatureCollector{zoneGlob: thermalZoneGlob, now: time.Now, vcg: vcg}
 	c.redetectZoneLocked()
-	c.redetectVcgencmdLocked()
 	return c
 }
 
@@ -124,23 +121,6 @@ func (c *TemperatureCollector) redetectZoneLocked() {
 	if zonePath, zoneType, err := findCPUThermalZone(c.zoneGlob); err == nil {
 		c.zonePath = zonePath
 		c.zoneType = zoneType
-	}
-}
-
-// redetectVcgencmdLocked retries exec.LookPath("vcgencmd") if it has never
-// been found, throttled the same way as zone re-detection.
-func (c *TemperatureCollector) redetectVcgencmdLocked() {
-	if c.vcgencmdDetected {
-		return
-	}
-	now := c.now()
-	if !c.lastVcgencmdDetect.IsZero() && now.Sub(c.lastVcgencmdDetect) < detectRetryInterval {
-		return
-	}
-	c.lastVcgencmdDetect = now
-	if path, err := exec.LookPath("vcgencmd"); err == nil {
-		c.vcgencmdPath = path
-		c.vcgencmdDetected = true
 	}
 }
 
@@ -176,31 +156,26 @@ func (c *TemperatureCollector) Collect(ctx context.Context) (Temperature, *GPUTe
 	}
 	temp := Temperature{Zone: c.zoneType, Celsius: celsius}
 
-	c.redetectVcgencmdLocked()
-	if c.vcgencmdPath == "" {
-		return temp, nil, nil
-	}
-
 	gpuTemp, err := c.readVcgencmdTemp(ctx)
 	if err != nil {
-		// vcgencmd is an optional extra data point; its failure should not
-		// fail the whole collection.
+		// vcgencmd is an optional extra data point; its unavailability or
+		// failure should not fail the whole collection.
 		return temp, nil, nil
 	}
 	return temp, &gpuTemp, nil
 }
 
-// readVcgencmdTemp runs `vcgencmd measure_temp` and parses output of the
-// form "temp=42.8'C".
+// readVcgencmdTemp runs `vcgencmd measure_temp` (via the shared vcg runner)
+// and parses output of the form "temp=42.8'C".
 func (c *TemperatureCollector) readVcgencmdTemp(ctx context.Context) (GPUTemperature, error) {
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-
-	out, err := exec.CommandContext(ctx, c.vcgencmdPath, "measure_temp").Output()
-	if err != nil {
-		return GPUTemperature{}, fmt.Errorf("run vcgencmd: %w", err)
+	if c.vcg == nil {
+		return GPUTemperature{}, errVcgencmdUnavailable
 	}
-	return parseVcgencmdTemp(string(out))
+	out, err := c.vcg.run(ctx, "measure_temp")
+	if err != nil {
+		return GPUTemperature{}, err
+	}
+	return parseVcgencmdTemp(out)
 }
 
 func parseVcgencmdTemp(output string) (GPUTemperature, error) {

@@ -12,6 +12,14 @@ ExecStart=/usr/local/bin/pimonitor -config /etc/pimonitor/config.yaml
 Restart=on-failure
 RestartSec=5
 
+# The REST API key can be set as api_key in the config file above, or kept
+# out of it entirely by uncommenting the line below and putting
+# PIMONITOR_API_KEY=<secret> into a root-only file (chown root:root, chmod
+# 600 - systemd reads it as PID 1, before dropping to the pimonitor user).
+# Never pass the key via the -api-key flag here: the command line of a
+# running process is world-readable through /proc/<pid>/cmdline.
+#EnvironmentFile=/etc/pimonitor/pimonitor.env
+
 # Hardening. PiMonitor only ever reads world-readable files under /proc,
 # /sys/class/thermal, /etc/os-release, and the apt cache under
 # /var/lib/apt/lists/ (via `apt list --upgradable`), plus binds a TCP

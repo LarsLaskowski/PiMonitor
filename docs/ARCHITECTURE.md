@@ -92,6 +92,18 @@ the first time a given device is seen. `RingBuffer[T]` (`ringbuffer.go`) is a fi
 capacity circular buffer with its own internal lock — safe to read concurrently with the
 collector's own tick, independent of the collector's outer `sync.RWMutex`.
 
+Entries are also removed: `evictStaleSeries`, called from `fastTick` for `diskHist`,
+`rxHist`, and `txHist`, deletes a device's series once its *newest* sample is older than
+the retained history window (`FastInterval * HistoryCapacity`) — without this, a churning
+`veth*` interface from container start/stop or a USB drive that gets unplugged would keep
+its full ring buffer (and keep showing up in `GET /api/v1/metrics/history`) forever. This
+deliberately differs from the alert engine's `pruneDisks` (see below), which drops state
+on a single absent sample: `DiskCollector.Collect` already skips a mountpoint that
+transiently fails to stat, so evicting history on the first miss would wipe a device's
+history over a passing blip rather than an actual disappearance — eviction is tied to the
+history window instead, so a one-tick miss is tolerated and only a sustained absence is
+treated as gone.
+
 `HistoryCapacity` (`config.Config.HistoryCapacity()`) is derived from
 `history_window_minutes / poll_interval_seconds`, not configured directly, and is capped
 at 1,000,000 points per series (`config.maxHistoryCapacity`) — `NewRingBuffer` allocates
@@ -113,6 +125,18 @@ points per series so a corrupt or malicious file cannot trigger an oversized all
 - **Written**: on every `slowTick` (i.e. every `updates_check_minutes`) and once more on
   clean shutdown (`ctx.Done()` in `Run`), so a clean stop loses at most the points
   collected since the last fast tick.
+- **Written asynchronously**: `persistHistory` snapshots `Collector.History()` on the
+  calling goroutine (a consistent point-in-time view), then hands the encode-and-write off
+  to a background goroutine tracked by `Collector.persistWG`. On a Pi the atomic write's
+  `fsync` can stall the SD card for hundreds of milliseconds, and `Run`'s `time.Ticker`
+  drops rather than queues any fast tick that falls due meanwhile — running the write
+  inline on the tick goroutine would silently punch a hole in the very history being
+  persisted. A buffered try-lock (`Collector.persisting`) skips — rather than queues — a
+  flush while a previous write is still in flight, since the next flush writes newer data
+  anyway. `Run`'s `ctx.Done()` branch calls `persistWG.Wait()` after the final
+  `persistHistory()` so the last flush is guaranteed to land before `Run` returns; this is
+  bounded by `cmd/pimonitor/main.go`'s shutdown context (it selects on `collDone` vs.
+  `shutdownCtx.Done()`), so a stuck fsync cannot hang the process.
 - **Written atomically**: `writeFileAtomic` writes to a temp file in the same directory,
   `fsync`s it, then renames it over the target path — a crash mid-write can never leave a
   partially written history file behind.
@@ -164,17 +188,30 @@ so the server-reported alert state always agrees with what the dashboard visuall
 
 `alert.Notifier` POSTs alert transition events to zero or more configured HTTP webhooks
 (Slack, Discord, Home Assistant, ntfy, or any endpoint accepting a JSON/templated body).
-Delivery is fully decoupled from collection: `Notify` only enqueues events onto a bounded
-channel (`defaultNotifyQueueSize` = 256) and returns immediately; a single background
-worker goroutine (`Start`/`dispatch`) drains the queue and performs the actual (retrying,
-potentially slow) HTTP calls. This guarantees a hung or failing webhook endpoint can never
-stall the collector's fast tick — if the queue fills up (a persistent backlog of slow
-deliveries), further events are dropped with a logged warning rather than blocking.
+Delivery is fully decoupled from collection: `Notify` only enqueues events and returns
+immediately; background worker goroutines (`Start`/`dispatch`) drain the queues and
+perform the actual (retrying, potentially slow) HTTP calls. This guarantees a hung or
+failing webhook endpoint can never stall the collector's fast tick — if a queue fills up
+(a persistent backlog of slow deliveries), further events are dropped with a logged
+warning rather than blocking.
+
+**Each webhook gets its own bounded queue (`defaultNotifyQueueSize` = 256) and its own
+worker** (`webhookWorker`). Delivery to one destination is therefore never held up by
+another: a webhook pointing at a dead host can only delay — and only ever drop — its own
+events. `Notify` applies the severity filter inline (it is pure and cheap) and fans the
+event out onto the queue of every webhook it reaches.
 
 Per-webhook behavior: a severity filter (`min_level`), an optional
 `text/template`-rendered body (defaulting to a fixed JSON payload when unset), retry with
-exponential backoff up to `notify_max_retries`, and a per-`(url, metric, resource)`
-rate limiter (`notify_min_interval_seconds`) that coalesces repeated firings. `cleared`
+exponential backoff up to `notify_max_retries`, and a per-`(metric, resource)`
+rate limiter (`notify_min_interval_seconds`) that coalesces repeated firings.
+
+**Only retryable failures consume the retry budget.** Transport errors (DNS, refused
+connections, timeouts) and 5xx responses are transient, as are `408 Request Timeout` and
+`429 Too Many Requests`, which explicitly invite a retry. Every other 4xx is a permanent
+rejection of that exact request — a revoked webhook URL, a malformed payload — so
+`deliver` gives up after the first attempt instead of re-POSTing an identical body that
+cannot succeed. `cleared`
 events deliberately bypass the rate limiter — a recovery signal must always reach a
 state-based consumer (e.g. a Home Assistant `binary_sensor`) so it can never get stuck
 reporting an alert that has actually cleared; only repeated *firings* are coalesced.
@@ -205,6 +242,13 @@ withLogging(withSecurityHeaders(mux))
   or the configured key's *length* through response timing. When `APIKey` is empty (the
   default), every request is allowed — the common case (dashboard on a trusted LAN) stays
   unauthenticated and simple.
+- **`withMaxInFlight`**: wraps each of the four `/api/v1/...` routes (not `/healthz` or
+  the static dashboard) in a shared semaphore of capacity `defaultMaxInFlight` (16). A
+  request beyond the limit gets `503 Service Unavailable` with `Retry-After: 1` instead of
+  being queued indefinitely. This bounds worst-case concurrent CPU/memory on a Pi Zero: an
+  unauthenticated flood of requests to the history endpoint (the most expensive one — see
+  below) can no longer multiply without limit. `/healthz` is deliberately excluded so a
+  monitoring system can still tell the process is alive while the API is shedding load.
 
 **Routes**: `GET /healthz` (plain-text liveness, never gated), and four versioned,
 API-key-gated routes — `GET /api/v1/metrics`, `GET /api/v1/metrics/history`,
@@ -212,10 +256,18 @@ API-key-gated routes — `GET /api/v1/metrics`, `GET /api/v1/metrics/history`,
 via the `staticHandler` passed into `New` (`nil` in tests, to exercise the API layer
 without the frontend). See [`API.md`](API.md) for the full response schemas.
 
-**`MetricsProvider` is a narrow interface** (`Snapshot() / History() / Alerts()`)
-implemented by `*collector.Collector`, so `httpapi` can be unit-tested against a fake
-implementation (see `handlers_test.go`) entirely independent of real `/proc`/`/sys`
-access — the same testability principle the collector package applies to its own parsers.
+**`MetricsProvider` is a narrow interface** (`Snapshot() / History() / HistoryGeneration()
+/ Alerts()`) implemented by `*collector.Collector`, so `httpapi` can be unit-tested
+against a fake implementation (see `handlers_test.go`) entirely independent of real
+`/proc`/`/sys` access — the same testability principle the collector package applies to
+its own parsers.
+
+**`handleHistory` caches its encoded response.** `Collector.History()` deep-copies every
+retained ring buffer under lock — the most expensive request the service serves — but the
+underlying data only changes once per `fastTick`. `Collector.HistoryGeneration()` returns
+a counter bumped each `fastTick`; `Server` keeps the last generation it encoded alongside
+the encoded bytes and reuses them whenever the generation is unchanged, so concurrent
+pollers between ticks share one deep-copy-and-encode instead of each paying for their own.
 
 **`GET /api/v1/config`** exists specifically so the frontend doesn't have to duplicate
 values (poll interval, alert thresholds, feature toggles) that are already defined
@@ -224,12 +276,20 @@ server-side; it also echoes back the build-time `version` injected via
 
 ## Web dashboard (`internal/web`)
 
-`web.Handler()` embeds `internal/web/assets/*` (`index.html`, `app.js`, `chart.js`,
+`web.Handler(version)` embeds `internal/web/assets/*` (`index.html`, `app.js`, `chart.js`,
 `gauge.js`, `theme-init.js`, `style.css`) into the binary via `//go:embed` and serves them
 with `http.FileServerFS`. There is **no frontend build step** — no bundler, no npm
 toolchain, no framework — the assets are plain HTML/CSS/JS shipped as-is, consistent with
 the project's "prefer the standard library, minimize dependency surface" philosophy (see
 [`CONTRIBUTING.md`](CONTRIBUTING.md)).
+
+Because embedded files carry a zero `ModTime`, `http.FileServerFS` alone would emit no
+`Last-Modified`/`ETag` and no `Cache-Control`, forcing a full refetch of every asset on
+every page load. `Handler` wraps the file server to set `Cache-Control: no-cache` and an
+`Etag` derived from the build-time `version` (the same string injected via
+`-ldflags -X main.version=...` and echoed by `GET /api/v1/config`), so browsers
+revalidate with a cheap conditional request (a 304 when the version is unchanged) and
+still refetch immediately once an upgrade changes `version`.
 
 **Stored-XSS prevention is enforced by a repository rule, not just convention.**
 `internal/web/xss_test.go` (`TestAppJS_NoInnerHTMLInterpolation`) scans `app.js` at test
@@ -252,8 +312,16 @@ same warn/crit cutoffs the server-side alert engine evaluates against (`>=`), an
 ## Configuration (`internal/config`)
 
 `config.Load` resolves `Config` in strictly increasing precedence: **built-in defaults**
-(`Default()`) → **optional YAML file** (`-config`) → **CLI flags** (`-listen`,
-`-log-level`, `-api-key`). YAML decoding uses `KnownFields(true)`, so an unrecognized key
+(`Default()`) → **optional YAML file** (`-config`) → **environment**
+(`PIMONITOR_API_KEY`) → **CLI flags** (`-listen`, `-log-level`, `-api-key`). The
+environment layer exists only for the API key: the `-api-key` flag leaks the secret into
+the process list (`/proc/<pid>/cmdline` is world-readable), whereas `PIMONITOR_API_KEY`
+can be delivered by systemd's `EnvironmentFile=` from a root-only file, and the config
+file itself is kept at mode `640 root:pimonitor` by `install.sh`. An unset *or empty*
+`PIMONITOR_API_KEY` changes nothing, mirroring the empty-flag default, so exporting it
+blank cannot accidentally turn off an `api_key` set in the file. `Load` delegates to an
+unexported `load(args, lookupEnv)` so the precedence rules are testable without mutating
+the process environment. YAML decoding uses `KnownFields(true)`, so an unrecognized key
 (e.g. a typo like `api_kay`) fails config loading outright at startup instead of silently
 falling back to a default that could be security-relevant (e.g. no authentication because
 the intended `api_key` was never actually applied).
@@ -306,6 +374,9 @@ binary and the packaging files it ships next to.
 **CI** (`.github/workflows/ci.yml`) runs `go build ./...`, `go vet ./...`,
 `go test ./... -race -cover`, and `golangci-lint run` on every push/PR to `main`, plus a
 separate cross-compile job (build-only, `arm`/`arm64`) so a target-platform build break is
-caught even though the runner itself is `amd64` and cannot execute Pi-only code paths.
+caught even though the runner itself is `amd64` and cannot execute Pi-only code paths. A
+`sonarqube` job (skipped for Dependabot PRs, which don't receive repository secrets)
+regenerates coverage as a Go coverage profile and uploads it to SonarCloud together with
+the sources, per `sonar-project.properties` at the repo root.
 Actions are pinned to commit SHAs (not floating tags) so a compromised or rewritten action
 release can't silently change what CI executes.

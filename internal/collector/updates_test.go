@@ -2,8 +2,10 @@ package collector
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -90,5 +92,50 @@ func TestUpdatesCollector_Collect_StalenessDetection(t *testing.T) {
 	}
 	if !updates.Stale {
 		t.Fatalf("expected Stale=true for a 48h old cache with a 6h threshold, got %+v", updates)
+	}
+}
+
+func TestUpdatesCollector_Collect_PinsLocale(t *testing.T) {
+	dir := t.TempDir()
+	envFile := filepath.Join(dir, "env.out")
+	aptStub := writeFakeVcgencmd(t, dir, "fake-apt", fmt.Sprintf("env > %q", envFile))
+
+	c := &UpdatesCollector{
+		aptPath:  aptStub,
+		listsDir: filepath.Join(dir, "missing-lists"),
+		now:      time.Now,
+	}
+
+	if _, err := c.Collect(context.Background()); err != nil {
+		t.Fatalf("Collect: %v", err)
+	}
+
+	out, err := os.ReadFile(envFile)
+	if err != nil {
+		t.Fatalf("read captured child environment: %v", err)
+	}
+
+	env := map[string]string{}
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		k, v, ok := strings.Cut(line, "=")
+		if !ok {
+			continue
+		}
+		env[k] = v
+	}
+
+	if env["LC_ALL"] != "C" {
+		t.Errorf("LC_ALL = %q, want C", env["LC_ALL"])
+	}
+	if env["LANG"] != "C" {
+		t.Errorf("LANG = %q, want C", env["LANG"])
+	}
+	if v, ok := env["LANGUAGE"]; ok && v != "" {
+		t.Errorf("LANGUAGE = %q, want empty", v)
+	}
+	// Regression guard: PATH must survive, otherwise "apt" (a bare command
+	// name, resolved via PATH) would not be executable at all.
+	if env["PATH"] == "" {
+		t.Error("PATH not present in child environment; apt would not be resolvable")
 	}
 }

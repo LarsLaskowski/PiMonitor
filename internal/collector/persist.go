@@ -222,27 +222,14 @@ func decodeHistory(data []byte) (History, error) {
 
 	list := make([]historySeries, 0, count)
 	for i := uint32(0); i < count && d.err == nil; i++ {
-		kind := d.uint8()
-		keyLen := d.uint16()
-		if d.err == nil && int(keyLen) > maxKeyLen {
-			return History{}, fmt.Errorf("history file series key length %d exceeds limit %d", keyLen, maxKeyLen)
+		s, err, ok := d.decodeSeries()
+		if err != nil {
+			return History{}, err
 		}
-		key := string(d.take(int(keyLen)))
-		n := d.uint32()
-		if d.err == nil && n > maxPointsPerSeries {
-			return History{}, fmt.Errorf("history file series declares %d points (limit %d)", n, maxPointsPerSeries)
-		}
-		raw := d.take(int(n) * pointSize)
-		if d.err != nil {
+		if !ok {
 			break
 		}
-		points := make([]HistoryPoint, n)
-		for j := range points {
-			ms := int64(binary.LittleEndian.Uint64(raw[j*pointSize:]))
-			bits := binary.LittleEndian.Uint64(raw[j*pointSize+8:])
-			points[j] = HistoryPoint{Timestamp: time.UnixMilli(ms), Value: math.Float64frombits(bits)}
-		}
-		list = append(list, historySeries{kind: kind, key: key, points: points})
+		list = append(list, s)
 	}
 	if d.err != nil {
 		return History{}, d.err
@@ -251,6 +238,39 @@ func decodeHistory(data []byte) (History, error) {
 		return History{}, errors.New("trailing data in history file")
 	}
 	return seriesToHistory(list), nil
+}
+
+// decodeSeries decodes one series record (kind, key, and its points) from
+// d. A non-nil err is a fatal format violation (a declared limit exceeded)
+// that should abort decoding immediately. ok is false when the sticky
+// decoder error was set instead (e.g. truncated data); the caller reports
+// that via d.err after the loop.
+func (d *historyDecoder) decodeSeries() (s historySeries, err error, ok bool) {
+	kind := d.uint8()
+	keyLen := d.uint16()
+	if d.err == nil && int(keyLen) > maxKeyLen {
+		return historySeries{}, fmt.Errorf("history file series key length %d exceeds limit %d", keyLen, maxKeyLen), false
+	}
+	key := string(d.take(int(keyLen)))
+	n := d.uint32()
+	if d.err == nil && n > maxPointsPerSeries {
+		return historySeries{}, fmt.Errorf("history file series declares %d points (limit %d)", n, maxPointsPerSeries), false
+	}
+	raw := d.take(int(n) * pointSize)
+	if d.err != nil {
+		return historySeries{}, nil, false
+	}
+	return historySeries{kind: kind, key: key, points: decodeHistoryPoints(raw, n)}, nil, true
+}
+
+func decodeHistoryPoints(raw []byte, n uint32) []HistoryPoint {
+	points := make([]HistoryPoint, n)
+	for j := range points {
+		ms := int64(binary.LittleEndian.Uint64(raw[j*pointSize:]))
+		bits := binary.LittleEndian.Uint64(raw[j*pointSize+8:])
+		points[j] = HistoryPoint{Timestamp: time.UnixMilli(ms), Value: math.Float64frombits(bits)}
+	}
+	return points
 }
 
 // writeFileAtomic writes data to path via a temp file in the same
@@ -286,16 +306,36 @@ func writeFileAtomic(path string, data []byte) error {
 	return nil
 }
 
-// persistHistory snapshots the current metric history to cfg.PersistPath
-// with an atomic write. Failures are logged, not fatal: persistence is
-// best-effort and must never take down metric collection.
+// persistHistory snapshots the current metric history and writes it to
+// cfg.PersistPath asynchronously. The snapshot itself is taken on the
+// caller's goroutine so it is a consistent point-in-time view, but the
+// atomic write (which fsyncs) happens in a background goroutine: on a Pi an
+// SD-card fsync can stall for hundreds of milliseconds, and Run's ticker
+// drops (rather than queues) any fast tick that falls due meanwhile, so a
+// slow flush would silently punch a hole in the very history being
+// persisted. If a previous flush's write is still in flight, this call is
+// skipped entirely rather than queued — the next flush writes newer data
+// anyway. Failures are logged, not fatal: persistence is best-effort and
+// must never take down metric collection.
 func (c *Collector) persistHistory() {
 	if c.cfg.PersistPath == "" {
 		return
 	}
-	if err := writeFileAtomic(c.cfg.PersistPath, encodeHistory(c.History())); err != nil {
-		c.log.Warn("could not persist metric history", "path", c.cfg.PersistPath, "error", err)
+	select {
+	case c.persisting <- struct{}{}:
+	default:
+		return
 	}
+
+	data := encodeHistory(c.History())
+	c.persistWG.Add(1)
+	go func() {
+		defer c.persistWG.Done()
+		defer func() { <-c.persisting }()
+		if err := c.writeFile(c.cfg.PersistPath, data); err != nil {
+			c.log.Warn("could not persist metric history", "path", c.cfg.PersistPath, "error", err)
+		}
+	}()
 }
 
 // loadHistory restores metric history from cfg.PersistPath, if present,

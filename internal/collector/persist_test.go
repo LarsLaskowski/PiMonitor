@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -161,6 +162,7 @@ func TestCollector_PersistAndLoadHistory(t *testing.T) {
 	c1 := newPersistTestCollector(path, time.Hour)
 	c1.importHistory(fixtureHistory(now.Add(-time.Minute)), now)
 	c1.persistHistory()
+	c1.persistWG.Wait()
 
 	c2 := newPersistTestCollector(path, time.Hour)
 	c2.loadHistory()
@@ -243,8 +245,10 @@ func TestCollector_PersistHistory_OverwritesExistingFile(t *testing.T) {
 
 	c := newPersistTestCollector(path, time.Hour)
 	c.persistHistory() // first write: empty history
+	c.persistWG.Wait()
 	c.importHistory(fixtureHistory(now.Add(-time.Minute)), now)
 	c.persistHistory() // second write must atomically replace the first
+	c.persistWG.Wait()
 
 	c2 := newPersistTestCollector(path, time.Hour)
 	c2.loadHistory()
@@ -274,6 +278,146 @@ func TestCollector_Run_PersistsOnShutdown(t *testing.T) {
 	case <-done:
 	case <-time.After(2 * time.Second):
 		t.Fatal("Run did not stop after context cancellation")
+	}
+
+	c2 := newPersistTestCollector(path, time.Hour)
+	c2.loadHistory()
+	if len(c2.History().MemoryUsedPercent) == 0 {
+		t.Fatal("expected history persisted on shutdown to contain points")
+	}
+}
+
+// blockingWriteFile returns a writeFile replacement that signals started the
+// first time it is invoked and then blocks until proceed is closed, before
+// delegating to writeFileAtomic. calls counts every invocation.
+func blockingWriteFile(started chan<- struct{}, proceed <-chan struct{}, calls *int32) func(string, []byte) error {
+	var signaled int32
+	return func(path string, data []byte) error {
+		atomic.AddInt32(calls, 1)
+		if atomic.CompareAndSwapInt32(&signaled, 0, 1) {
+			close(started)
+		}
+		<-proceed
+		return writeFileAtomic(path, data)
+	}
+}
+
+func TestCollector_PersistHistory_DoesNotBlockOnSlowWrite(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "history.bin")
+	now := time.Now().Truncate(time.Millisecond)
+
+	c := newPersistTestCollector(path, time.Hour)
+	c.importHistory(fixtureHistory(now.Add(-time.Minute)), now)
+
+	started := make(chan struct{})
+	proceed := make(chan struct{})
+	var calls int32
+	c.writeFile = blockingWriteFile(started, proceed, &calls)
+
+	returned := make(chan struct{})
+	go func() {
+		c.persistHistory()
+		close(returned)
+	}()
+
+	select {
+	case <-returned:
+	case <-time.After(2 * time.Second):
+		t.Fatal("persistHistory did not return while the write was blocked")
+	}
+
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("write function was never invoked")
+	}
+
+	// The data must still land once the slow write is allowed to finish.
+	close(proceed)
+	c.persistWG.Wait()
+
+	c2 := newPersistTestCollector(path, time.Hour)
+	c2.loadHistory()
+	historiesEqual(t, c2.History(), c.History())
+}
+
+func TestCollector_PersistHistory_SkipsOverlappingWrites(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "history.bin")
+	c := newPersistTestCollector(path, time.Hour)
+
+	started := make(chan struct{})
+	proceed := make(chan struct{})
+	var calls int32
+	c.writeFile = blockingWriteFile(started, proceed, &calls)
+
+	c.persistHistory() // starts the write, which blocks
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("write function was never invoked")
+	}
+
+	// Both of these must be skipped: a write is already in flight.
+	c.persistHistory()
+	c.persistHistory()
+
+	close(proceed)
+	c.persistWG.Wait()
+
+	if got := atomic.LoadInt32(&calls); got != 1 {
+		t.Fatalf("write function invoked %d times while overlapping, want 1", got)
+	}
+}
+
+func TestCollector_Run_ShutdownWaitsForFinalFlush(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "history.bin")
+	c := New(Config{
+		FastInterval:    10 * time.Millisecond,
+		SlowInterval:    time.Hour,
+		HistoryCapacity: 100,
+		PersistPath:     path,
+		HistoryWindow:   time.Hour,
+	}, nil)
+
+	started := make(chan struct{})
+	proceed := make(chan struct{})
+	var calls int32
+	c.writeFile = blockingWriteFile(started, proceed, &calls)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		c.Run(ctx)
+		close(done)
+	}()
+
+	select {
+	case <-started:
+		t.Fatal("final flush must not start before shutdown")
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	cancel()
+
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("final flush was never started")
+	}
+
+	// Run must block on the in-flight flush rather than returning early.
+	select {
+	case <-done:
+		t.Fatal("Run returned before the blocked final flush completed")
+	case <-time.After(200 * time.Millisecond):
+	}
+
+	close(proceed)
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Run did not return after the final flush completed")
 	}
 
 	c2 := newPersistTestCollector(path, time.Hour)

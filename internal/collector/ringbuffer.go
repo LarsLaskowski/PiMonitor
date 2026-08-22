@@ -68,3 +68,17 @@ func (r *RingBuffer[T]) Snapshot() []T {
 	copy(out[n:], r.data[:r.next])
 	return out
 }
+
+// Newest returns the most recently added value and true, or the zero value
+// and false if the buffer is empty.
+func (r *RingBuffer[T]) Newest() (T, bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if r.size == 0 {
+		var zero T
+		return zero, false
+	}
+	idx := (r.next - 1 + r.capacity) % r.capacity
+	return r.data[idx], true
+}

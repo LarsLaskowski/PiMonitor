@@ -192,66 +192,89 @@ func (c *DiskCollector) Collect() ([]Disk, error) {
 		return nil, err
 	}
 
-	// /proc/mounts can list the same mountpoint several times (overmounts,
-	// some bind-mount setups). Only the last mount is visible at the path
-	// — and the one statfs reports on — so keep the last entry per
-	// mountpoint, preserving first-seen order for stable output.
-	order := make([]string, 0, len(entries))
-	byMountpoint := make(map[string]mountEntry, len(entries))
+	order, byMountpoint := dedupeMounts(entries)
+
+	now := c.clock()
+	// Always non-nil (even with zero entries) so Snapshot.Disks marshals as
+	// [] rather than null, matching docs/API.md.
+	disks := make([]Disk, 0, len(order))
+	for _, mp := range order {
+		e := byMountpoint[mp]
+		if c.excludedFSType[e.fstype] {
+			continue
+		}
+		if disk, ok := c.collectDisk(e, now); ok {
+			disks = append(disks, disk)
+		}
+	}
+	return disks, nil
+}
+
+// dedupeMounts collapses /proc/mounts entries to the last entry per
+// mountpoint. /proc/mounts can list the same mountpoint several times
+// (overmounts, some bind-mount setups); only the last mount is visible at
+// the path — and the one statfs reports on. First-seen order is preserved
+// for stable output.
+func dedupeMounts(entries []mountEntry) (order []string, byMountpoint map[string]mountEntry) {
+	order = make([]string, 0, len(entries))
+	byMountpoint = make(map[string]mountEntry, len(entries))
 	for _, e := range entries {
 		if _, seen := byMountpoint[e.mountpoint]; !seen {
 			order = append(order, e.mountpoint)
 		}
 		byMountpoint[e.mountpoint] = e
 	}
+	return order, byMountpoint
+}
 
-	now := c.clock()
-	var disks []Disk
-	for _, mp := range order {
-		e := byMountpoint[mp]
-		if c.excludedFSType[e.fstype] {
-			continue
+// collectDisk statfs's a single mountpoint and reports its usage. ok is
+// false when the mountpoint should be skipped: it's on the bad-mount
+// cooldown, statfs failed, or it reports zero size.
+func (c *DiskCollector) collectDisk(e mountEntry, now time.Time) (disk Disk, ok bool) {
+	if until, bad := c.badUntil[e.mountpoint]; bad {
+		if now.Before(until) {
+			return Disk{}, false
 		}
-		if until, bad := c.badUntil[e.mountpoint]; bad {
-			if now.Before(until) {
-				continue
-			}
-			delete(c.badUntil, e.mountpoint)
-		}
-		buf, err := c.statfsWithTimeout(e.mountpoint)
-		if err != nil {
-			if errors.Is(err, errStatfsTimeout) {
-				if c.badUntil == nil {
-					c.badUntil = make(map[string]time.Time)
-				}
-				c.badUntil[e.mountpoint] = now.Add(c.statfsCooldown)
-			}
-			continue
-		}
-		total := uint64(buf.Blocks) * uint64(buf.Bsize)
-		if total == 0 {
-			continue
-		}
-		free := uint64(buf.Bfree) * uint64(buf.Bsize)
-		avail := uint64(buf.Bavail) * uint64(buf.Bsize)
-		used := total - free
-		// df-compatible percentage: used / (used + avail). Bfree includes
-		// blocks reserved for root (typically 5% on ext4) that services
-		// cannot write to, so a Blocks-based percentage under-reports
-		// fullness — showing ~95% while df (and failing writes) already
-		// say 100%.
-		var usedPercent float64
-		if denom := used + avail; denom > 0 {
-			usedPercent = float64(used) / float64(denom) * 100
-		}
-		disks = append(disks, Disk{
-			Mountpoint:  e.mountpoint,
-			Device:      e.device,
-			FSType:      e.fstype,
-			TotalBytes:  total,
-			UsedBytes:   used,
-			UsedPercent: usedPercent,
-		})
+		delete(c.badUntil, e.mountpoint)
 	}
-	return disks, nil
+	buf, err := c.statfsWithTimeout(e.mountpoint)
+	if err != nil {
+		if errors.Is(err, errStatfsTimeout) {
+			c.markBad(e.mountpoint, now)
+		}
+		return Disk{}, false
+	}
+	total := uint64(buf.Blocks) * uint64(buf.Bsize)
+	if total == 0 {
+		return Disk{}, false
+	}
+	free := uint64(buf.Bfree) * uint64(buf.Bsize)
+	avail := uint64(buf.Bavail) * uint64(buf.Bsize)
+	used := total - free
+	// df-compatible percentage: used / (used + avail). Bfree includes
+	// blocks reserved for root (typically 5% on ext4) that services
+	// cannot write to, so a Blocks-based percentage under-reports
+	// fullness — showing ~95% while df (and failing writes) already
+	// say 100%.
+	var usedPercent float64
+	if denom := used + avail; denom > 0 {
+		usedPercent = float64(used) / float64(denom) * 100
+	}
+	return Disk{
+		Mountpoint:  e.mountpoint,
+		Device:      e.device,
+		FSType:      e.fstype,
+		TotalBytes:  total,
+		UsedBytes:   used,
+		UsedPercent: usedPercent,
+	}, true
+}
+
+// markBad puts mountpoint on cooldown after a statfs timeout so subsequent
+// Collect calls skip it instead of blocking again for statfsTimeout.
+func (c *DiskCollector) markBad(mountpoint string, now time.Time) {
+	if c.badUntil == nil {
+		c.badUntil = make(map[string]time.Time)
+	}
+	c.badUntil[mountpoint] = now.Add(c.statfsCooldown)
 }

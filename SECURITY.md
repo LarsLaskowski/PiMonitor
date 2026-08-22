@@ -54,9 +54,29 @@ reporters and reviewers have context:
   per browser and persists it in `localStorage` (an accepted trade-off —
   anyone with access to the browser profile can read it, and without TLS
   the key is visible on the wire either way).
+- **Supply the API key through the config file or the environment, not the
+  command line.** `/etc/pimonitor/config.yaml` is kept at mode `640
+  root:pimonitor` by `install.sh`; alternatively set `PIMONITOR_API_KEY`,
+  which systemd can load from an `EnvironmentFile=` with equally restricted
+  permissions. The `-api-key` flag is a development convenience only: a
+  process's command line is world-readable via `/proc/<pid>/cmdline`, so a
+  key passed that way is exposed to every local user on the machine.
 - Shell-outs (`apt list --upgradable`, optional `vcgencmd measure_temp`) are
   invoked with fixed argument lists (no user input is interpolated into
   shell commands), to avoid command injection.
+- Shell-outs are also invoked with an explicit, minimal environment rather
+  than inheriting the service's own — neither `apt` nor `vcgencmd` needs
+  anything beyond `PATH` (and, for `apt`, a couple of apt-specific
+  variables), so `PIMONITOR_API_KEY` is never copied into a child process's
+  `/proc/<pid>/environ`.
+- **`/api/v1/...` requests share a concurrency limit** (`withMaxInFlight`,
+  `internal/httpapi/middleware.go`), so a request flood — from another
+  device on the LAN, a misconfigured integration, or a buggy retry loop —
+  is bounded rather than able to multiply CPU/memory work without limit on
+  constrained hardware such as a Pi Zero. This does not require
+  authentication and is not a substitute for `api_key`; it is a resource-
+  exhaustion mitigation, not an access control. See
+  [`docs/API.md`](docs/API.md#rate-limiting).
 
 If you believe any of these assumptions are violated by the current
 implementation, please report it as described above.

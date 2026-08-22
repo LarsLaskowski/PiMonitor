@@ -100,7 +100,7 @@ func TestCPUModel_MissingFile(t *testing.T) {
 func TestKernelRelease_NonEmpty(t *testing.T) {
 	// This exercises the real syscall.Uname on the test host; it should
 	// always succeed on Linux and return a non-empty release string.
-	if got := kernelRelease(); got == "" {
+	if kernelRelease() == "" {
 		t.Fatal("expected non-empty kernel release on Linux")
 	}
 }
