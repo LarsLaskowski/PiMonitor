@@ -8,6 +8,10 @@
 set -euo pipefail
 
 readonly REPOSITORY='larslaskowski/pimonitor'
+# Restrict both the initial request and any redirect to HTTPS, so a
+# compromised or misconfigured server can't downgrade the download to plain
+# HTTP.
+readonly CURL=(curl -fsSL --proto '=https' --proto-redir '=https')
 
 if [[ -z "${ARCH:-}" ]]; then
   case "$(uname -m)" in
@@ -35,14 +39,14 @@ case "${ARCH:-}" in
     ;;
 esac
 
-for command in curl wget tar; do
+for command in curl tar; do
   if ! command -v "$command" >/dev/null 2>&1; then
     printf 'Required command not found: %s\n' "$command" >&2
     exit 1
   fi
 done
 
-version=$(curl -fsSL "https://api.github.com/repos/${REPOSITORY}/releases/latest" \
+version=$("${CURL[@]}" "https://api.github.com/repos/${REPOSITORY}/releases/latest" \
   | awk -F '"' '/"tag_name"/ { print $4; exit }')
 
 if [[ -z "$version" ]]; then
@@ -61,7 +65,7 @@ if [[ -e "$directory" ]]; then
 fi
 
 printf 'Downloading PiMonitor %s for %s ...\n' "$version" "$ARCH"
-wget --no-clobber "$url"
+"${CURL[@]}" -o "$archive" "$url"
 
 printf 'Extracting %s ...\n' "$archive"
 tar xzf "$archive"
