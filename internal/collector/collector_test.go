@@ -120,6 +120,25 @@ func TestCollector_FastTick_BuildsHistory(t *testing.T) {
 	}
 }
 
+func TestCollector_HistoryGeneration_IncrementsOnFastTick(t *testing.T) {
+	c := newTestCollector()
+	ctx := context.Background()
+
+	if got := c.HistoryGeneration(); got != 0 {
+		t.Fatalf("HistoryGeneration before any tick = %d, want 0", got)
+	}
+
+	c.fastTick(ctx)
+	if got := c.HistoryGeneration(); got != 1 {
+		t.Fatalf("HistoryGeneration after 1 tick = %d, want 1", got)
+	}
+
+	c.fastTick(ctx)
+	if got := c.HistoryGeneration(); got != 2 {
+		t.Fatalf("HistoryGeneration after 2 ticks = %d, want 2", got)
+	}
+}
+
 func TestCollector_CollectSysInfo_TogglesDistroAndPiModel(t *testing.T) {
 	c := New(Config{
 		FastInterval:      time.Second,

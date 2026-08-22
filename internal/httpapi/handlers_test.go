@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"encoding/json"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -148,6 +149,28 @@ func TestHandleHistory_CachesUntilGenerationChanges(t *testing.T) {
 	}
 	if len(got.CPUPercent) != 2 {
 		t.Fatalf("expected 2 CPUPercent history points after generation change, got %d", len(got.CPUPercent))
+	}
+}
+
+// TestHandleHistory_MarshalFailureReturns500 exercises the error branch
+// that skips the cache: json.Marshal fails on a NaN float (not
+// representable in JSON), which handleHistory must turn into a 500 rather
+// than caching a partial/garbage encoding or writing a broken body.
+func TestHandleHistory_MarshalFailureReturns500(t *testing.T) {
+	s, fm := newTestServer(Config{})
+	fm.history = collector.History{
+		CPUPercent: []collector.HistoryPoint{{Value: math.NaN()}},
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/metrics/history", nil)
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusInternalServerError)
+	}
+	if s.historyCacheJSON != nil {
+		t.Fatal("expected no cached response after a marshal failure")
 	}
 }
 
