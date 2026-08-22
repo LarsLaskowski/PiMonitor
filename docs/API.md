@@ -45,6 +45,20 @@ and `Vary: Accept-Encoding`); the JSON body is unchanged, only its wire
 encoding differs. Requests without that header receive the identity
 (uncompressed) response, so existing clients keep working unmodified.
 
+## Rate limiting
+
+Every `/api/v1/...` endpoint shares a single limit on how many requests may be actively
+processing at once. `GET /api/v1/metrics/history` is the expensive one — it can require
+copying and re-serialising the whole retained history window — so an unbounded number of
+concurrent callers could otherwise starve metric collection on constrained hardware such
+as a Raspberry Pi Zero.
+
+A request beyond the limit receives `503 Service Unavailable` with a `Retry-After: 1`
+header and a plain-text body, instead of being queued. Clients should treat this the same
+as any other transient server error: back off (the `Retry-After` value is in seconds) and
+retry. `GET /healthz` is never subject to this limit, so liveness checks keep working even
+while the API is shedding load.
+
 ## Endpoints
 
 ### `GET /healthz`
