@@ -64,6 +64,11 @@ reporters and reviewers have context:
 - Shell-outs (`apt list --upgradable`, optional `vcgencmd measure_temp`) are
   invoked with fixed argument lists (no user input is interpolated into
   shell commands), to avoid command injection.
+- Shell-outs are also invoked with an explicit, minimal environment rather
+  than inheriting the service's own — neither `apt` nor `vcgencmd` needs
+  anything beyond `PATH` (and, for `apt`, a couple of apt-specific
+  variables), so `PIMONITOR_API_KEY` is never copied into a child process's
+  `/proc/<pid>/environ`.
 
 If you believe any of these assumptions are violated by the current
 implementation, please report it as described above.

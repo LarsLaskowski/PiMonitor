@@ -86,7 +86,15 @@ func (r *vcgencmdRunner) run(ctx context.Context, subcommand string) (string, er
 	ctx, cancel := context.WithTimeout(ctx, vcgencmdTimeout)
 	defer cancel()
 
-	out, err := exec.CommandContext(ctx, path, subcommand).Output()
+	cmd := exec.CommandContext(ctx, path, subcommand)
+	// Build the child environment explicitly rather than inheriting the
+	// service's: PiMonitor's own environment may carry PIMONITOR_API_KEY, and
+	// there is no reason for that secret to be visible in vcgencmd's
+	// /proc/<pid>/environ. path is already the absolute location resolved by
+	// exec.LookPath at detection time, so no PATH is needed either.
+	cmd.Env = []string{}
+
+	out, err := cmd.Output()
 	if err != nil {
 		return "", fmt.Errorf("run vcgencmd %s: %w", subcommand, err)
 	}
