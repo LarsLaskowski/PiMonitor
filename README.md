@@ -106,6 +106,20 @@ extract it. Release assets are named
 The snippet below fetches the latest version automatically via the GitHub
 API, so you only need to set `ARCH`:
 
+For a reusable variant of the same process, download and run
+[`download-latest.sh`](packaging/download-latest.sh):
+
+```sh
+curl -fsSLO https://raw.githubusercontent.com/LarsLaskowski/PiMonitor/main/packaging/download-latest.sh
+chmod +x download-latest.sh
+./download-latest.sh
+```
+
+The script detects the architecture automatically (`aarch64` becomes `arm64`;
+32-bit Raspberry Pi OS becomes `armv6`), downloads and extracts the latest
+release, then lists its contents. To override the detection, run it with
+`ARCH=arm64 ./download-latest.sh` or `ARCH=armv6 ./download-latest.sh`.
+
 ```sh
 ARCH=arm64   # or armv6, see above
 
