@@ -68,6 +68,26 @@ func (s *Server) withAPIKey(next http.Handler) http.Handler {
 	})
 }
 
+// withMaxInFlight bounds concurrent request processing across every
+// endpoint sharing s.inFlight (see defaultMaxInFlight). The history
+// endpoint deep-copies and serialises the whole retained window on a cache
+// miss, so an unbounded number of concurrent callers can starve the
+// collector's own tick on a single-core Pi. Excess requests get 503 with
+// Retry-After rather than being queued indefinitely, so a client backs off
+// instead of piling up.
+func (s *Server) withMaxInFlight(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case s.inFlight <- struct{}{}:
+			defer func() { <-s.inFlight }()
+			next.ServeHTTP(w, r)
+		default:
+			w.Header().Set("Retry-After", "1")
+			http.Error(w, "server busy", http.StatusServiceUnavailable)
+		}
+	})
+}
+
 func providedAPIKey(r *http.Request) string {
 	if key := r.Header.Get("X-Api-Key"); key != "" {
 		return key

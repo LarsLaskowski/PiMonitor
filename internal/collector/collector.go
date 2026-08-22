@@ -106,18 +106,24 @@ type Collector struct {
 	// directly).
 	fastInterval time.Duration
 
-	mu       sync.RWMutex
-	latest   Snapshot
-	cpuHist  *RingBuffer[HistoryPoint]
-	l1Hist   *RingBuffer[HistoryPoint]
-	l5Hist   *RingBuffer[HistoryPoint]
-	l15Hist  *RingBuffer[HistoryPoint]
-	tempHist *RingBuffer[HistoryPoint]
-	memHist  *RingBuffer[HistoryPoint]
-	swapHist *RingBuffer[HistoryPoint]
-	diskHist map[string]*RingBuffer[HistoryPoint]
-	rxHist   map[string]*RingBuffer[HistoryPoint]
-	txHist   map[string]*RingBuffer[HistoryPoint]
+	mu     sync.RWMutex
+	latest Snapshot
+	// historyGen counts fastTicks that have recorded at least one history
+	// point. HTTP handlers use it to detect whether the retained history has
+	// actually changed since a cached, already-serialised response was built,
+	// so a client polling faster than the collector ticks doesn't force a
+	// fresh deep-copy-and-encode of the whole window on every request.
+	historyGen uint64
+	cpuHist    *RingBuffer[HistoryPoint]
+	l1Hist     *RingBuffer[HistoryPoint]
+	l5Hist     *RingBuffer[HistoryPoint]
+	l15Hist    *RingBuffer[HistoryPoint]
+	tempHist   *RingBuffer[HistoryPoint]
+	memHist    *RingBuffer[HistoryPoint]
+	swapHist   *RingBuffer[HistoryPoint]
+	diskHist   map[string]*RingBuffer[HistoryPoint]
+	rxHist     map[string]*RingBuffer[HistoryPoint]
+	txHist     map[string]*RingBuffer[HistoryPoint]
 
 	// persistWG tracks in-flight persistHistory writes so Run's ctx.Done()
 	// branch can wait for the final flush before returning.
@@ -284,6 +290,16 @@ func (c *Collector) History() History {
 	return h
 }
 
+// HistoryGeneration returns a counter that increments every time fastTick
+// records a new set of history points. Callers can compare successive
+// values to tell whether History() would return anything different without
+// having to call it (which deep-copies every ring buffer).
+func (c *Collector) HistoryGeneration() uint64 {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.historyGen
+}
+
 func (c *Collector) collectSysInfo() {
 	info := c.sysInfo.Collect()
 	if !c.cfg.DistroInfoEnabled {
@@ -409,6 +425,7 @@ func (c *Collector) fastTick(ctx context.Context) {
 	c.swapHist.Add(HistoryPoint{Timestamp: s.now, Value: s.swap.UsedPercent})
 
 	c.recordDeviceHistory(s.now, s.disks, s.netIfaces)
+	c.historyGen++
 
 	// Evaluate the freshly collected values against the alert thresholds.
 	// The engine has its own lock and never calls back into the collector,

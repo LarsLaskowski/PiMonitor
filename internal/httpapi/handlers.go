@@ -26,9 +26,31 @@ func (s *Server) handleMetrics(w http.ResponseWriter, _ *http.Request) {
 }
 
 // handleHistory serves GET /api/v1/metrics/history: the retained
-// in-memory history for every time-series metric.
+// in-memory history for every time-series metric. The retained history only
+// changes once per fastTick, so the encoded response is cached and reused
+// across requests until MetricsProvider.HistoryGeneration() moves on,
+// rather than deep-copying every ring buffer and re-encoding on every
+// request from every dashboard/integration poll.
 func (s *Server) handleHistory(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, s.log.Error, s.metrics.History())
+	gen := s.metrics.HistoryGeneration()
+
+	s.historyCacheMu.Lock()
+	if s.historyCacheJSON == nil || s.historyCacheGen != gen {
+		data, err := json.Marshal(s.metrics.History())
+		if err != nil {
+			s.historyCacheMu.Unlock()
+			s.log.Error("failed to encode JSON response", "error", err)
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		s.historyCacheJSON = data
+		s.historyCacheGen = gen
+	}
+	data := s.historyCacheJSON
+	s.historyCacheMu.Unlock()
+
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	_, _ = w.Write(data)
 }
 
 // handleAlerts serves GET /api/v1/alerts: the current per-metric alert

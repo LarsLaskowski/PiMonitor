@@ -242,6 +242,13 @@ withLogging(withSecurityHeaders(mux))
   or the configured key's *length* through response timing. When `APIKey` is empty (the
   default), every request is allowed — the common case (dashboard on a trusted LAN) stays
   unauthenticated and simple.
+- **`withMaxInFlight`**: wraps each of the four `/api/v1/...` routes (not `/healthz` or
+  the static dashboard) in a shared semaphore of capacity `defaultMaxInFlight` (16). A
+  request beyond the limit gets `503 Service Unavailable` with `Retry-After: 1` instead of
+  being queued indefinitely. This bounds worst-case concurrent CPU/memory on a Pi Zero: an
+  unauthenticated flood of requests to the history endpoint (the most expensive one — see
+  below) can no longer multiply without limit. `/healthz` is deliberately excluded so a
+  monitoring system can still tell the process is alive while the API is shedding load.
 
 **Routes**: `GET /healthz` (plain-text liveness, never gated), and four versioned,
 API-key-gated routes — `GET /api/v1/metrics`, `GET /api/v1/metrics/history`,
@@ -249,10 +256,18 @@ API-key-gated routes — `GET /api/v1/metrics`, `GET /api/v1/metrics/history`,
 via the `staticHandler` passed into `New` (`nil` in tests, to exercise the API layer
 without the frontend). See [`API.md`](API.md) for the full response schemas.
 
-**`MetricsProvider` is a narrow interface** (`Snapshot() / History() / Alerts()`)
-implemented by `*collector.Collector`, so `httpapi` can be unit-tested against a fake
-implementation (see `handlers_test.go`) entirely independent of real `/proc`/`/sys`
-access — the same testability principle the collector package applies to its own parsers.
+**`MetricsProvider` is a narrow interface** (`Snapshot() / History() / HistoryGeneration()
+/ Alerts()`) implemented by `*collector.Collector`, so `httpapi` can be unit-tested
+against a fake implementation (see `handlers_test.go`) entirely independent of real
+`/proc`/`/sys` access — the same testability principle the collector package applies to
+its own parsers.
+
+**`handleHistory` caches its encoded response.** `Collector.History()` deep-copies every
+retained ring buffer under lock — the most expensive request the service serves — but the
+underlying data only changes once per `fastTick`. `Collector.HistoryGeneration()` returns
+a counter bumped each `fastTick`; `Server` keeps the last generation it encoded alongside
+the encoded bytes and reuses them whenever the generation is unchanged, so concurrent
+pollers between ticks share one deep-copy-and-encode instead of each paying for their own.
 
 **`GET /api/v1/config`** exists specifically so the frontend doesn't have to duplicate
 values (poll interval, alert thresholds, feature toggles) that are already defined

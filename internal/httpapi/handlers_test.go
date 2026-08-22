@@ -14,12 +14,23 @@ import (
 type fakeMetrics struct {
 	snapshot collector.Snapshot
 	history  collector.History
-	alerts   alert.Report
+	// historyGen is returned verbatim by HistoryGeneration, so tests can
+	// simulate a fastTick by incrementing it.
+	historyGen uint64
+	// historyCalls counts calls to History(), so tests can assert the
+	// generation-based cache in handleHistory actually skips re-encoding
+	// when the generation hasn't moved.
+	historyCalls int
+	alerts       alert.Report
 }
 
 func (f *fakeMetrics) Snapshot() collector.Snapshot { return f.snapshot }
-func (f *fakeMetrics) History() collector.History   { return f.history }
-func (f *fakeMetrics) Alerts() alert.Report         { return f.alerts }
+func (f *fakeMetrics) History() collector.History {
+	f.historyCalls++
+	return f.history
+}
+func (f *fakeMetrics) HistoryGeneration() uint64 { return f.historyGen }
+func (f *fakeMetrics) Alerts() alert.Report      { return f.alerts }
 
 func newTestServer(cfg Config) (*Server, *fakeMetrics) {
 	fm := &fakeMetrics{
@@ -85,6 +96,58 @@ func TestHandleHistory(t *testing.T) {
 	}
 	if len(got.CPUPercent) != 1 {
 		t.Fatalf("expected 1 CPUPercent history point, got %d", len(got.CPUPercent))
+	}
+}
+
+// TestHandleHistory_CachesUntilGenerationChanges is the regression test for
+// the generation-based response cache: repeated requests while
+// HistoryGeneration() is unchanged must reuse the cached encoding rather
+// than calling History() (and therefore deep-copying every ring buffer)
+// again, but a request after the generation advances must see fresh data.
+func TestHandleHistory_CachesUntilGenerationChanges(t *testing.T) {
+	s, fm := newTestServer(Config{})
+
+	req := func() *httptest.ResponseRecorder {
+		rec := httptest.NewRecorder()
+		s.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/metrics/history", nil))
+		return rec
+	}
+
+	first := req()
+	if first.Code != http.StatusOK {
+		t.Fatalf("first request status = %d, want 200", first.Code)
+	}
+	if fm.historyCalls != 1 {
+		t.Fatalf("historyCalls after first request = %d, want 1", fm.historyCalls)
+	}
+
+	second := req()
+	if second.Code != http.StatusOK {
+		t.Fatalf("second request status = %d, want 200", second.Code)
+	}
+	if fm.historyCalls != 1 {
+		t.Fatalf("historyCalls after second request (same generation) = %d, want still 1 (cache should have been reused)", fm.historyCalls)
+	}
+	if second.Body.String() != first.Body.String() {
+		t.Fatalf("cached response body changed between requests with the same generation:\nfirst:  %s\nsecond: %s", first.Body.String(), second.Body.String())
+	}
+
+	fm.history.CPUPercent = append(fm.history.CPUPercent, collector.HistoryPoint{Value: 99})
+	fm.historyGen++
+
+	third := req()
+	if third.Code != http.StatusOK {
+		t.Fatalf("third request status = %d, want 200", third.Code)
+	}
+	if fm.historyCalls != 2 {
+		t.Fatalf("historyCalls after generation changed = %d, want 2 (cache should have been invalidated)", fm.historyCalls)
+	}
+	var got collector.History
+	if err := json.Unmarshal(third.Body.Bytes(), &got); err != nil {
+		t.Fatalf("unmarshal third response: %v", err)
+	}
+	if len(got.CPUPercent) != 2 {
+		t.Fatalf("expected 2 CPUPercent history points after generation change, got %d", len(got.CPUPercent))
 	}
 }
 

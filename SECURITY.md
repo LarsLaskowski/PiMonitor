@@ -69,6 +69,14 @@ reporters and reviewers have context:
   anything beyond `PATH` (and, for `apt`, a couple of apt-specific
   variables), so `PIMONITOR_API_KEY` is never copied into a child process's
   `/proc/<pid>/environ`.
+- **`/api/v1/...` requests share a concurrency limit** (`withMaxInFlight`,
+  `internal/httpapi/middleware.go`), so a request flood — from another
+  device on the LAN, a misconfigured integration, or a buggy retry loop —
+  is bounded rather than able to multiply CPU/memory work without limit on
+  constrained hardware such as a Pi Zero. This does not require
+  authentication and is not a substitute for `api_key`; it is a resource-
+  exhaustion mitigation, not an access control. See
+  [`docs/API.md`](docs/API.md#rate-limiting).
 
 If you believe any of these assumptions are violated by the current
 implementation, please report it as described above.
