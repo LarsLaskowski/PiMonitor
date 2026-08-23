@@ -68,7 +68,7 @@ func run(args []string) error {
 	}
 	coll := collector.New(collCfg, log)
 
-	staticHandler, err := web.Handler(version)
+	staticHandler, err := web.Handler()
 	if err != nil {
 		return fmt.Errorf("load embedded web assets: %w", err)
 	}

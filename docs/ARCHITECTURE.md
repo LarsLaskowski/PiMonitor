@@ -284,7 +284,7 @@ server-side; it also echoes back the build-time `version` injected via
 
 ## Web dashboard (`internal/web`)
 
-`web.Handler(version)` embeds `internal/web/assets/*` (`index.html`, `app.js`, `chart.js`,
+`web.Handler()` embeds `internal/web/assets/*` (`index.html`, `app.js`, `chart.js`,
 `gauge.js`, `theme-init.js`, `style.css`) into the binary via `//go:embed` and serves them
 with `http.FileServerFS`. There is **no frontend build step** — no bundler, no npm
 toolchain, no framework — the assets are plain HTML/CSS/JS shipped as-is, consistent with
@@ -293,11 +293,26 @@ the project's "prefer the standard library, minimize dependency surface" philoso
 
 Because embedded files carry a zero `ModTime`, `http.FileServerFS` alone would emit no
 `Last-Modified`/`ETag` and no `Cache-Control`, forcing a full refetch of every asset on
-every page load. `Handler` wraps the file server to set `Cache-Control: no-cache` and an
-`Etag` derived from the build-time `version` (the same string injected via
-`-ldflags -X main.version=...` and echoed by `GET /api/v1/config`), so browsers
-revalidate with a cheap conditional request (a 304 when the version is unchanged) and
-still refetch immediately once an upgrade changes `version`.
+every page load. `Handler` wraps the file server to set `Cache-Control: no-cache` and a
+**per-asset `Etag` derived from that asset's contents** — a SHA-256 of each embedded
+file, truncated to 16 bytes and hex-encoded, computed once at construction (the asset set
+is fixed at compile time and tiny, so this costs microseconds and no per-request work).
+Browsers therefore revalidate with a cheap conditional request (a 304 while the file is
+unchanged) and refetch as soon as its bytes change.
+
+The hash replaces an earlier `version`-derived ETag, which was wrong in two ways: it gave
+every asset the *same* validator despite each URL being a distinct resource, and it never
+changed across builds that share a version string — which is every unversioned `dev`
+build, so `make run` served permanently stale JavaScript after an edit (issue #102).
+
+The validator is attached only to a response that actually *is* the hashed asset. Naming
+an asset is not enough: `http.FileServerFS` redirects `*/index.html` to `./` and a
+trailing slash on a file to its base, and a 404 has no stable identity at all — so a small
+`etagWriter` wrapper removes the header again unless the file server settles on `200`,
+`206`, or `304` (a 304 must repeat the validator that matched). The header has to be set
+*before* delegating, because `http.ServeContent` answers a conditional request from
+whatever is already on the writer; stripping it afterwards is what keeps a cacheable 301
+or a 404 from carrying a strong validator for a body it does not describe.
 
 **Stored-XSS prevention is enforced by a repository rule, not just convention.**
 `internal/web/xss_test.go` (`TestAppJS_NoInnerHTMLInterpolation`) scans `app.js` at test
