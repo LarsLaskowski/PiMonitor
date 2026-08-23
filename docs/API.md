@@ -45,6 +45,15 @@ and `Vary: Accept-Encoding`); the JSON body is unchanged, only its wire
 encoding differs. Requests without that header receive the identity
 (uncompressed) response, so existing clients keep working unmodified.
 
+## Caching
+
+`/api/v1/...` responses carry `Cache-Control: no-store` and a `Vary` naming
+`Authorization` and `X-Api-Key` alongside `Accept-Encoding`. Metric/alert/
+config snapshots are point-in-time data with no reuse value, and when
+`api_key` is configured they are credential-protected, so a reverse proxy
+placed in front of PiMonitor (see "Authentication" above) must not cache
+them or serve a response captured with one client's credentials to another.
+
 ## Rate limiting
 
 Every `/api/v1/...` endpoint shares a single limit on how many requests may be actively
