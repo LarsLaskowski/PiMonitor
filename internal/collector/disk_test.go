@@ -42,6 +42,63 @@ func TestParseMounts(t *testing.T) {
 	}
 }
 
+// /proc/mounts encodes space, tab, newline, and backslash as octal escapes
+// since those characters would otherwise be ambiguous in the
+// whitespace-separated format (see proc(5)). parseMounts must decode them
+// back to the real path, e.g. for a USB drive labeled "My Drive".
+func TestParseMounts_DecodesOctalEscapes(t *testing.T) {
+	data := `/dev/sda1 /media/pi/My\040Drive\011\012\134end vfat rw,relatime 0 0
+`
+	entries, err := parseMounts(data)
+	if err != nil {
+		t.Fatalf("parseMounts: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(entries))
+	}
+	want := "/media/pi/My Drive\t\n\\end"
+	if entries[0].mountpoint != want {
+		t.Fatalf("mountpoint = %q, want %q", entries[0].mountpoint, want)
+	}
+}
+
+// The device field can carry the same escapes, e.g. for a labeled device
+// node under /dev/disk/by-label.
+func TestParseMounts_DecodesOctalEscapesInDevice(t *testing.T) {
+	data := `/dev/disk/by-label/My\040Label /mnt/usb ext4 rw,relatime 0 0
+`
+	entries, err := parseMounts(data)
+	if err != nil {
+		t.Fatalf("parseMounts: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(entries))
+	}
+	want := "/dev/disk/by-label/My Label"
+	if entries[0].device != want {
+		t.Fatalf("device = %q, want %q", entries[0].device, want)
+	}
+}
+
+// A backslash sequence that isn't one of the four escapes /proc/mounts
+// actually emits, or a lone trailing backslash, must be passed through
+// unchanged rather than misinterpreted or panicking on a short slice.
+func TestParseMounts_LeavesUnknownBackslashSequencesUntouched(t *testing.T) {
+	data := `/dev/sda1 /mnt/weird\x41\ vfat rw,relatime 0 0
+`
+	entries, err := parseMounts(data)
+	if err != nil {
+		t.Fatalf("parseMounts: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(entries))
+	}
+	want := `/mnt/weird\x41\`
+	if entries[0].mountpoint != want {
+		t.Fatalf("mountpoint = %q, want %q", entries[0].mountpoint, want)
+	}
+}
+
 func TestDefaultExcludedFSTypes_FiltersPseudoFS(t *testing.T) {
 	for _, fstype := range []string{"proc", "sysfs", "tmpfs", "overlay"} {
 		if !defaultExcludedFSTypes[fstype] {
