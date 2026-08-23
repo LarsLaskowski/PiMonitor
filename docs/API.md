@@ -45,6 +45,11 @@ and `Vary: Accept-Encoding`); the JSON body is unchanged, only its wire
 encoding differs. Requests without that header receive the identity
 (uncompressed) response, so existing clients keep working unmodified.
 
+The header is parsed as the q-value list it is (RFC 9110 §12.5.3): an
+explicit refusal (`Accept-Encoding: gzip;q=0`) is honoured and yields an
+identity response, `Accept-Encoding: *` counts as accepting gzip, and the
+deprecated `x-gzip` token is not treated as `gzip`.
+
 ## Caching
 
 `/api/v1/...` responses carry `Cache-Control: no-store` and a `Vary` naming
