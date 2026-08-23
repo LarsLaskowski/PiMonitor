@@ -44,58 +44,84 @@ func TestParseMounts(t *testing.T) {
 
 // /proc/mounts encodes space, tab, newline, and backslash as octal escapes
 // since those characters would otherwise be ambiguous in the
-// whitespace-separated format (see proc(5)). parseMounts must decode them
-// back to the real path, e.g. for a USB drive labeled "My Drive".
+// whitespace-separated format (see proc(5)), for all three of the device,
+// mountpoint, and fstype fields (e.g. a USB drive labeled "My Drive", or a
+// fuse subtype derived from user input). parseMounts must decode them back
+// to the real value in each field.
 func TestParseMounts_DecodesOctalEscapes(t *testing.T) {
-	data := `/dev/sda1 /media/pi/My\040Drive\011\012\134end vfat rw,relatime 0 0
-`
-	entries, err := parseMounts(data)
-	if err != nil {
-		t.Fatalf("parseMounts: %v", err)
+	tests := []struct {
+		name           string
+		line           string
+		wantDevice     string
+		wantMountpoint string
+		wantFSType     string
+	}{
+		{
+			name:           "escapes in mountpoint",
+			line:           `/dev/sda1 /media/pi/My\040Drive\011\012\134end vfat rw,relatime 0 0`,
+			wantDevice:     "/dev/sda1",
+			wantMountpoint: "/media/pi/My Drive\t\n\\end",
+			wantFSType:     "vfat",
+		},
+		{
+			name:           "escapes in device",
+			line:           `/dev/disk/by-label/My\040Label /mnt/usb ext4 rw,relatime 0 0`,
+			wantDevice:     "/dev/disk/by-label/My Label",
+			wantMountpoint: "/mnt/usb",
+			wantFSType:     "ext4",
+		},
+		{
+			name:           "escapes in fstype subtype",
+			line:           `fusefs /mnt/x fuse.My\040FS rw 0 0`,
+			wantDevice:     "fusefs",
+			wantMountpoint: "/mnt/x",
+			wantFSType:     "fuse.My FS",
+		},
+		{
+			name: "unknown backslash sequences left untouched",
+			// Neither "\x41" nor a lone trailing "\" is one of the four
+			// escapes /proc/mounts actually emits, so both must pass
+			// through unchanged rather than being misinterpreted or
+			// panicking on a short slice.
+			line:           `/dev/sda1 /mnt/weird\x41\ vfat rw,relatime 0 0`,
+			wantDevice:     "/dev/sda1",
+			wantMountpoint: `/mnt/weird\x41\`,
+			wantFSType:     "vfat",
+		},
+		{
+			name: "escaped backslash is not re-scanned with what follows it",
+			// The kernel emits a literal backslash in a path as "\134".
+			// A single left-to-right pass that only consumes the three
+			// digits of a matched escape must decode "\134040" (an
+			// escaped backslash followed by literal "040") to "\040", not
+			// to a space — i.e. it must not re-scan the "040" that
+			// follows the emitted backslash as a fresh escape.
+			line:           `/dev/sda1 /mnt/a\134040b vfat rw,relatime 0 0`,
+			wantDevice:     "/dev/sda1",
+			wantMountpoint: `/mnt/a\040b`,
+			wantFSType:     "vfat",
+		},
 	}
-	if len(entries) != 1 {
-		t.Fatalf("expected 1 entry, got %d", len(entries))
-	}
-	want := "/media/pi/My Drive\t\n\\end"
-	if entries[0].mountpoint != want {
-		t.Fatalf("mountpoint = %q, want %q", entries[0].mountpoint, want)
-	}
-}
-
-// The device field can carry the same escapes, e.g. for a labeled device
-// node under /dev/disk/by-label.
-func TestParseMounts_DecodesOctalEscapesInDevice(t *testing.T) {
-	data := `/dev/disk/by-label/My\040Label /mnt/usb ext4 rw,relatime 0 0
-`
-	entries, err := parseMounts(data)
-	if err != nil {
-		t.Fatalf("parseMounts: %v", err)
-	}
-	if len(entries) != 1 {
-		t.Fatalf("expected 1 entry, got %d", len(entries))
-	}
-	want := "/dev/disk/by-label/My Label"
-	if entries[0].device != want {
-		t.Fatalf("device = %q, want %q", entries[0].device, want)
-	}
-}
-
-// A backslash sequence that isn't one of the four escapes /proc/mounts
-// actually emits, or a lone trailing backslash, must be passed through
-// unchanged rather than misinterpreted or panicking on a short slice.
-func TestParseMounts_LeavesUnknownBackslashSequencesUntouched(t *testing.T) {
-	data := `/dev/sda1 /mnt/weird\x41\ vfat rw,relatime 0 0
-`
-	entries, err := parseMounts(data)
-	if err != nil {
-		t.Fatalf("parseMounts: %v", err)
-	}
-	if len(entries) != 1 {
-		t.Fatalf("expected 1 entry, got %d", len(entries))
-	}
-	want := `/mnt/weird\x41\`
-	if entries[0].mountpoint != want {
-		t.Fatalf("mountpoint = %q, want %q", entries[0].mountpoint, want)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			entries, err := parseMounts(tt.line + "\n")
+			if err != nil {
+				t.Fatalf("parseMounts: %v", err)
+			}
+			if len(entries) != 1 {
+				t.Fatalf("expected 1 entry, got %d", len(entries))
+			}
+			got := entries[0]
+			if got.device != tt.wantDevice {
+				t.Errorf("device = %q, want %q", got.device, tt.wantDevice)
+			}
+			if got.mountpoint != tt.wantMountpoint {
+				t.Errorf("mountpoint = %q, want %q", got.mountpoint, tt.wantMountpoint)
+			}
+			if got.fstype != tt.wantFSType {
+				t.Errorf("fstype = %q, want %q", got.fstype, tt.wantFSType)
+			}
+		})
 	}
 }
 

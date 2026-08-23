@@ -92,7 +92,7 @@ func parseMounts(data string) ([]mountEntry, error) {
 		entries = append(entries, mountEntry{
 			device:     unescapeMountField(fields[0]),
 			mountpoint: unescapeMountField(fields[1]),
-			fstype:     fields[2],
+			fstype:     unescapeMountField(fields[2]),
 		})
 	}
 	if err := scanner.Err(); err != nil {
@@ -112,10 +112,14 @@ var mountFieldEscapes = map[string]byte{
 }
 
 // unescapeMountField decodes the octal escapes /proc/mounts uses in the
-// device and mountpoint fields, e.g. "\040" for a space in a USB drive label
-// such as "My\040Drive". Any other "\NNN" sequence (not one of the four
+// device, mountpoint, and fstype fields (fstype is mangled too, e.g. a fuse
+// subtype derived from user input), e.g. "\040" for a space in a USB drive
+// label such as "My\040Drive". Any other "\NNN" sequence (not one of the four
 // escapes the kernel emits) is left untouched, as is a lone backslash not
-// followed by three octal digits.
+// followed by three octal digits. The single left-to-right pass only
+// consumes the three digits of a matched escape, so it never re-scans bytes
+// it already emitted — a literal "\134040" (an escaped backslash followed by
+// literal "040") decodes to "\040", not to a space.
 func unescapeMountField(s string) string {
 	if !strings.Contains(s, `\`) {
 		return s
