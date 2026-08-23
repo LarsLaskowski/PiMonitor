@@ -90,15 +90,53 @@ func parseMounts(data string) ([]mountEntry, error) {
 			continue
 		}
 		entries = append(entries, mountEntry{
-			device:     fields[0],
-			mountpoint: fields[1],
-			fstype:     fields[2],
+			device:     unescapeMountField(fields[0]),
+			mountpoint: unescapeMountField(fields[1]),
+			fstype:     unescapeMountField(fields[2]),
 		})
 	}
 	if err := scanner.Err(); err != nil {
 		return nil, fmt.Errorf("scan /proc/mounts: %w", err)
 	}
 	return entries, nil
+}
+
+// mountFieldEscapes maps the octal escapes /proc/mounts uses for characters
+// that would otherwise be ambiguous in its whitespace-separated format (see
+// proc(5)) to the literal character they represent.
+var mountFieldEscapes = map[string]byte{
+	"040": ' ',
+	"011": '\t',
+	"012": '\n',
+	"134": '\\',
+}
+
+// unescapeMountField decodes the octal escapes /proc/mounts uses in the
+// device, mountpoint, and fstype fields (fstype is mangled too, e.g. a fuse
+// subtype derived from user input), e.g. "\040" for a space in a USB drive
+// label such as "My\040Drive". Any other "\NNN" sequence (not one of the four
+// escapes the kernel emits) is left untouched, as is a lone backslash not
+// followed by three octal digits. The single left-to-right pass only
+// consumes the three digits of a matched escape, so it never re-scans bytes
+// it already emitted — a literal "\134040" (an escaped backslash followed by
+// literal "040") decodes to "\040", not to a space.
+func unescapeMountField(s string) string {
+	if !strings.Contains(s, `\`) {
+		return s
+	}
+	var b strings.Builder
+	b.Grow(len(s))
+	for i := 0; i < len(s); i++ {
+		if s[i] == '\\' && i+3 < len(s) {
+			if c, ok := mountFieldEscapes[s[i+1:i+4]]; ok {
+				b.WriteByte(c)
+				i += 3
+				continue
+			}
+		}
+		b.WriteByte(s[i])
+	}
+	return b.String()
 }
 
 // statfsFunc matches syscall.Statfs's signature so tests can inject a fake

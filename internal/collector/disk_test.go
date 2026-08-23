@@ -42,6 +42,89 @@ func TestParseMounts(t *testing.T) {
 	}
 }
 
+// /proc/mounts encodes space, tab, newline, and backslash as octal escapes
+// since those characters would otherwise be ambiguous in the
+// whitespace-separated format (see proc(5)), for all three of the device,
+// mountpoint, and fstype fields (e.g. a USB drive labeled "My Drive", or a
+// fuse subtype derived from user input). parseMounts must decode them back
+// to the real value in each field.
+func TestParseMounts_DecodesOctalEscapes(t *testing.T) {
+	tests := []struct {
+		name           string
+		line           string
+		wantDevice     string
+		wantMountpoint string
+		wantFSType     string
+	}{
+		{
+			name:           "escapes in mountpoint",
+			line:           `/dev/sda1 /media/pi/My\040Drive\011\012\134end vfat rw,relatime 0 0`,
+			wantDevice:     "/dev/sda1",
+			wantMountpoint: "/media/pi/My Drive\t\n\\end",
+			wantFSType:     "vfat",
+		},
+		{
+			name:           "escapes in device",
+			line:           `/dev/disk/by-label/My\040Label /mnt/usb ext4 rw,relatime 0 0`,
+			wantDevice:     "/dev/disk/by-label/My Label",
+			wantMountpoint: "/mnt/usb",
+			wantFSType:     "ext4",
+		},
+		{
+			name:           "escapes in fstype subtype",
+			line:           `fusefs /mnt/x fuse.My\040FS rw 0 0`,
+			wantDevice:     "fusefs",
+			wantMountpoint: "/mnt/x",
+			wantFSType:     "fuse.My FS",
+		},
+		{
+			name: "unknown backslash sequences left untouched",
+			// Neither "\x41" nor a lone trailing "\" is one of the four
+			// escapes /proc/mounts actually emits, so both must pass
+			// through unchanged rather than being misinterpreted or
+			// panicking on a short slice.
+			line:           `/dev/sda1 /mnt/weird\x41\ vfat rw,relatime 0 0`,
+			wantDevice:     "/dev/sda1",
+			wantMountpoint: `/mnt/weird\x41\`,
+			wantFSType:     "vfat",
+		},
+		{
+			name: "escaped backslash is not re-scanned with what follows it",
+			// The kernel emits a literal backslash in a path as "\134".
+			// A single left-to-right pass that only consumes the three
+			// digits of a matched escape must decode "\134040" (an
+			// escaped backslash followed by literal "040") to "\040", not
+			// to a space — i.e. it must not re-scan the "040" that
+			// follows the emitted backslash as a fresh escape.
+			line:           `/dev/sda1 /mnt/a\134040b vfat rw,relatime 0 0`,
+			wantDevice:     "/dev/sda1",
+			wantMountpoint: `/mnt/a\040b`,
+			wantFSType:     "vfat",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			entries, err := parseMounts(tt.line + "\n")
+			if err != nil {
+				t.Fatalf("parseMounts: %v", err)
+			}
+			if len(entries) != 1 {
+				t.Fatalf("expected 1 entry, got %d", len(entries))
+			}
+			got := entries[0]
+			if got.device != tt.wantDevice {
+				t.Errorf("device = %q, want %q", got.device, tt.wantDevice)
+			}
+			if got.mountpoint != tt.wantMountpoint {
+				t.Errorf("mountpoint = %q, want %q", got.mountpoint, tt.wantMountpoint)
+			}
+			if got.fstype != tt.wantFSType {
+				t.Errorf("fstype = %q, want %q", got.fstype, tt.wantFSType)
+			}
+		})
+	}
+}
+
 func TestDefaultExcludedFSTypes_FiltersPseudoFS(t *testing.T) {
 	for _, fstype := range []string{"proc", "sysfs", "tmpfs", "overlay"} {
 		if !defaultExcludedFSTypes[fstype] {
