@@ -331,3 +331,87 @@ func TestHealthz_BypassesMaxInFlight(t *testing.T) {
 		t.Fatalf("api status while in-flight limit is full = %d, want %d (sanity check that the fill above actually exercised the limiter)", apiRec.Code, http.StatusServiceUnavailable)
 	}
 }
+
+// TestWithGzip_AcceptEncodingNegotiation exercises Accept-Encoding parsing
+// through the full handler chain. The header is a q-value list per RFC 9110
+// §12.5.3, so an explicit refusal ("gzip;q=0") must yield an identity
+// response and a lookalike token ("x-gzip") must not be treated as gzip.
+func TestWithGzip_AcceptEncodingNegotiation(t *testing.T) {
+	tests := []struct {
+		name           string
+		acceptEncoding string
+		wantCompressed bool
+	}{
+		{"plain gzip", "gzip", true},
+		{"gzip among several codings", "gzip, deflate, br", true},
+		{"gzip with explicit q=1.0", "deflate, gzip;q=1.0, *;q=0.5", true},
+		{"wildcard", "*", true},
+		{"uppercase coding", "GZIP", true},
+		{"gzip refused", "gzip;q=0", false},
+		{"gzip refused alongside identity", "identity, gzip;q=0", false},
+		{"gzip refused with trailing zeros", "gzip;q=0.000", false},
+		{"wildcard refused", "*;q=0", false},
+		{"explicit refusal outranks wildcard", "gzip;q=0, *", false},
+		{"explicit acceptance alongside refused wildcard", "gzip, *;q=0", true},
+		{"x-gzip lookalike", "x-gzip", false},
+		{"other coding only", "deflate", false},
+		{"empty header", "", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s, _ := newTestServer(Config{})
+
+			req := httptest.NewRequest(http.MethodGet, "/api/v1/metrics", nil)
+			if tt.acceptEncoding != "" {
+				req.Header.Set("Accept-Encoding", tt.acceptEncoding)
+			}
+			rec := httptest.NewRecorder()
+			s.Handler().ServeHTTP(rec, req)
+
+			got := rec.Header().Get("Content-Encoding")
+			if tt.wantCompressed && got != "gzip" {
+				t.Fatalf("Accept-Encoding %q: Content-Encoding = %q, want %q", tt.acceptEncoding, got, "gzip")
+			}
+			if !tt.wantCompressed && got != "" {
+				t.Fatalf("Accept-Encoding %q: Content-Encoding = %q, want identity (empty)", tt.acceptEncoding, got)
+			}
+		})
+	}
+}
+
+// TestAcceptsGzip_HeaderForms covers the Accept-Encoding grammar directly,
+// including whitespace and parameter forms that are tedious to drive through
+// a full request.
+func TestAcceptsGzip_HeaderForms(t *testing.T) {
+	tests := []struct {
+		header string
+		want   bool
+	}{
+		{"gzip", true},
+		{"gzip, deflate, br", true},
+		{"deflate, gzip;q=1.0, *;q=0.5", true},
+		{"*", true},
+		{"  gzip  ;  q = 0.5  ", true},
+		{"GZip;Q=1", true},
+		{"gzip;q=0.001", true},
+		{"deflate, gzip", true},
+		{"gzip;q=0", false},
+		{"identity, gzip;q=0", false},
+		{"gzip;q=0.000", false},
+		{"gzip;q=0.", false},
+		{"*;q=0", false},
+		{"x-gzip", false},
+		{"gzipped", false},
+		{"deflate", false},
+		{"identity;q=0", false},
+		{"", false},
+		{",", false},
+	}
+
+	for _, tt := range tests {
+		if got := acceptsGzip(tt.header); got != tt.want {
+			t.Errorf("acceptsGzip(%q) = %v, want %v", tt.header, got, tt.want)
+		}
+	}
+}

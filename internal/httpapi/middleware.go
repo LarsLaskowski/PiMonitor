@@ -6,6 +6,7 @@ import (
 	"crypto/subtle"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -136,6 +137,44 @@ func (w *gzipResponseWriter) Write(b []byte) (int, error) {
 	return w.gw.Write(b)
 }
 
+// acceptsGzip reports whether the client accepts a gzip-encoded response.
+// Accept-Encoding is a q-value list (RFC 9110 §12.5.3), not an opaque string:
+// "gzip;q=0" is an explicit refusal and "x-gzip" is a distinct (deprecated)
+// token, so substring-matching "gzip" would compress for clients that asked
+// us not to. An explicit gzip entry outranks a wildcard, per the same
+// section, so "gzip;q=0, *" is still a refusal.
+func acceptsGzip(header string) bool {
+	wildcard := false
+	for _, part := range strings.Split(header, ",") {
+		coding, params, _ := strings.Cut(strings.TrimSpace(part), ";")
+		accepted := !qualityIsZero(params)
+		switch strings.ToLower(strings.TrimSpace(coding)) {
+		case "gzip":
+			return accepted
+		case "*":
+			wildcard = accepted
+		}
+	}
+	return wildcard
+}
+
+// qualityIsZero reports whether an Accept-Encoding parameter list carries a
+// qvalue of zero, in any of the forms RFC 9110 permits ("0", "0.", "0.0",
+// "0.00", "0.000"). A qvalue that doesn't parse is ignored rather than read
+// as a refusal, so a malformed header keeps the pre-existing behaviour of
+// compressing instead of silently losing compression.
+func qualityIsZero(params string) bool {
+	for _, p := range strings.Split(params, ";") {
+		k, v, ok := strings.Cut(p, "=")
+		if !ok || !strings.EqualFold(strings.TrimSpace(k), "q") {
+			continue
+		}
+		q, err := strconv.ParseFloat(strings.TrimSpace(v), 64)
+		return err == nil && q == 0
+	}
+	return false
+}
+
 // withGzip transparently gzip-compresses responses for clients that
 // advertise support via Accept-Encoding. Responses to history/metrics
 // payloads are highly repetitive JSON and compress roughly 10x, which
@@ -144,7 +183,7 @@ func (w *gzipResponseWriter) Write(b []byte) (int, error) {
 // responses unchanged, so this is backward compatible.
 func (s *Server) withGzip(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
+		if !acceptsGzip(r.Header.Get("Accept-Encoding")) {
 			next.ServeHTTP(w, r)
 			return
 		}
