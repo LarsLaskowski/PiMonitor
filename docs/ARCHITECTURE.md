@@ -206,6 +206,13 @@ Per-webhook behavior: a severity filter (`min_level`), an optional
 exponential backoff up to `notify_max_retries`, and a per-`(metric, resource)`
 rate limiter (`notify_min_interval_seconds`) that coalesces repeated firings.
 
+`text/template` does no escaping of its own, so a custom template whose body is JSON must
+use the `json` template function (registered in `templateFuncs`) around every interpolated
+value — e.g. `{"text": {{json .Message}}}` — rather than embedding it inside a quoted string
+literal. `json` marshals the value and supplies its own surrounding quotes, so a resource
+string containing a quote or backslash (e.g. an unusual mountpoint) can't produce a
+malformed request body.
+
 **Only retryable failures consume the retry budget.** Transport errors (DNS, refused
 connections, timeouts) and 5xx responses are transient, as are `408 Request Timeout` and
 `429 Too Many Requests`, which explicitly invite a retry. Every other 4xx is a permanent
