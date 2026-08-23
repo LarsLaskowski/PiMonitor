@@ -39,6 +39,24 @@ const (
 	defaultNotifyContentType = "application/json"
 )
 
+// templateFuncs are the helpers available to a webhook body template.
+// text/template does no escaping of its own, so a template rendering a JSON
+// body must be able to emit a correctly quoted and escaped JSON value —
+// otherwise a resource string containing a quote or backslash produces a
+// malformed request body.
+var templateFuncs = template.FuncMap{
+	// json renders v as a complete JSON value, including surrounding quotes
+	// for strings. Use it as {"text": {{json .Message}}} — note there are no
+	// quotes around the action, json supplies them.
+	"json": func(v any) (string, error) {
+		b, err := json.Marshal(v)
+		if err != nil {
+			return "", err
+		}
+		return string(b), nil
+	},
+}
+
 // webhook is a single resolved delivery destination: the config values with
 // the template pre-parsed and defaults applied.
 type webhook struct {
@@ -104,7 +122,9 @@ func NewNotifier(cfg config.Alerts, log *slog.Logger) (*Notifier, error) {
 			wh.contentType = defaultNotifyContentType
 		}
 		if w.Template != "" {
-			tmpl, err := template.New(fmt.Sprintf("webhook[%d]", i)).Parse(w.Template)
+			tmpl, err := template.New(fmt.Sprintf("webhook[%d]", i)).
+				Funcs(templateFuncs).
+				Parse(w.Template)
 			if err != nil {
 				return nil, fmt.Errorf("alerts.webhooks[%d].template: %w", i, err)
 			}

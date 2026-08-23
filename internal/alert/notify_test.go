@@ -118,6 +118,109 @@ func TestNotifier_RendersTemplate(t *testing.T) {
 	}
 }
 
+// The json template helper escapes a hostile resource string into a valid
+// JSON value, so a mountpoint containing a quote or backslash cannot break
+// the payload (regression test for #109).
+func TestNotifier_JSONHelperEscapesHostileResource(t *testing.T) {
+	srv, ch := newCapturingServer(t, http.StatusOK)
+
+	n, err := NewNotifier(config.Alerts{
+		Webhooks: []config.Webhook{{
+			URL:      srv.URL,
+			Template: `{"text": {{json .Message}}}`,
+		}},
+	}, nil)
+	if err != nil {
+		t.Fatalf("NewNotifier: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	n.Start(ctx)
+
+	ev := Event{
+		Metric: "disk", Resource: `/mnt/we"ird\path`,
+		Kind: KindFired, From: LevelOK, To: LevelCrit, Value: 98, At: time.Now(),
+	}
+	n.Notify([]Event{ev})
+
+	req := waitForRequest(t, ch)
+	var payload map[string]any
+	if err := json.Unmarshal(req.body, &payload); err != nil {
+		t.Fatalf("payload is not valid JSON: %v (body=%s)", err, req.body)
+	}
+	want := formatMessage(ev)
+	if payload["text"] != want {
+		t.Errorf("payload[text] = %q, want %q", payload["text"], want)
+	}
+}
+
+// The same hostile resource, rendered through the unescaped form the json
+// helper replaces, demonstrably produces invalid JSON. This documents why the
+// helper exists and would catch a future change that silently starts
+// escaping template output on its own.
+func TestNotifier_UnescapedTemplateProducesInvalidJSON(t *testing.T) {
+	srv, ch := newCapturingServer(t, http.StatusOK)
+
+	n, err := NewNotifier(config.Alerts{
+		Webhooks: []config.Webhook{{
+			URL:      srv.URL,
+			Template: `{"text": "{{.Message}}"}`,
+		}},
+	}, nil)
+	if err != nil {
+		t.Fatalf("NewNotifier: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	n.Start(ctx)
+
+	ev := Event{
+		Metric: "disk", Resource: `/mnt/we"ird\path`,
+		Kind: KindFired, From: LevelOK, To: LevelCrit, Value: 98, At: time.Now(),
+	}
+	n.Notify([]Event{ev})
+
+	req := waitForRequest(t, ch)
+	var payload map[string]any
+	if err := json.Unmarshal(req.body, &payload); err == nil {
+		t.Fatalf("expected invalid JSON from the unescaped template, got valid payload: %s", req.body)
+	}
+}
+
+// The json helper also handles non-string values, rendering a float64 as a
+// bare JSON number and a time.Time as a quoted RFC 3339 string.
+func TestNotifier_JSONHelperHandlesNonStringValues(t *testing.T) {
+	srv, ch := newCapturingServer(t, http.StatusOK)
+
+	n, err := NewNotifier(config.Alerts{
+		Webhooks: []config.Webhook{{
+			URL:      srv.URL,
+			Template: `{"value": {{json .Value}}, "at": {{json .At}}}`,
+		}},
+	}, nil)
+	if err != nil {
+		t.Fatalf("NewNotifier: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	n.Start(ctx)
+
+	at := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+	n.Notify([]Event{firedEvent(at)})
+
+	req := waitForRequest(t, ch)
+	var payload map[string]any
+	if err := json.Unmarshal(req.body, &payload); err != nil {
+		t.Fatalf("payload is not valid JSON: %v (body=%s)", err, req.body)
+	}
+	if payload["value"] != float64(98) {
+		t.Errorf("payload[value] = %v, want 98", payload["value"])
+	}
+	if payload["at"] != at.Format(time.RFC3339) {
+		t.Errorf("payload[at] = %v, want %v", payload["at"], at.Format(time.RFC3339))
+	}
+}
+
 // A custom content_type overrides the default, so a plain-text template body
 // isn't mislabeled as JSON.
 func TestNotifier_CustomContentType(t *testing.T) {
