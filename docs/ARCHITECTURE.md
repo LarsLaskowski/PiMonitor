@@ -303,9 +303,16 @@ unchanged) and refetch as soon as its bytes change.
 The hash replaces an earlier `version`-derived ETag, which was wrong in two ways: it gave
 every asset the *same* validator despite each URL being a distinct resource, and it never
 changed across builds that share a version string — which is every unversioned `dev`
-build, so `make run` served permanently stale JavaScript after an edit (issue #102). The
-`Etag` is set only for paths that name a real asset, so a 404 carries no validator for a
-body that has no stable identity.
+build, so `make run` served permanently stale JavaScript after an edit (issue #102).
+
+The validator is attached only to a response that actually *is* the hashed asset. Naming
+an asset is not enough: `http.FileServerFS` redirects `*/index.html` to `./` and a
+trailing slash on a file to its base, and a 404 has no stable identity at all — so a small
+`etagWriter` wrapper removes the header again unless the file server settles on `200`,
+`206`, or `304` (a 304 must repeat the validator that matched). The header has to be set
+*before* delegating, because `http.ServeContent` answers a conditional request from
+whatever is already on the writer; stripping it afterwards is what keeps a cacheable 301
+or a 404 from carrying a strong validator for a body it does not describe.
 
 **Stored-XSS prevention is enforced by a repository rule, not just convention.**
 `internal/web/xss_test.go` (`TestAppJS_NoInnerHTMLInterpolation`) scans `app.js` at test

@@ -40,17 +40,52 @@ func Handler() (http.Handler, error) {
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-cache")
-		// Only for paths that name a real asset: a 404 body has no stable
-		// identity and must not carry a validator.
+		// Set before delegating, because http.ServeContent answers a
+		// conditional request from the header already on the writer. Naming an
+		// asset is not the same as serving one, though, so etagWriter takes the
+		// validator back off any response that is not that asset's bytes.
 		if etag, ok := etags[etagKey(r.URL.Path)]; ok {
 			w.Header().Set("Etag", etag)
+			w = &etagWriter{ResponseWriter: w}
 		}
 		fileServer.ServeHTTP(w, r)
 	}), nil
 }
 
+// etagWriter strips a pre-set Etag once the file server has settled on a status
+// code that is not the asset's own representation.
+//
+// Two shapes reach here having matched a real asset yet never serving it:
+// http.FileServerFS redirects "*/index.html" to "./" and a trailing slash on a
+// file to its base, and both branch before serveContent runs. A 301 is
+// cacheable by default, so leaving the header set would attach a strong
+// validator to an empty body describing a different representation — the same
+// defect as emitting one on a 404.
+type etagWriter struct {
+	http.ResponseWriter
+	wroteHeader bool
+}
+
+func (w *etagWriter) WriteHeader(code int) {
+	if w.wroteHeader {
+		return
+	}
+	w.wroteHeader = true
+	switch code {
+	// 200 and 206 carry the asset's bytes; a 304 must repeat the validator
+	// that matched (RFC 9110 15.4.5). Everything else — redirects, 404s, a
+	// range the file could not satisfy — gets none.
+	case http.StatusOK, http.StatusPartialContent, http.StatusNotModified:
+	default:
+		w.Header().Del("Etag")
+	}
+	w.ResponseWriter.WriteHeader(code)
+}
+
 // etagKey maps a request path to the asset key used in the etags map,
-// resolving the directory index the same way http.FileServerFS does.
+// resolving the directory index the same way http.FileServerFS does. A hit
+// only means the path names an asset — whether that asset is what gets served
+// is decided by the file server and enforced by etagWriter.
 func etagKey(p string) string {
 	p = strings.TrimPrefix(path.Clean("/"+p), "/")
 	if p == "" {
