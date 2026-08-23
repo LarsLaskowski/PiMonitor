@@ -249,6 +249,14 @@ withLogging(withSecurityHeaders(mux))
   unauthenticated flood of requests to the history endpoint (the most expensive one — see
   below) can no longer multiply without limit. `/healthz` is deliberately excluded so a
   monitoring system can still tell the process is alive while the API is shedding load.
+- **`withNoStore`**: sets `Cache-Control: no-store` plus `Vary: Authorization` /
+  `Vary: X-Api-Key` on each of the four `/api/v1/...` routes, outermost in the chain so the
+  headers land before anything downstream writes (including on a `401` from `withAPIKey`).
+  Metric/alert/config responses are point-in-time and, when `cfg.APIKey` is set,
+  credential-protected — a shared cache such as a reverse proxy fronting the Pi must not
+  retain them or hand an authorised response to an unauthorised client. `withGzip` uses
+  `Header.Add` rather than `Header.Set` for its own `Vary` value so it appends to, rather
+  than clobbers, the `Vary` values `withNoStore` already set.
 
 **Routes**: `GET /healthz` (plain-text liveness, never gated), and four versioned,
 API-key-gated routes — `GET /api/v1/metrics`, `GET /api/v1/metrics/history`,

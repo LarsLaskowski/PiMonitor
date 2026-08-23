@@ -114,10 +114,10 @@ func New(metrics MetricsProvider, cfg Config, staticHandler http.Handler, log *s
 	// the process is alive while the API is shedding load, and the shell
 	// the dashboard needs to render its "server busy" state must load too.
 	mux.HandleFunc("GET /healthz", s.handleHealthz)
-	mux.Handle("GET /api/v1/metrics", s.withMaxInFlight(s.withGzip(s.withAPIKey(http.HandlerFunc(s.handleMetrics)))))
-	mux.Handle("GET /api/v1/metrics/history", s.withMaxInFlight(s.withGzip(s.withAPIKey(http.HandlerFunc(s.handleHistory)))))
-	mux.Handle("GET /api/v1/alerts", s.withMaxInFlight(s.withGzip(s.withAPIKey(http.HandlerFunc(s.handleAlerts)))))
-	mux.Handle("GET /api/v1/config", s.withMaxInFlight(s.withGzip(s.withAPIKey(http.HandlerFunc(s.handleConfig)))))
+	mux.Handle("GET /api/v1/metrics", s.apiRoute(s.handleMetrics))
+	mux.Handle("GET /api/v1/metrics/history", s.apiRoute(s.handleHistory))
+	mux.Handle("GET /api/v1/alerts", s.apiRoute(s.handleAlerts))
+	mux.Handle("GET /api/v1/config", s.apiRoute(s.handleConfig))
 	if staticHandler != nil {
 		mux.Handle("/", staticHandler)
 	}
@@ -130,6 +130,14 @@ func New(metrics MetricsProvider, cfg Config, staticHandler http.Handler, log *s
 		IdleTimeout:  60 * time.Second,
 	}
 	return s
+}
+
+// apiRoute wraps a /api/v1/... handler in the common middleware chain shared
+// by all four routes, outermost first: withNoStore must run before withGzip
+// so its Cache-Control/Vary headers are set before withGzip mutates Vary
+// itself (Add, not Set, so neither clobbers the other).
+func (s *Server) apiRoute(h http.HandlerFunc) http.Handler {
+	return s.withNoStore(s.withMaxInFlight(s.withGzip(s.withAPIKey(h))))
 }
 
 // Handler returns the server's http.Handler, for use in tests via

@@ -88,6 +88,22 @@ func (s *Server) withMaxInFlight(next http.Handler) http.Handler {
 	})
 }
 
+// withNoStore marks API responses as non-cacheable. Metric snapshots are
+// point-in-time data with no reuse value, and when cfg.APIKey is set they are
+// credential-protected — a shared cache (e.g. a reverse proxy fronting the Pi)
+// must not retain them or hand an authorised response to an unauthorised
+// client. Vary names the credential headers as defence in depth for any cache
+// that ignores no-store.
+func (s *Server) withNoStore(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		h := w.Header()
+		h.Set("Cache-Control", "no-store")
+		h.Add("Vary", "Authorization")
+		h.Add("Vary", "X-Api-Key")
+		next.ServeHTTP(w, r)
+	})
+}
+
 func providedAPIKey(r *http.Request) string {
 	if key := r.Header.Get("X-Api-Key"); key != "" {
 		return key
@@ -135,7 +151,7 @@ func (s *Server) withGzip(next http.Handler) http.Handler {
 
 		h := w.Header()
 		h.Set("Content-Encoding", "gzip")
-		h.Set("Vary", "Accept-Encoding")
+		h.Add("Vary", "Accept-Encoding")
 		h.Del("Content-Length")
 
 		gw := gzipWriterPool.Get().(*gzip.Writer)

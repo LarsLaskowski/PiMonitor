@@ -77,8 +77,8 @@ func TestHandleHistory_GzipWhenAccepted(t *testing.T) {
 	if got := gzipRec.Header().Get("Content-Encoding"); got != "gzip" {
 		t.Fatalf("Content-Encoding = %q, want %q", got, "gzip")
 	}
-	if got := gzipRec.Header().Get("Vary"); got != "Accept-Encoding" {
-		t.Fatalf("Vary = %q, want %q", got, "Accept-Encoding")
+	if vary := gzipRec.Header().Values("Vary"); !containsAll(vary, "Accept-Encoding", "Authorization", "X-Api-Key") {
+		t.Fatalf("Vary = %v, want it to include Accept-Encoding, Authorization, and X-Api-Key", vary)
 	}
 
 	zr, err := gzip.NewReader(bytes.NewReader(gzipRec.Body.Bytes()))
@@ -197,6 +197,107 @@ func TestWithMaxInFlight_AllowsTrafficBelowLimit(t *testing.T) {
 		if rec.Code != http.StatusOK {
 			t.Fatalf("request %d status = %d, want 200", i, rec.Code)
 		}
+	}
+}
+
+// containsAll reports whether every want value is present somewhere in got.
+func containsAll(got []string, want ...string) bool {
+	for _, w := range want {
+		found := false
+		for _, g := range got {
+			if g == w {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+	return true
+}
+
+// TestNoStore_SetOnAllAPIRoutes is the regression test for issue #105:
+// metric/alert/config responses are point-in-time and, when an API key is
+// configured, credential-protected, so a reverse proxy fronting the Pi must
+// never cache them.
+func TestNoStore_SetOnAllAPIRoutes(t *testing.T) {
+	s, _ := newTestServer(Config{})
+
+	for _, path := range []string{"/api/v1/metrics", "/api/v1/metrics/history", "/api/v1/alerts", "/api/v1/config"} {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		rec := httptest.NewRecorder()
+		s.Handler().ServeHTTP(rec, req)
+
+		if got := rec.Header().Get("Cache-Control"); got != "no-store" {
+			t.Errorf("GET %s: Cache-Control = %q, want %q", path, got, "no-store")
+		}
+	}
+}
+
+// TestNoStore_VaryNamesCredentialHeaders guards against a shared cache
+// keyed only on URL (+ Accept-Encoding) serving an authorised response to an
+// unauthorised client, or vice versa.
+func TestNoStore_VaryNamesCredentialHeaders(t *testing.T) {
+	s, _ := newTestServer(Config{})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/metrics", nil)
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+
+	vary := rec.Header().Values("Vary")
+	if !containsAll(vary, "Authorization", "X-Api-Key") {
+		t.Fatalf("Vary = %v, want it to include Authorization and X-Api-Key", vary)
+	}
+}
+
+// TestNoStore_VarySurvivesGzip is the regression test for withGzip's former
+// h.Set("Vary", ...) clobbering any Vary value set upstream: since withGzip
+// runs inside withNoStore, a Set there would erase the credential Vary
+// values on every gzip-negotiated request.
+func TestNoStore_VarySurvivesGzip(t *testing.T) {
+	s, _ := newTestServer(Config{})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/metrics", nil)
+	req.Header.Set("Accept-Encoding", "gzip")
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+
+	vary := rec.Header().Values("Vary")
+	if !containsAll(vary, "Accept-Encoding", "Authorization", "X-Api-Key") {
+		t.Fatalf("Vary = %v, want it to include Accept-Encoding, Authorization, and X-Api-Key", vary)
+	}
+}
+
+// TestNoStore_NotSetOnHealthz guards against withNoStore being wired too
+// broadly: /healthz is a trivial constant and must stay cacheable/simple.
+func TestNoStore_NotSetOnHealthz(t *testing.T) {
+	s, _ := newTestServer(Config{})
+
+	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+
+	if got := rec.Header().Get("Cache-Control"); got != "" {
+		t.Errorf("Cache-Control = %q, want unset on /healthz", got)
+	}
+}
+
+// TestNoStore_SetOnUnauthorizedResponse ensures a cached 401 can't be served
+// to a correctly-authenticated client later: the no-store directive must be
+// set before withAPIKey has a chance to reject the request.
+func TestNoStore_SetOnUnauthorizedResponse(t *testing.T) {
+	s, _ := newTestServer(Config{APIKey: "secret123"})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/metrics", nil)
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401", rec.Code)
+	}
+	if got := rec.Header().Get("Cache-Control"); got != "no-store" {
+		t.Errorf("Cache-Control on 401 response = %q, want %q", got, "no-store")
 	}
 }
 
