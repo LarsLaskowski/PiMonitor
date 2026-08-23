@@ -112,9 +112,10 @@ alerts:
   #    # When the body is JSON, wrap every interpolated value in the `json`
   #    # helper — it emits a correctly quoted and escaped JSON value, so a
   #    # mountpoint containing a quote or backslash cannot break the payload.
-  #    # Note that `json` supplies the surrounding quotes itself.
-  #    # Example Slack payload:
-  #    # template: '{"text": {{json .Message}}}'
+  #    # Note that `json` supplies the surrounding quotes itself, so it must
+  #    # wrap the *entire* string value — combine literal text into the value
+  #    # with `printf` rather than concatenating it around the action, e.g.
+  #    # template: '{"text": {{json (printf "PiMonitor: %s" .Message)}}}'
   #    # Content-Type header (default "application/json"). Override it if a
   #    # custom template renders a non-JSON body, e.g. "text/plain".
   #    content_type: "application/json"

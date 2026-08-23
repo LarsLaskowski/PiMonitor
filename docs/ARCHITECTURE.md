@@ -211,7 +211,10 @@ use the `json` template function (registered in `templateFuncs`) around every in
 value — e.g. `{"text": {{json .Message}}}` — rather than embedding it inside a quoted string
 literal. `json` marshals the value and supplies its own surrounding quotes, so a resource
 string containing a quote or backslash (e.g. an unusual mountpoint) can't produce a
-malformed request body.
+malformed request body. Because `json` supplies its own quotes, it must wrap the *whole*
+string value: literal text has to be composed into the value with `printf`
+(`{{json (printf "PiMonitor: %s" .Message)}}`) rather than concatenated around the
+`json` action, or the literal quotes and the helper's quotes nest into invalid JSON.
 
 **Only retryable failures consume the retry budget.** Transport errors (DNS, refused
 connections, timeouts) and 5xx responses are transient, as are `408 Request Timeout` and
