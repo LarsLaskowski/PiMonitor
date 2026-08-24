@@ -73,11 +73,13 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      # @latest is a deliberate exception to this repo's usual pinning
-      # policy: we want the newest vulnerability database and analysis
-      # logic, not a frozen snapshot of both.
+      # Pin the tool version for predictable builds (unpinned "@latest" trips
+      # SonarCloud's S8545 dependency-pinning check). The vulnerability
+      # database itself is still fetched fresh at run time over the network,
+      # independent of this pin, so scans stay current; only the analysis
+      # logic is frozen until this is bumped by hand.
       - name: Install govulncheck
-        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+        run: go install golang.org/x/vuln/cmd/govulncheck@v1.7.0
 
       - name: Run govulncheck
         run: govulncheck ./...
