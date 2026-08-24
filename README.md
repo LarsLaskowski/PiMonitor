@@ -73,7 +73,7 @@ see [`SECURITY.md`](SECURITY.md) for the full threat model.
 
 ## Building
 
-Requires Go 1.22+.
+Requires Go 1.26+.
 
 ```sh
 make build          # native build, for local development -> bin/pimonitor
