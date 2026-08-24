@@ -84,9 +84,10 @@ When a PR is related to an issue, use the `Closes #issuenumber` syntax so the is
 to the PR automatically and closes when the PR is merged.
 
 Follow the PR template in [`.github/pull_request_template.md`](../.github/pull_request_template.md).
-Run `make build`, `go vet ./...`, `make test`, and `make lint` locally before opening the
-PR — CI runs the same checks (plus a cross-compile check for `arm`/`arm64`) and will not
-merge on a red build.
+Run `make build`, `go vet ./...`, `make test`, `make lint`, and `govulncheck ./...` (install
+via `go install golang.org/x/vuln/cmd/govulncheck@latest`) locally before opening the PR —
+CI runs the same checks (plus a cross-compile check for `arm`/`arm64`) and will not merge on
+a red build.
 
 ## Code style
 
