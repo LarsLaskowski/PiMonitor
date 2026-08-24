@@ -13,14 +13,21 @@ installed it, you can download it [here](https://git-scm.com/downloads) or, if y
 a GUI-based approach, try [GitHub Desktop](https://desktop.github.com/).
 
 Once Git is installed, you'll also need the Go version this project targets (currently
-**Go 1.22+**, see [`go.mod`](../go.mod)). Instructions and downloads for your preferred OS
+**Go 1.26+**, see [`go.mod`](../go.mod)). Instructions and downloads for your preferred OS
 can be found [here](https://go.dev/dl/).
 
-For linting, install `golangci-lint` matching the version CI uses (currently `v2.12.2`,
+> [!NOTE]
+> The `go` directive in `go.mod` tracks a currently-supported Go release (Go supports the
+> two most recent major releases). Since PiMonitor ships as a single statically-linked
+> binary, the toolchain version is a dependency-security property, not just a build detail
+> — it's raised whenever the declared version falls out of that support window, independent
+> of any new language features being adopted.
+
+For linting, install `golangci-lint` matching the version CI uses (currently `v2.13.1`,
 see [`.github/workflows/ci.yml`](../.github/workflows/ci.yml)):
 
 ```sh
-go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
+go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.1
 ```
 
 > [!IMPORTANT]
@@ -84,9 +91,10 @@ When a PR is related to an issue, use the `Closes #issuenumber` syntax so the is
 to the PR automatically and closes when the PR is merged.
 
 Follow the PR template in [`.github/pull_request_template.md`](../.github/pull_request_template.md).
-Run `make build`, `go vet ./...`, `make test`, and `make lint` locally before opening the
-PR — CI runs the same checks (plus a cross-compile check for `arm`/`arm64`) and will not
-merge on a red build.
+Run `make build`, `go vet ./...`, `make test`, `make lint`, and `govulncheck ./...` (install
+via `go install golang.org/x/vuln/cmd/govulncheck@latest`) locally before opening the PR —
+CI runs the same checks (plus a cross-compile check for `arm`/`arm64`) and will not merge on
+a red build.
 
 ## Code style
 

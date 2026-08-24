@@ -410,6 +410,10 @@ separate cross-compile job (build-only, `arm`/`arm64`) so a target-platform buil
 caught even though the runner itself is `amd64` and cannot execute Pi-only code paths. A
 `sonarqube` job (skipped for Dependabot PRs, which don't receive repository secrets)
 regenerates coverage as a Go coverage profile and uploads it to SonarCloud together with
-the sources, per `sonar-project.properties` at the repo root.
+the sources, per `sonar-project.properties` at the repo root. A `govulncheck` job runs
+`govulncheck ./...` (reachability-based, so it only fails on vulnerabilities actually
+reachable from this code) on every push/PR plus a weekly schedule, so a newly-published CVE
+against an unchanged codebase is surfaced without waiting for the next commit.
 Actions are pinned to commit SHAs (not floating tags) so a compromised or rewritten action
-release can't silently change what CI executes.
+release can't silently change what CI executes; `.github/dependabot.yml` keeps those pins
+and `go.mod` dependencies current.
