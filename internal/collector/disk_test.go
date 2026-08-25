@@ -4,7 +4,6 @@ import (
 	"os"
 	"path/filepath"
 	"sync/atomic"
-	"syscall"
 	"testing"
 	"time"
 )
@@ -149,12 +148,8 @@ func TestDefaultExcludedFSTypes_FiltersNetworkFS(t *testing.T) {
 func TestDiskCollector_Collect(t *testing.T) {
 	mountsPath := writeMountsFixture(t, mountsFixture)
 
-	fakeStatfs := func(path string, buf *syscall.Statfs_t) error {
-		buf.Bsize = 4096
-		buf.Blocks = 1000
-		buf.Bfree = 250
-		buf.Bavail = 200
-		return nil
+	fakeStatfs := func(path string) (fsStats, error) {
+		return fsStats{Bsize: 4096, Blocks: 1000, Bfree: 250, Bavail: 200}, nil
 	}
 
 	c := &DiskCollector{
@@ -202,12 +197,8 @@ user@host:/ /mnt/ssh fuse.sshfs rw,relatime 0 0
 	c := &DiskCollector{
 		mountsPath:     mountsPath,
 		excludedFSType: defaultExcludedFSTypes,
-		statfs: func(path string, buf *syscall.Statfs_t) error {
-			buf.Bsize = 4096
-			buf.Blocks = 1000
-			buf.Bfree = 250
-			buf.Bavail = 200
-			return nil
+		statfs: func(path string) (fsStats, error) {
+			return fsStats{Bsize: 4096, Blocks: 1000, Bfree: 250, Bavail: 200}, nil
 		},
 	}
 
@@ -230,12 +221,8 @@ func TestDiskCollector_Collect_UsedPercentMatchesDf(t *testing.T) {
 	c := &DiskCollector{
 		mountsPath:     mountsPath,
 		excludedFSType: defaultExcludedFSTypes,
-		statfs: func(path string, buf *syscall.Statfs_t) error {
-			buf.Bsize = 4096
-			buf.Blocks = 1000
-			buf.Bfree = 50 // exactly the reserved blocks are left
-			buf.Bavail = 0
-			return nil
+		statfs: func(path string) (fsStats, error) {
+			return fsStats{Bsize: 4096, Blocks: 1000, Bfree: 50, Bavail: 0}, nil
 		},
 	}
 
@@ -265,12 +252,9 @@ func TestDiskCollector_Collect_ZeroDenominator(t *testing.T) {
 	c := &DiskCollector{
 		mountsPath:     mountsPath,
 		excludedFSType: defaultExcludedFSTypes,
-		statfs: func(path string, buf *syscall.Statfs_t) error {
-			buf.Bsize = 4096
-			buf.Blocks = 1000
-			buf.Bfree = 1000 // nothing used, nothing available: denom == 0
-			buf.Bavail = 0
-			return nil
+		statfs: func(path string) (fsStats, error) {
+			// nothing used, nothing available: denom == 0
+			return fsStats{Bsize: 4096, Blocks: 1000, Bfree: 1000, Bavail: 0}, nil
 		},
 	}
 
@@ -299,13 +283,9 @@ func TestDiskCollector_Collect_DeduplicatesMountpoints(t *testing.T) {
 	c := &DiskCollector{
 		mountsPath:     mountsPath,
 		excludedFSType: defaultExcludedFSTypes,
-		statfs: func(path string, buf *syscall.Statfs_t) error {
+		statfs: func(path string) (fsStats, error) {
 			statCalls.Add(1)
-			buf.Bsize = 4096
-			buf.Blocks = 1000
-			buf.Bfree = 250
-			buf.Bavail = 200
-			return nil
+			return fsStats{Bsize: 4096, Blocks: 1000, Bfree: 250, Bavail: 200}, nil
 		},
 	}
 
@@ -334,8 +314,8 @@ func TestDiskCollector_Collect_SkipsFailingStatfs(t *testing.T) {
 	c := &DiskCollector{
 		mountsPath:     mountsPath,
 		excludedFSType: defaultExcludedFSTypes,
-		statfs: func(path string, buf *syscall.Statfs_t) error {
-			return os.ErrNotExist
+		statfs: func(path string) (fsStats, error) {
+			return fsStats{}, os.ErrNotExist
 		},
 	}
 
@@ -361,8 +341,8 @@ func TestDiskCollector_Collect_NoMountsReturnsEmptyNotNilSlice(t *testing.T) {
 	c := &DiskCollector{
 		mountsPath:     mountsPath,
 		excludedFSType: defaultExcludedFSTypes,
-		statfs: func(path string, buf *syscall.Statfs_t) error {
-			return os.ErrNotExist
+		statfs: func(path string) (fsStats, error) {
+			return fsStats{}, os.ErrNotExist
 		},
 	}
 
@@ -388,17 +368,13 @@ nas-fallback /mnt/hung ext4 rw,relatime 0 0
 	release := make(chan struct{})
 	defer close(release) // let abandoned goroutines exit at test end
 	var hungCalls atomic.Int32
-	fakeStatfs := func(path string, buf *syscall.Statfs_t) error {
+	fakeStatfs := func(path string) (fsStats, error) {
 		if path == "/mnt/hung" {
 			hungCalls.Add(1)
 			<-release // simulate statfs blocking on a dead NFS server
-			return os.ErrDeadlineExceeded
+			return fsStats{}, os.ErrDeadlineExceeded
 		}
-		buf.Bsize = 4096
-		buf.Blocks = 1000
-		buf.Bfree = 250
-		buf.Bavail = 200
-		return nil
+		return fsStats{Bsize: 4096, Blocks: 1000, Bfree: 250, Bavail: 200}, nil
 	}
 
 	current := time.Now()
