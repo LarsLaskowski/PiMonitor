@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"strings"
-	"syscall"
 	"time"
 )
 
@@ -139,9 +138,19 @@ func unescapeMountField(s string) string {
 	return b.String()
 }
 
-// statfsFunc matches syscall.Statfs's signature so tests can inject a fake
+// fsStats is the subset of statfs(2) output the collector needs, in a
+// platform-neutral shape so the disk logic itself compiles everywhere. The
+// platform-specific wrapper (statfs_linux.go / statfs_other.go) fills it in.
+type fsStats struct {
+	Blocks uint64 // total blocks
+	Bfree  uint64 // free blocks (incl. root-reserved)
+	Bavail uint64 // blocks available to unprivileged users
+	Bsize  uint64 // block size in bytes
+}
+
+// statfsFunc matches the platform statfs wrapper so tests can inject a fake
 // implementation instead of touching the real filesystem.
-type statfsFunc func(path string, buf *syscall.Statfs_t) error
+type statfsFunc func(path string) (fsStats, error)
 
 // DiskCollector reports usage of real (non-pseudo) mounted filesystems.
 type DiskCollector struct {
@@ -167,7 +176,7 @@ func NewDiskCollector() *DiskCollector {
 	return &DiskCollector{
 		mountsPath:     procMountsPath,
 		excludedFSType: defaultExcludedFSTypes,
-		statfs:         syscall.Statfs,
+		statfs:         platformStatfs,
 		statfsTimeout:  defaultStatfsTimeout,
 		statfsCooldown: defaultStatfsCooldown,
 	}
@@ -186,33 +195,30 @@ func (c *DiskCollector) clock() time.Time {
 // unreachable network share that can be forever). Collect bounds the
 // pile-up via the badUntil cooldown so a stuck mountpoint is not retried
 // on every tick. A zero timeout calls statfs inline without a goroutine.
-func (c *DiskCollector) statfsWithTimeout(path string) (syscall.Statfs_t, error) {
+func (c *DiskCollector) statfsWithTimeout(path string) (fsStats, error) {
 	if c.statfsTimeout <= 0 {
-		var buf syscall.Statfs_t
-		err := c.statfs(path, &buf)
-		return buf, err
+		return c.statfs(path)
 	}
 
 	type result struct {
-		buf syscall.Statfs_t
-		err error
+		stats fsStats
+		err   error
 	}
 	// Buffered so an abandoned goroutine can send its late result and
 	// exit instead of leaking forever on the channel.
 	ch := make(chan result, 1)
 	go func() {
-		var buf syscall.Statfs_t
-		err := c.statfs(path, &buf)
-		ch <- result{buf: buf, err: err}
+		stats, err := c.statfs(path)
+		ch <- result{stats: stats, err: err}
 	}()
 
 	timer := time.NewTimer(c.statfsTimeout)
 	defer timer.Stop()
 	select {
 	case r := <-ch:
-		return r.buf, r.err
+		return r.stats, r.err
 	case <-timer.C:
-		return syscall.Statfs_t{}, errStatfsTimeout
+		return fsStats{}, errStatfsTimeout
 	}
 }
 
@@ -282,12 +288,12 @@ func (c *DiskCollector) collectDisk(e mountEntry, now time.Time) (disk Disk, ok 
 		}
 		return Disk{}, false
 	}
-	total := uint64(buf.Blocks) * uint64(buf.Bsize)
+	total := buf.Blocks * buf.Bsize
 	if total == 0 {
 		return Disk{}, false
 	}
-	free := uint64(buf.Bfree) * uint64(buf.Bsize)
-	avail := uint64(buf.Bavail) * uint64(buf.Bsize)
+	free := buf.Bfree * buf.Bsize
+	avail := buf.Bavail * buf.Bsize
 	used := total - free
 	// df-compatible percentage: used / (used + avail). Bfree includes
 	// blocks reserved for root (typically 5% on ext4) that services
