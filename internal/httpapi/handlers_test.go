@@ -5,6 +5,8 @@ import (
 	"math"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"strings"
 	"testing"
 	"time"
 
@@ -156,22 +158,253 @@ func TestHandleHistory_CachesUntilGenerationChanges(t *testing.T) {
 // TestHandleHistory_MarshalFailureReturns500 exercises the error branch
 // that skips the cache: json.Marshal fails on a NaN float (not
 // representable in JSON), which handleHistory must turn into a 500 rather
-// than caching a partial/garbage encoding or writing a broken body.
+// than caching a partial/garbage encoding or writing a broken body. The
+// ?since= path encodes separately and must behave the same way.
 func TestHandleHistory_MarshalFailureReturns500(t *testing.T) {
-	s, fm := newTestServer(Config{})
-	fm.history = collector.History{
-		CPUPercent: []collector.HistoryPoint{{Value: math.NaN()}},
-	}
+	for _, query := range []string{"", "since=2026-07-12T18:00:00Z"} {
+		name := "full window"
+		if query != "" {
+			name = query
+		}
+		t.Run(name, func(t *testing.T) {
+			s, fm := newTestServer(Config{})
+			fm.history = collector.History{
+				CPUPercent: []collector.HistoryPoint{
+					{Timestamp: time.Date(2026, 7, 12, 18, 0, 30, 0, time.UTC), Value: math.NaN()},
+				},
+			}
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/metrics/history", nil)
+			rec := getHistory(s, query)
+			if rec.Code != http.StatusInternalServerError {
+				t.Fatalf("status = %d, want %d", rec.Code, http.StatusInternalServerError)
+			}
+			s.historyCacheMu.Lock()
+			cached := s.historyCacheJSON
+			s.historyCacheMu.Unlock()
+			if cached != nil {
+				t.Fatal("expected no cached response after a marshal failure")
+			}
+		})
+	}
+}
+
+// historyFixture is a history whose scalar series and per-device series
+// all sample at the same three timestamps (base, +5s, +10s), the way a
+// fastTick records them, plus a device seen only at the oldest of them.
+func historyFixture(base time.Time) collector.History {
+	pts := func(offsets ...time.Duration) []collector.HistoryPoint {
+		out := make([]collector.HistoryPoint, len(offsets))
+		for i, off := range offsets {
+			out[i] = collector.HistoryPoint{Timestamp: base.Add(off), Value: float64(i) + 0.5}
+		}
+		return out
+	}
+	return collector.History{
+		CPUPercent:        pts(0, 5*time.Second, 10*time.Second),
+		Load1:             pts(0, 5*time.Second, 10*time.Second),
+		Temperature:       pts(0, 5*time.Second, 10*time.Second),
+		MemoryUsedPercent: pts(0, 5*time.Second, 10*time.Second),
+		DiskUsedPercent: map[string][]collector.HistoryPoint{
+			"/":     pts(0, 5*time.Second, 10*time.Second),
+			"/boot": pts(0),
+		},
+		NetworkRxBytesPerSec: map[string][]collector.HistoryPoint{
+			"eth0": pts(0, 5*time.Second, 10*time.Second),
+		},
+	}
+}
+
+// getHistory issues a GET against the history endpoint with the given raw
+// query string (empty for none) and returns the recorder.
+func getHistory(s *Server, query string) *httptest.ResponseRecorder {
+	url := "/api/v1/metrics/history"
+	if query != "" {
+		url += "?" + query
+	}
 	rec := httptest.NewRecorder()
-	s.Handler().ServeHTTP(rec, req)
+	s.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, url, nil))
+	return rec
+}
 
-	if rec.Code != http.StatusInternalServerError {
-		t.Fatalf("status = %d, want %d", rec.Code, http.StatusInternalServerError)
+func decodeHistory(t *testing.T, rec *httptest.ResponseRecorder) collector.History {
+	t.Helper()
+	var got collector.History
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("unmarshal response: %v (body %q)", err, rec.Body.String())
 	}
-	if s.historyCacheJSON != nil {
-		t.Fatal("expected no cached response after a marshal failure")
+	return got
+}
+
+// TestHandleHistory_WithoutSinceReturnsFullWindow is the backwards
+// compatibility regression test for the ?since= parameter: a request that
+// doesn't use it must still get the complete retained window, exactly as
+// before the parameter existed.
+func TestHandleHistory_WithoutSinceReturnsFullWindow(t *testing.T) {
+	base := time.Date(2026, 7, 12, 18, 0, 0, 0, time.UTC)
+	s, fm := newTestServer(Config{})
+	fm.history = historyFixture(base)
+
+	rec := getHistory(s, "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	got := decodeHistory(t, rec)
+	if len(got.CPUPercent) != 3 || len(got.Load1) != 3 || len(got.Temperature) != 3 || len(got.MemoryUsedPercent) != 3 {
+		t.Fatalf("expected every scalar series in full, got %+v", got)
+	}
+	if len(got.DiskUsedPercent) != 2 || len(got.DiskUsedPercent["/boot"]) != 1 {
+		t.Fatalf("expected both disks in full, got %+v", got.DiskUsedPercent)
+	}
+	if len(got.NetworkRxBytesPerSec["eth0"]) != 3 {
+		t.Fatalf("expected the full network series, got %+v", got.NetworkRxBytesPerSec)
+	}
+}
+
+func TestHandleHistory_SinceReturnsOnlyNewerPoints(t *testing.T) {
+	base := time.Date(2026, 7, 12, 18, 0, 0, 0, time.UTC)
+	s, fm := newTestServer(Config{})
+	fm.history = historyFixture(base)
+
+	rec := getHistory(s, "since="+base.Add(2*time.Second).Format(time.RFC3339))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	got := decodeHistory(t, rec)
+	if len(got.CPUPercent) != 2 {
+		t.Fatalf("CPUPercent = %d points, want 2", len(got.CPUPercent))
+	}
+	if !got.CPUPercent[0].Timestamp.Equal(base.Add(5 * time.Second)) {
+		t.Fatalf("oldest returned point = %v, want %v", got.CPUPercent[0].Timestamp, base.Add(5*time.Second))
+	}
+	// Per-device series are filtered per key, and a device with nothing new
+	// is omitted rather than sent as an empty array.
+	if len(got.DiskUsedPercent) != 1 {
+		t.Fatalf("DiskUsedPercent = %+v, want only the device with newer points", got.DiskUsedPercent)
+	}
+	if _, ok := got.DiskUsedPercent["/boot"]; ok {
+		t.Fatal("expected /boot to be omitted: it has no points newer than since")
+	}
+	if len(got.NetworkRxBytesPerSec["eth0"]) != 2 {
+		t.Fatalf("NetworkRxBytesPerSec[eth0] = %+v, want 2 points", got.NetworkRxBytesPerSec["eth0"])
+	}
+}
+
+// TestHandleHistory_SinceExcludesExactBoundary pins the strictly-newer
+// rule at the HTTP layer: a client passing back the timestamp of the
+// newest point it holds must not receive that point a second time.
+func TestHandleHistory_SinceExcludesExactBoundary(t *testing.T) {
+	base := time.Date(2026, 7, 12, 18, 0, 0, 0, time.UTC)
+	s, fm := newTestServer(Config{})
+	fm.history = historyFixture(base)
+
+	got := decodeHistory(t, getHistory(s, "since="+base.Add(10*time.Second).Format(time.RFC3339)))
+	if len(got.CPUPercent) != 0 {
+		t.Fatalf("CPUPercent = %+v, want no points (the boundary point is excluded)", got.CPUPercent)
+	}
+}
+
+func TestHandleHistory_SinceInFutureReturnsEmptySeries(t *testing.T) {
+	base := time.Date(2026, 7, 12, 18, 0, 0, 0, time.UTC)
+	s, fm := newTestServer(Config{})
+	fm.history = historyFixture(base)
+
+	rec := getHistory(s, "since="+base.Add(time.Hour).Format(time.RFC3339))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (a since in the future is empty, not an error)", rec.Code)
+	}
+	if body := rec.Body.String(); strings.Contains(body, "disk_used_percent") || strings.Contains(body, "network_rx_bytes_per_sec") {
+		t.Fatalf("expected device maps to be omitted entirely, got %s", body)
+	}
+	got := decodeHistory(t, rec)
+	if len(got.CPUPercent) != 0 || len(got.Load1) != 0 {
+		t.Fatalf("expected empty series, got %+v", got)
+	}
+}
+
+func TestHandleHistory_SinceOlderThanWindowReturnsEverything(t *testing.T) {
+	base := time.Date(2026, 7, 12, 18, 0, 0, 0, time.UTC)
+	s, fm := newTestServer(Config{})
+	fm.history = historyFixture(base)
+
+	got := decodeHistory(t, getHistory(s, "since="+base.Add(-time.Hour).Format(time.RFC3339)))
+	if len(got.CPUPercent) != 3 || len(got.DiskUsedPercent) != 2 {
+		t.Fatalf("expected the full window, got %+v", got)
+	}
+}
+
+// TestHandleHistory_InvalidSinceReturns400 checks that a timestamp the
+// server can't parse is rejected loudly rather than silently falling back
+// to the full window, which would leave a broken client re-fetching
+// everything without ever noticing.
+func TestHandleHistory_InvalidSinceReturns400(t *testing.T) {
+	base := time.Date(2026, 7, 12, 18, 0, 0, 0, time.UTC)
+	for _, raw := range []string{
+		"not-a-timestamp",
+		"1752345600",           // Unix seconds, not RFC 3339
+		"2026-07-12 18:31:00",  // space instead of T, no offset
+		"2026-07-12T18:31:00",  // no offset
+		"2026-13-12T18:31:00Z", // month out of range
+	} {
+		t.Run(raw, func(t *testing.T) {
+			s, fm := newTestServer(Config{})
+			fm.history = historyFixture(base)
+
+			rec := getHistory(s, "since="+url.QueryEscape(raw))
+			if rec.Code != http.StatusBadRequest {
+				t.Fatalf("status = %d, want 400", rec.Code)
+			}
+			if strings.Contains(rec.Body.String(), "cpu_percent") {
+				t.Fatalf("expected an error, not a history payload: %s", rec.Body.String())
+			}
+		})
+	}
+}
+
+// TestHandleHistory_SinceRequestsReuseCachedCopy is the performance
+// regression test for the ?since= path: the deep copy History() makes is
+// cached per generation like the full-window encoding is, and a request
+// that only wants the delta must not trigger a full-window serialisation.
+func TestHandleHistory_SinceRequestsReuseCachedCopy(t *testing.T) {
+	base := time.Date(2026, 7, 12, 18, 0, 0, 0, time.UTC)
+	s, fm := newTestServer(Config{})
+	fm.history = historyFixture(base)
+	since := "since=" + base.Format(time.RFC3339)
+
+	if rec := getHistory(s, since); rec.Code != http.StatusOK {
+		t.Fatalf("first request status = %d, want 200", rec.Code)
+	}
+	if fm.historyCalls != 1 {
+		t.Fatalf("historyCalls after first request = %d, want 1", fm.historyCalls)
+	}
+	if rec := getHistory(s, since); rec.Code != http.StatusOK {
+		t.Fatalf("second request status = %d, want 200", rec.Code)
+	}
+	if fm.historyCalls != 1 {
+		t.Fatalf("historyCalls after second request (same generation) = %d, want still 1", fm.historyCalls)
+	}
+
+	s.historyCacheMu.Lock()
+	cachedJSON := s.historyCacheJSON
+	s.historyCacheMu.Unlock()
+	if cachedJSON != nil {
+		t.Fatal("?since= requests should not have serialised the full window")
+	}
+
+	// A full-window request at the same generation reuses the cached copy
+	// and only then pays for the full encoding.
+	if rec := getHistory(s, ""); rec.Code != http.StatusOK {
+		t.Fatalf("full-window request status = %d, want 200", rec.Code)
+	}
+	if fm.historyCalls != 1 {
+		t.Fatalf("historyCalls after full-window request = %d, want still 1", fm.historyCalls)
+	}
+
+	fm.historyGen++
+	if rec := getHistory(s, since); rec.Code != http.StatusOK {
+		t.Fatalf("request after generation change status = %d, want 200", rec.Code)
+	}
+	if fm.historyCalls != 2 {
+		t.Fatalf("historyCalls after generation change = %d, want 2 (cache should have been invalidated)", fm.historyCalls)
 	}
 }
 
@@ -222,10 +455,11 @@ func TestHandleAlerts_GatedByAPIKey(t *testing.T) {
 func TestHandleConfig(t *testing.T) {
 	s, _ := newTestServer(Config{
 		Client: ClientConfig{
-			Version:             "v1.2.3",
-			PollIntervalSeconds: 5,
-			NetworkEnabled:      true,
-			Thresholds:          config.Thresholds{TemperatureWarnC: 60, TemperatureCritC: 75},
+			Version:              "v1.2.3",
+			PollIntervalSeconds:  5,
+			HistoryWindowMinutes: 60,
+			NetworkEnabled:       true,
+			Thresholds:           config.Thresholds{TemperatureWarnC: 60, TemperatureCritC: 75},
 		},
 	})
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/config", nil)
@@ -241,6 +475,11 @@ func TestHandleConfig(t *testing.T) {
 	}
 	if got.Version != "v1.2.3" {
 		t.Fatalf("Version = %q, want %q", got.Version, "v1.2.3")
+	}
+	// The dashboard needs the retention window to bound the history it
+	// accumulates locally from ?since= deltas.
+	if got.HistoryWindowMinutes != 60 {
+		t.Fatalf("HistoryWindowMinutes = %v, want 60", got.HistoryWindowMinutes)
 	}
 }
 

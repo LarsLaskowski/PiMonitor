@@ -3,6 +3,9 @@ package httpapi
 import (
 	"encoding/json"
 	"net/http"
+	"time"
+
+	"github.com/larslaskowski/pimonitor/internal/collector"
 )
 
 const contentTypeHeader = "Content-Type"
@@ -28,31 +31,82 @@ func (s *Server) handleMetrics(w http.ResponseWriter, _ *http.Request) {
 }
 
 // handleHistory serves GET /api/v1/metrics/history: the retained
-// in-memory history for every time-series metric. The retained history only
-// changes once per fastTick, so the encoded response is cached and reused
-// across requests until MetricsProvider.HistoryGeneration() moves on,
-// rather than deep-copying every ring buffer and re-encoding on every
-// request from every dashboard/integration poll.
-func (s *Server) handleHistory(w http.ResponseWriter, _ *http.Request) {
+// in-memory history for every time-series metric.
+//
+// The optional ?since=<RFC 3339 timestamp> parameter reduces the response
+// to the points strictly newer than that timestamp, so a client that
+// already holds the window (the bundled dashboard, or a third-party
+// poller) fetches a handful of new points per poll instead of the whole
+// window every time. Omitting it returns the full window, unchanged — the
+// parameter is purely additive, so /api/v1 stays compatible.
+func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request) {
+	var since time.Time
+	if raw := r.URL.Query().Get("since"); raw != "" {
+		t, err := time.Parse(time.RFC3339, raw)
+		if err != nil {
+			// Deliberately an error rather than silently serving the full
+			// window: a client whose timestamp format is wrong would
+			// otherwise never notice it is re-fetching everything.
+			http.Error(w, "invalid 'since' parameter: expected an RFC 3339 timestamp, e.g. 2026-07-12T18:31:00Z", http.StatusBadRequest)
+			return
+		}
+		since = t
+	}
+
+	data, err := s.historyPayload(since)
+	if err != nil {
+		s.log.Error("failed to encode JSON response", "error", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set(contentTypeHeader, "application/json; charset=utf-8")
+	_, _ = w.Write(data)
+}
+
+// historyPayload encodes the response for a history request: the cached
+// full-window encoding when since is zero, otherwise a delta re-sliced out
+// of the cached copy and encoded on its own. Encoding here rather than
+// streaming straight to the ResponseWriter keeps an encode failure a clean
+// 500 instead of a 200 with a truncated body.
+func (s *Server) historyPayload(since time.Time) ([]byte, error) {
+	hist, full, err := s.cachedHistory(since.IsZero())
+	if err != nil || since.IsZero() {
+		return full, err
+	}
+	return json.Marshal(hist.Since(since))
+}
+
+// cachedHistory returns the retained history for the collector's current
+// generation and, when full is true, its serialised full-window encoding.
+//
+// Both are cached per generation, since the history only changes once per
+// fastTick: the deep copy MetricsProvider.History() makes is reused by
+// ?since= requests, which re-slice it and encode only the tail, and the
+// full encoding is reused by requests that want the whole window. The full
+// encoding is built lazily so ?since= clients never pay for serialising a
+// window nobody asked for.
+func (s *Server) cachedHistory(full bool) (collector.History, []byte, error) {
 	gen := s.metrics.HistoryGeneration()
 
 	s.historyCacheMu.Lock()
-	if s.historyCacheJSON == nil || s.historyCacheGen != gen {
-		data, err := json.Marshal(s.metrics.History())
+	defer s.historyCacheMu.Unlock()
+
+	if !s.historyCacheValid || s.historyCacheGen != gen {
+		s.historyCacheData = s.metrics.History()
+		s.historyCacheJSON = nil
+		s.historyCacheGen = gen
+		s.historyCacheValid = true
+	}
+	if full && s.historyCacheJSON == nil {
+		data, err := json.Marshal(s.historyCacheData)
 		if err != nil {
-			s.historyCacheMu.Unlock()
-			s.log.Error("failed to encode JSON response", "error", err)
-			http.Error(w, "internal error", http.StatusInternalServerError)
-			return
+			// Leave historyCacheJSON nil rather than caching a partial or
+			// garbage encoding; the next request retries the encode.
+			return collector.History{}, nil, err
 		}
 		s.historyCacheJSON = data
-		s.historyCacheGen = gen
 	}
-	data := s.historyCacheJSON
-	s.historyCacheMu.Unlock()
-
-	w.Header().Set(contentTypeHeader, "application/json; charset=utf-8")
-	_, _ = w.Write(data)
+	return s.historyCacheData, s.historyCacheJSON, nil
 }
 
 // handleAlerts serves GET /api/v1/alerts: the current per-metric alert

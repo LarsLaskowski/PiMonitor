@@ -287,6 +287,19 @@ a counter bumped each `fastTick`; `Server` keeps the last generation it encoded 
 the encoded bytes and reuses them whenever the generation is unchanged, so concurrent
 pollers between ticks share one deep-copy-and-encode instead of each paying for their own.
 
+**`handleHistory` serves deltas via `?since=`.** Caching removes the repeated work between
+ticks, but not the far larger cost of resending a window the client already holds: at the
+default settings that is several thousand points serialised and gzipped once a minute per
+poller. `?since=<RFC 3339 timestamp>` reduces the response to the points strictly newer
+than that timestamp (`collector.History.Since`), which turns the dashboard's steady-state
+poll into a few hundred bytes. Omitting the parameter returns the full window unchanged,
+so the parameter is additive and `/api/v1` stays compatible (an unparseable value is a
+`400` rather than a silent fallback to the full window, which would hide a broken client
+from itself). Because history points are stored oldest first, filtering is a prefix cut
+found by binary search (`dropPrefix`, shared with `importHistory`'s window trim), and the
+cached deep copy is re-sliced rather than copied again — so the full-window encoding is
+only built when something actually asks for the full window.
+
 **`GET /api/v1/config`** exists specifically so the frontend doesn't have to duplicate
 values (poll interval, alert thresholds, feature toggles) that are already defined
 server-side; it also echoes back the build-time `version` injected via
@@ -347,6 +360,18 @@ same warn/crit cutoffs the server-side alert engine evaluates against (`>=`), an
 `api_key` is configured — prompts for the key once per browser and persists it in
 `localStorage`, sending it as `X-Api-Key` on every subsequent request (see
 [`SECURITY.md`](../SECURITY.md) for why this is an accepted trade-off rather than a gap).
+
+History is polled incrementally (issue #112): after an initial full-window fetch the
+dashboard passes the timestamp of its newest point back as `?since=` — verbatim, since
+re-formatting it through `Date` truncates the sub-millisecond precision and would fetch
+that point again on every poll — and appends the delta locally, trimmed to the
+`history_window_minutes` the config endpoint reports. Appending is only safe while the
+delta lines up with what the browser holds, so `mergeHistory` refuses one that starts
+after a gap (points evicted while the tab was hidden), one whose points are not strictly
+newer (a restart serving restored, possibly reordered history), or one with an
+unparseable timestamp; any refusal — and any failed request — falls back to re-fetching
+the full window, and a full window is re-fetched periodically regardless, since no delta
+can reveal a history that was replaced rather than appended to.
 
 Polling is paused while the tab is hidden (a `visibilitychange` listener clears both
 timers) and resumed with an immediate refresh when it becomes visible again — a

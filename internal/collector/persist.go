@@ -374,11 +374,7 @@ func (c *Collector) importHistory(h History, now time.Time) {
 		cutoff = now.Add(-c.cfg.HistoryWindow)
 	}
 	trim := func(points []HistoryPoint) []HistoryPoint {
-		i := 0
-		for i < len(points) && points[i].Timestamp.Before(cutoff) {
-			i++
-		}
-		return points[i:]
+		return dropPrefix(points, func(p HistoryPoint) bool { return !p.Timestamp.Before(cutoff) })
 	}
 
 	c.mu.Lock()
