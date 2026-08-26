@@ -580,7 +580,16 @@
     renderDetailChart();
   }
 
+  // In-flight guards: setInterval fires on a fixed schedule regardless of
+  // whether the previous request finished. Without these, a slow response
+  // (loaded Pi, flaky Wi-Fi) lets requests pile up, each adding load to an
+  // already-struggling server, with no guarantee responses arrive in order.
+  let metricsInFlight = false;
+  let historyInFlight = false;
+
   async function pollMetrics() {
+    if (metricsInFlight) return;
+    metricsInFlight = true;
     try {
       const snap = await fetchJSON('/api/v1/metrics');
       renderMetrics(snap);
@@ -594,15 +603,21 @@
       } else {
         document.getElementById('header-subtitle').textContent = 'Connection error';
       }
+    } finally {
+      metricsInFlight = false;
     }
   }
 
   async function pollHistory() {
+    if (historyInFlight) return;
+    historyInFlight = true;
     try {
       const hist = await fetchJSON('/api/v1/metrics/history');
       renderHistory(hist);
     } catch (e) {
       console.error('failed to fetch history', e);
+    } finally {
+      historyInFlight = false;
     }
   }
 
@@ -615,6 +630,30 @@
     const intervalMs = Math.max(1, config.poll_interval_seconds) * 1000;
     metricsTimer = setInterval(pollMetrics, intervalMs);
     historyTimer = setInterval(pollHistory, Math.max(intervalMs, 60000));
+  }
+
+  // Polling is suspended while the tab is hidden: nobody is looking at the
+  // data, and every poll costs the Pi a full metrics snapshot (and, once a
+  // minute, a full history serialisation). Browsers only throttle background
+  // timers to ~1/min rather than stopping them, so a forgotten tab would
+  // otherwise poll the device indefinitely.
+  function stopPolling() {
+    if (metricsTimer) { clearInterval(metricsTimer); metricsTimer = null; }
+    if (historyTimer) { clearInterval(historyTimer); historyTimer = null; }
+  }
+
+  function wireVisibilityPolling() {
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) {
+        stopPolling();
+        return;
+      }
+      // Refresh immediately on return so the user never looks at a stale
+      // card while waiting for the first interval to elapse.
+      pollMetrics();
+      pollHistory();
+      startPolling();
+    });
   }
 
   // Initial load, re-run after an API key is accepted (the first attempt may
@@ -633,6 +672,7 @@
     wireUpdatesModal();
     wireDetailModal();
     wireAPIKeyModal();
+    wireVisibilityPolling();
     await reloadAll();
   }
 
