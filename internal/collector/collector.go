@@ -3,6 +3,7 @@ package collector
 import (
 	"context"
 	"log/slog"
+	"sort"
 	"sync"
 	"time"
 
@@ -71,6 +72,61 @@ type History struct {
 	DiskUsedPercent      map[string][]HistoryPoint `json:"disk_used_percent,omitempty"`
 	NetworkRxBytesPerSec map[string][]HistoryPoint `json:"network_rx_bytes_per_sec,omitempty"`
 	NetworkTxBytesPerSec map[string][]HistoryPoint `json:"network_tx_bytes_per_sec,omitempty"`
+}
+
+// Since returns h reduced to the points strictly newer than t, for callers
+// that already hold everything up to t and only want the delta (see the
+// ?since= parameter of GET /api/v1/metrics/history). A zero t returns h
+// unchanged. Per-device series are filtered per key, and a device left
+// with no points is dropped entirely, matching the `omitempty` shape the
+// full response already has for devices that were never seen.
+//
+// The returned series alias h's backing arrays instead of copying them —
+// they are sub-slices of it — so h must not be mutated afterwards. That
+// holds for the deep copy History() hands out.
+func (h History) Since(t time.Time) History {
+	if t.IsZero() {
+		return h
+	}
+	newer := func(p HistoryPoint) bool { return p.Timestamp.After(t) }
+	out := History{
+		CPUPercent:        dropPrefix(h.CPUPercent, newer),
+		Load1:             dropPrefix(h.Load1, newer),
+		Load5:             dropPrefix(h.Load5, newer),
+		Load15:            dropPrefix(h.Load15, newer),
+		Temperature:       dropPrefix(h.Temperature, newer),
+		MemoryUsedPercent: dropPrefix(h.MemoryUsedPercent, newer),
+		SwapUsedPercent:   dropPrefix(h.SwapUsedPercent, newer),
+	}
+	filterDevices := func(src map[string][]HistoryPoint) map[string][]HistoryPoint {
+		var dst map[string][]HistoryPoint
+		for key, points := range src {
+			points = dropPrefix(points, newer)
+			if len(points) == 0 {
+				continue
+			}
+			if dst == nil {
+				dst = make(map[string][]HistoryPoint, len(src))
+			}
+			dst[key] = points
+		}
+		return dst
+	}
+	out.DiskUsedPercent = filterDevices(h.DiskUsedPercent)
+	out.NetworkRxBytesPerSec = filterDevices(h.NetworkRxBytesPerSec)
+	out.NetworkTxBytesPerSec = filterDevices(h.NetworkTxBytesPerSec)
+	return out
+}
+
+// dropPrefix returns the sub-slice of points starting at the first point
+// keep reports true for. History points are stored oldest first, so every
+// time-based filter over them drops a prefix; keep must therefore be
+// monotonic in time (false for the oldest points, true from some point
+// onwards), which lets the boundary be found by binary search instead of
+// walking the whole series. Shared by Since and by importHistory's
+// window trim, which differ only in whether the boundary point is kept.
+func dropPrefix(points []HistoryPoint, keep func(HistoryPoint) bool) []HistoryPoint {
+	return points[sort.Search(len(points), func(i int) bool { return keep(points[i]) }):]
 }
 
 // Collector periodically samples every metric source and keeps the latest

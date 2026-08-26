@@ -238,6 +238,49 @@ only and starts empty after every restart.
 omitted entirely if empty (e.g. network history when monitoring is
 disabled).
 
+#### Incremental polling: `?since=`
+
+A client that already holds the window can ask for only what it hasn't seen
+yet, instead of re-downloading (and making the Pi re-serialise) the whole
+window on every poll:
+
+```
+GET /api/v1/metrics/history?since=2026-07-12T18:31:00Z
+```
+
+- `since` is an **RFC 3339** timestamp. Fractional seconds and any UTC
+  offset are accepted; a bare local time without an offset is not.
+- Only points **strictly newer** than `since` are returned. A point whose
+  timestamp is exactly `since` is excluded, so passing back the `t` of the
+  newest point you hold returns exactly the points you are missing, with no
+  duplicate. Pass that `t` back **verbatim**: timestamps carry
+  sub-millisecond precision, and a value rounded to milliseconds (as
+  JavaScript's `Date.toISOString()` produces) asks for a point you already
+  have and gets it back every time.
+- The response has the **same shape** as the full-window response. Scalar
+  series are present but may be empty; `disk_used_percent`,
+  `network_rx_bytes_per_sec` and `network_tx_bytes_per_sec` are filtered per
+  device, and a device with no newer points is omitted entirely — as is the
+  whole map once every device is omitted.
+- A `since` **newer than every retained point** returns empty series and no
+  device maps — not an error.
+- A `since` **older than the retained window** returns the full window: the
+  server has nothing older to give.
+- A `since` the server cannot parse returns **`400 Bad Request`**; it is
+  never silently treated as a full-window request.
+- **Omitting `since` returns the full window, exactly as before** — the
+  parameter is optional and purely additive.
+
+Beware of gaps when appending deltas locally. Points leave the retained
+window as new ones arrive, so a client that stops polling for longer than
+`history_window_minutes` (a backgrounded tab, a lost connection) will get a
+delta that starts *after* the newest point it holds — appending that yields
+a series with a silent hole. A restart also replaces the window wholesale
+(history is restored from disk). A client that accumulates history should
+therefore re-request the full window whenever the returned points do not
+continue where its own leave off, and re-sync periodically regardless; the
+bundled dashboard does both (`mergeHistory` in `app.js`).
+
 ### `GET /api/v1/alerts`
 
 Returns the server-side alert engine's current per-metric state plus a
@@ -324,6 +367,7 @@ server:
 {
   "version": "1.2.3",
   "poll_interval_seconds": 5,
+  "history_window_minutes": 60,
   "network_enabled": true,
   "thresholds": {
     "temperature_warn_c": 60,
@@ -348,6 +392,9 @@ Notes:
   include a leading `v` depending on the build path (e.g. a `git describe`
   string like `v1.2.3-5-gabc123`); the dashboard strips that leading `v`
   when it renders the version in its footer.
+- `history_window_minutes` is how far back `GET /api/v1/metrics/history`
+  retains points. A client accumulating history from `?since=` deltas needs
+  it to bound its local window to the same span the server keeps.
 
 ## Example: polling with curl
 

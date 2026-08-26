@@ -450,3 +450,153 @@ func TestCollector_Run_StopsOnContextCancel(t *testing.T) {
 		t.Fatal("expected at least one tick to have run before cancellation")
 	}
 }
+
+// historySinceFixture is a History whose series all sample at the same
+// three timestamps (base, +5s, +10s), the way a fastTick records them,
+// plus a device that only appears at the last of those.
+func historySinceFixture(base time.Time) History {
+	pts := func(offsets ...time.Duration) []HistoryPoint {
+		out := make([]HistoryPoint, len(offsets))
+		for i, off := range offsets {
+			out[i] = HistoryPoint{Timestamp: base.Add(off), Value: float64(i) + 0.5}
+		}
+		return out
+	}
+	return History{
+		CPUPercent:        pts(0, 5*time.Second, 10*time.Second),
+		Load1:             pts(0, 5*time.Second, 10*time.Second),
+		Load5:             pts(0, 5*time.Second, 10*time.Second),
+		Load15:            pts(0, 5*time.Second, 10*time.Second),
+		Temperature:       pts(0, 5*time.Second, 10*time.Second),
+		MemoryUsedPercent: pts(0, 5*time.Second, 10*time.Second),
+		SwapUsedPercent:   pts(0, 5*time.Second, 10*time.Second),
+		DiskUsedPercent: map[string][]HistoryPoint{
+			"/":     pts(0, 5*time.Second, 10*time.Second),
+			"/boot": pts(0),
+		},
+		NetworkRxBytesPerSec: map[string][]HistoryPoint{
+			"eth0": pts(0, 5*time.Second, 10*time.Second),
+		},
+		NetworkTxBytesPerSec: map[string][]HistoryPoint{
+			"eth0": pts(0, 5*time.Second, 10*time.Second),
+		},
+	}
+}
+
+func TestHistorySince_ReturnsOnlyNewerPoints(t *testing.T) {
+	base := time.Date(2026, 7, 12, 18, 0, 0, 0, time.UTC)
+	got := historySinceFixture(base).Since(base.Add(2 * time.Second))
+
+	if len(got.CPUPercent) != 2 {
+		t.Fatalf("CPUPercent = %d points, want 2", len(got.CPUPercent))
+	}
+	if !got.CPUPercent[0].Timestamp.Equal(base.Add(5 * time.Second)) {
+		t.Fatalf("oldest returned point = %v, want %v", got.CPUPercent[0].Timestamp, base.Add(5*time.Second))
+	}
+	// Every scalar series is filtered, not just the first one.
+	for name, points := range map[string][]HistoryPoint{
+		"load1":               got.Load1,
+		"load5":               got.Load5,
+		"load15":              got.Load15,
+		"temperature":         got.Temperature,
+		"memory_used_percent": got.MemoryUsedPercent,
+		"swap_used_percent":   got.SwapUsedPercent,
+	} {
+		if len(points) != 2 {
+			t.Errorf("%s = %d points, want 2", name, len(points))
+		}
+	}
+}
+
+// TestHistorySince_ExcludesExactBoundary pins the strictly-newer rule: a
+// client that passes back the timestamp of the newest point it holds must
+// not be handed that same point again.
+func TestHistorySince_ExcludesExactBoundary(t *testing.T) {
+	base := time.Date(2026, 7, 12, 18, 0, 0, 0, time.UTC)
+	got := historySinceFixture(base).Since(base.Add(5 * time.Second))
+
+	if len(got.CPUPercent) != 1 {
+		t.Fatalf("CPUPercent = %d points, want 1 (the boundary point must be excluded)", len(got.CPUPercent))
+	}
+	if !got.CPUPercent[0].Timestamp.Equal(base.Add(10 * time.Second)) {
+		t.Fatalf("returned point = %v, want %v", got.CPUPercent[0].Timestamp, base.Add(10*time.Second))
+	}
+}
+
+// TestHistorySince_FiltersDevicesIndependently covers the per-device rule:
+// each key is filtered on its own, and a device left with no points is
+// dropped rather than serialised as an empty array.
+func TestHistorySince_FiltersDevicesIndependently(t *testing.T) {
+	base := time.Date(2026, 7, 12, 18, 0, 0, 0, time.UTC)
+	got := historySinceFixture(base).Since(base.Add(2 * time.Second))
+
+	if len(got.DiskUsedPercent) != 1 {
+		t.Fatalf("DiskUsedPercent has %d devices, want 1: %+v", len(got.DiskUsedPercent), got.DiskUsedPercent)
+	}
+	if _, ok := got.DiskUsedPercent["/boot"]; ok {
+		t.Fatal("expected /boot (no points newer than since) to be omitted entirely")
+	}
+	if len(got.DiskUsedPercent["/"]) != 2 {
+		t.Fatalf(`DiskUsedPercent["/"] = %d points, want 2`, len(got.DiskUsedPercent["/"]))
+	}
+	if len(got.NetworkRxBytesPerSec["eth0"]) != 2 || len(got.NetworkTxBytesPerSec["eth0"]) != 2 {
+		t.Fatalf("network series not filtered: rx=%+v tx=%+v", got.NetworkRxBytesPerSec, got.NetworkTxBytesPerSec)
+	}
+}
+
+func TestHistorySince_NewerThanEverySampleIsEmpty(t *testing.T) {
+	base := time.Date(2026, 7, 12, 18, 0, 0, 0, time.UTC)
+	got := historySinceFixture(base).Since(base.Add(time.Hour))
+
+	if len(got.CPUPercent) != 0 {
+		t.Fatalf("CPUPercent = %d points, want 0", len(got.CPUPercent))
+	}
+	if got.CPUPercent == nil {
+		t.Fatal("expected an empty (but non-nil) series so it encodes as [] rather than null")
+	}
+	if got.DiskUsedPercent != nil || got.NetworkRxBytesPerSec != nil || got.NetworkTxBytesPerSec != nil {
+		t.Fatalf("expected all device maps to be omitted: %+v", got)
+	}
+}
+
+func TestHistorySince_OlderThanWholeWindowReturnsEverything(t *testing.T) {
+	base := time.Date(2026, 7, 12, 18, 0, 0, 0, time.UTC)
+	full := historySinceFixture(base)
+	got := full.Since(base.Add(-time.Hour))
+
+	if len(got.CPUPercent) != len(full.CPUPercent) {
+		t.Fatalf("CPUPercent = %d points, want the full %d", len(got.CPUPercent), len(full.CPUPercent))
+	}
+	if len(got.DiskUsedPercent) != len(full.DiskUsedPercent) {
+		t.Fatalf("DiskUsedPercent = %d devices, want the full %d", len(got.DiskUsedPercent), len(full.DiskUsedPercent))
+	}
+}
+
+// TestHistorySince_ZeroTimeReturnsUnchanged covers the handler's
+// no-?since= path, which relies on a zero time meaning "everything".
+func TestHistorySince_ZeroTimeReturnsUnchanged(t *testing.T) {
+	base := time.Date(2026, 7, 12, 18, 0, 0, 0, time.UTC)
+	full := historySinceFixture(base)
+	got := full.Since(time.Time{})
+
+	if len(got.CPUPercent) != len(full.CPUPercent) || len(got.DiskUsedPercent) != len(full.DiskUsedPercent) {
+		t.Fatalf("zero since changed the history: %+v", got)
+	}
+}
+
+// TestHistorySince_DoesNotMutateSource guards the aliasing Since documents:
+// the returned series share the source's backing arrays, so filtering must
+// stay read-only for the cached copy the HTTP layer keeps.
+func TestHistorySince_DoesNotMutateSource(t *testing.T) {
+	base := time.Date(2026, 7, 12, 18, 0, 0, 0, time.UTC)
+	full := historySinceFixture(base)
+
+	_ = full.Since(base.Add(5 * time.Second))
+
+	if len(full.CPUPercent) != 3 || len(full.DiskUsedPercent) != 2 {
+		t.Fatalf("source history changed: cpu=%d disks=%d", len(full.CPUPercent), len(full.DiskUsedPercent))
+	}
+	if !full.CPUPercent[0].Timestamp.Equal(base) {
+		t.Fatalf("source series start = %v, want %v", full.CPUPercent[0].Timestamp, base)
+	}
+}

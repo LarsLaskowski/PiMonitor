@@ -22,9 +22,9 @@ type MetricsProvider interface {
 	Snapshot() collector.Snapshot
 	History() collector.History
 	// HistoryGeneration increments whenever History() would return a
-	// different result. handleHistory uses it to reuse a cached, already
-	// serialised response instead of redoing the deep copy and JSON encode
-	// on every request.
+	// different result. handleHistory uses it to reuse the cached copy and
+	// its encoding instead of redoing the deep copy and JSON encode on
+	// every request.
 	HistoryGeneration() uint64
 	Alerts() alert.Report
 }
@@ -51,10 +51,15 @@ type ClientConfig struct {
 	// tag for release builds, or "dev" for an unversioned local build). It
 	// is set from main.version via -ldflags. The frontend renders it in the
 	// footer; it may carry a leading "v" depending on the build path.
-	Version             string            `json:"version"`
-	PollIntervalSeconds float64           `json:"poll_interval_seconds"`
-	NetworkEnabled      bool              `json:"network_enabled"`
-	Thresholds          config.Thresholds `json:"thresholds"`
+	Version             string  `json:"version"`
+	PollIntervalSeconds float64 `json:"poll_interval_seconds"`
+	// HistoryWindowMinutes is how far back GET /api/v1/metrics/history
+	// retains points. The dashboard needs it to bound the window it builds
+	// up locally from ?since= deltas to the same span the server keeps, so
+	// what it charts stays what a full-window fetch would have returned.
+	HistoryWindowMinutes float64           `json:"history_window_minutes"`
+	NetworkEnabled       bool              `json:"network_enabled"`
+	Thresholds           config.Thresholds `json:"thresholds"`
 }
 
 // Config configures the HTTP server.
@@ -81,10 +86,15 @@ type Server struct {
 	// limit bounds total concurrent API work, not each endpoint separately.
 	inFlight chan struct{}
 
-	// historyCacheMu guards historyCacheGen/historyCacheJSON below.
-	historyCacheMu   sync.Mutex
-	historyCacheGen  uint64
-	historyCacheJSON []byte
+	// historyCacheMu guards the historyCache* fields below. historyCacheData
+	// is the deep copy History() returned for historyCacheGen (served, sliced,
+	// to ?since= requests); historyCacheJSON is its full-window encoding, built
+	// on demand and nil until a request asks for the whole window.
+	historyCacheMu    sync.Mutex
+	historyCacheGen   uint64
+	historyCacheValid bool
+	historyCacheData  collector.History
+	historyCacheJSON  []byte
 }
 
 // New builds a Server. staticHandler serves the embedded web dashboard

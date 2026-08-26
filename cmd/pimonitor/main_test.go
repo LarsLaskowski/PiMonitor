@@ -86,6 +86,36 @@ func TestClientConfig_ThresholdsRoundTrip(t *testing.T) {
 	}
 }
 
+// TestClientConfig_ExposesHistoryWindow covers the value the dashboard
+// needs to bound the history window it accumulates locally from ?since=
+// deltas (issue #112): served from the same configuration the collector
+// retains history with, not hardcoded in the frontend.
+func TestClientConfig_ExposesHistoryWindow(t *testing.T) {
+	cfg := config.Config{
+		PollIntervalSeconds:  5,
+		HistoryWindowMinutes: 42,
+	}
+
+	data, err := json.Marshal(clientConfig(cfg, "v9.9.9"))
+	if err != nil {
+		t.Fatalf("marshal ClientConfig: %v", err)
+	}
+
+	var decoded struct {
+		HistoryWindowMinutes float64 `json:"history_window_minutes"`
+		PollIntervalSeconds  float64 `json:"poll_interval_seconds"`
+	}
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if decoded.HistoryWindowMinutes != 42 {
+		t.Errorf("history_window_minutes = %v, want 42", decoded.HistoryWindowMinutes)
+	}
+	if decoded.PollIntervalSeconds != 5 {
+		t.Errorf("poll_interval_seconds = %v, want 5", decoded.PollIntervalSeconds)
+	}
+}
+
 func TestWarnIfNotifierInert(t *testing.T) {
 	tests := []struct {
 		name        string

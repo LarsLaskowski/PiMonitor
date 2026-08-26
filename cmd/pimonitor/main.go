@@ -123,10 +123,11 @@ func run(args []string) error {
 // tags the API response needs.
 func clientConfig(cfg config.Config, version string) httpapi.ClientConfig {
 	return httpapi.ClientConfig{
-		Version:             version,
-		PollIntervalSeconds: cfg.PollIntervalSeconds,
-		NetworkEnabled:      cfg.NetworkEnabled,
-		Thresholds:          cfg.Thresholds,
+		Version:              version,
+		PollIntervalSeconds:  cfg.PollIntervalSeconds,
+		HistoryWindowMinutes: cfg.HistoryWindowMinutes,
+		NetworkEnabled:       cfg.NetworkEnabled,
+		Thresholds:           cfg.Thresholds,
 	}
 }
 

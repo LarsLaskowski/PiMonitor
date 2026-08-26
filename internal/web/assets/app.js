@@ -2,6 +2,7 @@
   let config = {
     version: 'dev',
     poll_interval_seconds: 5,
+    history_window_minutes: 60,
     network_enabled: true,
     thresholds: {
       temperature_warn_c: 60,
@@ -571,8 +572,142 @@
     items.forEach(item => container.appendChild(renderItem(item)));
   }
 
+  // History is fetched incrementally: after an initial full-window fetch the
+  // dashboard asks only for the points newer than the newest one it already
+  // holds (?since=, see docs/API.md) and appends them locally. At the
+  // default settings a full window is several thousand points that the Pi
+  // would otherwise copy, serialise and gzip once a minute per open
+  // dashboard, almost all of it data this browser already has.
+  const HISTORY_SCALAR_KEYS = [
+    'cpu_percent', 'load1', 'load5', 'load15',
+    'temperature', 'memory_used_percent', 'swap_used_percent',
+  ];
+  const HISTORY_DEVICE_KEYS = [
+    'disk_used_percent', 'network_rx_bytes_per_sec', 'network_tx_bytes_per_sec',
+  ];
+
+  // Timestamp of the newest point held locally, in the exact string form the
+  // server sent it, or null when there is nothing to append to and the next
+  // poll has to ask for the whole window.
+  let historySince = null;
+  // A delta cannot express a history that was replaced rather than appended
+  // to (a restart restoring a persisted — possibly reordered — window, a
+  // clock step on the Pi), so the full window is re-fetched periodically
+  // regardless. Ten polls is ten minutes at the history poll cadence: still
+  // an order of magnitude fewer full windows, while any local drift the gap
+  // check below fails to notice is corrected within minutes.
+  const HISTORY_RESYNC_EVERY_POLLS = 10;
+  let historyPollsSinceResync = 0;
+
+  function historyPath(since) {
+    return since
+      ? '/api/v1/metrics/history?since=' + encodeURIComponent(since)
+      : '/api/v1/metrics/history';
+  }
+
+  function pointTime(p) {
+    return new Date(p?.t).getTime();
+  }
+
+  function forEachHistorySeries(hist, fn) {
+    for (const key of HISTORY_SCALAR_KEYS) fn(hist?.[key] || []);
+    for (const key of HISTORY_DEVICE_KEYS) {
+      for (const series of Object.values(hist?.[key] || {})) fn(series);
+    }
+  }
+
+  // Oldest and newest point across every series, how many points there are
+  // in total, and whether any timestamp failed to parse. newestPoint is the
+  // point itself rather than just its time: its `t` is passed back verbatim
+  // as the next ?since=, since the server's timestamps carry sub-millisecond
+  // precision that Date truncates — a re-formatted, truncated `since` would
+  // ask for a point we already have and get it back on every poll.
+  function historyBounds(hist) {
+    let oldest = Infinity;
+    let newest = -Infinity;
+    let newestPoint = null;
+    let points = 0;
+    let invalid = false;
+    forEachHistorySeries(hist, series => {
+      for (const p of series) {
+        points++;
+        const t = pointTime(p);
+        if (!Number.isFinite(t)) { invalid = true; continue; }
+        if (t < oldest) oldest = t;
+        if (t > newest) { newest = t; newestPoint = p; }
+      }
+    });
+    return { oldest, newest, newestPoint, points, invalid };
+  }
+
+  // How large a jump between the newest point held and the oldest point in a
+  // delta is still explainable by a late or skipped collector tick. Anything
+  // beyond that means points were evicted from the server's window while
+  // this tab wasn't looking, so appending would leave a hole in the series.
+  function historyGapToleranceMs() {
+    return Math.max(3 * Math.max(1, config.poll_interval_seconds) * 1000, 15000);
+  }
+
+  // Appends a ?since= delta to the history already held, trimmed back to the
+  // retained window. Returns null when the delta cannot be appended safely —
+  // a gap, points that are not strictly newer (a restarted server serving
+  // restored, reordered history), or an unparseable timestamp — in which
+  // case the caller re-fetches the full window instead of charting a series
+  // that has silently lost or duplicated points.
+  function mergeHistory(prev, delta) {
+    const held = historyBounds(prev);
+    const incoming = historyBounds(delta);
+    if (held.invalid || held.points === 0 || incoming.invalid) return null;
+    if (incoming.points > 0) {
+      if (incoming.oldest <= held.newest) return null;
+      if (incoming.oldest - held.newest > historyGapToleranceMs()) return null;
+    }
+
+    const merged = {};
+    for (const key of HISTORY_SCALAR_KEYS) {
+      merged[key] = (prev[key] || []).concat(delta?.[key] || []);
+    }
+    for (const key of HISTORY_DEVICE_KEYS) {
+      const devices = {};
+      for (const [name, series] of Object.entries(prev[key] || {})) devices[name] = series;
+      for (const [name, series] of Object.entries(delta?.[key] || {})) {
+        devices[name] = (devices[name] || []).concat(series);
+      }
+      merged[key] = devices;
+    }
+    return trimHistoryWindow(merged);
+  }
+
+  // Drops what the server would have dropped anyway: everything older than
+  // history_window_minutes, measured back from the newest point held (the
+  // Pi's clock, not the browser's). Without it the locally accumulated
+  // window would keep growing for as long as the dashboard stays open. A
+  // device left with no points is removed, matching how the server omits
+  // devices it has no data for.
+  function trimHistoryWindow(hist) {
+    const windowMs = Math.max(0, config.history_window_minutes || 0) * 60000;
+    const { newest, points } = historyBounds(hist);
+    if (!windowMs || points === 0) return hist;
+    const cutoff = newest - windowMs;
+    const keep = series => series.filter(p => pointTime(p) >= cutoff);
+
+    const out = {};
+    for (const key of HISTORY_SCALAR_KEYS) out[key] = keep(hist[key] || []);
+    for (const key of HISTORY_DEVICE_KEYS) {
+      const devices = {};
+      for (const [name, series] of Object.entries(hist[key] || {})) {
+        const kept = keep(series);
+        if (kept.length) devices[name] = kept;
+      }
+      out[key] = devices;
+    }
+    return out;
+  }
+
   function renderHistory(hist) {
     latestHistory = hist;
+    const { newestPoint } = historyBounds(hist);
+    historySince = newestPoint ? newestPoint.t : null;
     if (hist.cpu_percent) drawSparkline(document.getElementById('cpu-sparkline'), hist.cpu_percent, { min: 0, max: 100 });
     if (hist.temperature) drawSparkline(document.getElementById('temp-sparkline'), hist.temperature);
     // Keep the open detail modal in sync with freshly polled history (and
@@ -612,10 +747,28 @@
     if (historyInFlight) return;
     historyInFlight = true;
     try {
-      const hist = await fetchJSON('/api/v1/metrics/history');
+      const incremental = historySince !== null && latestHistory !== null
+        && historyPollsSinceResync < HISTORY_RESYNC_EVERY_POLLS;
+      let hist = await fetchJSON(historyPath(incremental ? historySince : null));
+      let resynced = !incremental;
+      if (incremental) {
+        const merged = mergeHistory(latestHistory, hist);
+        if (merged) {
+          hist = merged;
+        } else {
+          // The delta didn't line up with what we hold: throw the local
+          // window away and start again from the server's.
+          hist = await fetchJSON(historyPath(null));
+          resynced = true;
+        }
+      }
+      historyPollsSinceResync = resynced ? 0 : historyPollsSinceResync + 1;
       renderHistory(hist);
     } catch (e) {
       console.error('failed to fetch history', e);
+      // Whatever failed, the local window may now be missing points (and a
+      // rejected ?since= would keep failing): fetch everything next time.
+      historySince = null;
     } finally {
       historyInFlight = false;
     }
