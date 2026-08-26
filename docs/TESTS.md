@@ -36,7 +36,12 @@ not be merged; see the checklist in [`.github/pull_request_template.md`](../.git
    non-empty `.innerHTML` assignment — see [`ARCHITECTURE.md`](ARCHITECTURE.md#web-dashboard-internalweb)).
    Treat this pattern — a test that great-greps a source file for a banned construct — as
    the template for any future "this must never appear in committed code" rule that a
-   linter doesn't already cover.
+   linter doesn't already cover. `internal/web/polling_test.go` extends the same idea to
+   the inverse case, "this must appear in committed code": it asserts that `app.js`
+   registers a `visibilitychange` listener and that each poll function guards and resets
+   its in-flight flag in a `finally` block (issue #111), since a JS test framework is
+   deliberately not part of this repository (see below) and this scan is the only way to
+   guard client-side behavior that unit tests can't reach.
 
 4. **Integration / hardware tests**
 

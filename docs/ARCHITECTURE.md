@@ -348,6 +348,15 @@ same warn/crit cutoffs the server-side alert engine evaluates against (`>=`), an
 `localStorage`, sending it as `X-Api-Key` on every subsequent request (see
 [`SECURITY.md`](../SECURITY.md) for why this is an accepted trade-off rather than a gap).
 
+Polling is paused while the tab is hidden (a `visibilitychange` listener clears both
+timers) and resumed with an immediate refresh when it becomes visible again — a
+backgrounded or wall-mounted-display tab would otherwise keep requesting
+`/api/v1/metrics` and `/api/v1/metrics/history` forever, since browsers only throttle
+background timers to roughly once a minute rather than stopping them (issue #111). Each
+poll function also guards against overlapping requests with its own in-flight flag, so a
+slow response (a loaded Pi, flaky Wi-Fi) doesn't let requests pile up on top of each
+other.
+
 ## Configuration (`internal/config`)
 
 `config.Load` resolves `Config` in strictly increasing precedence: **built-in defaults**
