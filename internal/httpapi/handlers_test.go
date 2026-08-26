@@ -10,6 +10,7 @@ import (
 
 	"github.com/larslaskowski/pimonitor/internal/alert"
 	"github.com/larslaskowski/pimonitor/internal/collector"
+	"github.com/larslaskowski/pimonitor/internal/config"
 )
 
 type fakeMetrics struct {
@@ -224,7 +225,7 @@ func TestHandleConfig(t *testing.T) {
 			Version:             "v1.2.3",
 			PollIntervalSeconds: 5,
 			NetworkEnabled:      true,
-			Thresholds:          Thresholds{TemperatureWarnC: 60, TemperatureCritC: 75},
+			Thresholds:          config.Thresholds{TemperatureWarnC: 60, TemperatureCritC: 75},
 		},
 	})
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/config", nil)

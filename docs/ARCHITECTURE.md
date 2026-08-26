@@ -290,7 +290,13 @@ pollers between ticks share one deep-copy-and-encode instead of each paying for 
 **`GET /api/v1/config`** exists specifically so the frontend doesn't have to duplicate
 values (poll interval, alert thresholds, feature toggles) that are already defined
 server-side; it also echoes back the build-time `version` injected via
-`-ldflags -X main.version=...`.
+`-ldflags -X main.version=...`. `ClientConfig.Thresholds` is `config.Thresholds` itself
+(carrying both `yaml:` and `json:` tags), not a second, hand-copied struct — a threshold
+added to the config file automatically reaches this endpoint with no field-by-field
+mapping to keep in sync. Only `internal/web/assets/app.js`'s client-side fallback
+defaults (rendered before this endpoint resolves) still duplicate the key set by
+necessity; a test in `internal/web` guards that copy against drift via reflection over
+`config.Thresholds`'s json tags.
 
 ## Web dashboard (`internal/web`)
 

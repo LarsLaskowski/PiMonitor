@@ -16,18 +16,21 @@ import (
 )
 
 // Thresholds are the warn/critical cutoffs used both to color-code the web
-// dashboard and to size the load-average gauges.
+// dashboard and to size the load-average gauges. It doubles as the JSON
+// shape served by GET /api/v1/config (see internal/httpapi.ClientConfig),
+// so the same field set backs the YAML config file and the REST API without
+// a second, hand-copied struct.
 type Thresholds struct {
-	TemperatureWarnC  float64 `yaml:"temperature_warn_c"`
-	TemperatureCritC  float64 `yaml:"temperature_crit_c"`
-	CPUWarnPercent    float64 `yaml:"cpu_warn_percent"`
-	CPUCritPercent    float64 `yaml:"cpu_crit_percent"`
-	DiskWarnPercent   float64 `yaml:"disk_warn_percent"`
-	DiskCritPercent   float64 `yaml:"disk_crit_percent"`
-	SwapWarnPercent   float64 `yaml:"swap_warn_percent"`
-	SwapCritPercent   float64 `yaml:"swap_crit_percent"`
-	MemoryWarnPercent float64 `yaml:"memory_warn_percent"`
-	MemoryCritPercent float64 `yaml:"memory_crit_percent"`
+	TemperatureWarnC  float64 `yaml:"temperature_warn_c" json:"temperature_warn_c"`
+	TemperatureCritC  float64 `yaml:"temperature_crit_c" json:"temperature_crit_c"`
+	CPUWarnPercent    float64 `yaml:"cpu_warn_percent" json:"cpu_warn_percent"`
+	CPUCritPercent    float64 `yaml:"cpu_crit_percent" json:"cpu_crit_percent"`
+	DiskWarnPercent   float64 `yaml:"disk_warn_percent" json:"disk_warn_percent"`
+	DiskCritPercent   float64 `yaml:"disk_crit_percent" json:"disk_crit_percent"`
+	SwapWarnPercent   float64 `yaml:"swap_warn_percent" json:"swap_warn_percent"`
+	SwapCritPercent   float64 `yaml:"swap_crit_percent" json:"swap_crit_percent"`
+	MemoryWarnPercent float64 `yaml:"memory_warn_percent" json:"memory_warn_percent"`
+	MemoryCritPercent float64 `yaml:"memory_crit_percent" json:"memory_crit_percent"`
 }
 
 // Alerts configures the server-side threshold alert engine, which maps each

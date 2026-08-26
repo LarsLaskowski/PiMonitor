@@ -76,23 +76,7 @@ func run(args []string) error {
 	server := httpapi.New(coll, httpapi.Config{
 		ListenAddr: cfg.ListenAddr,
 		APIKey:     cfg.APIKey,
-		Client: httpapi.ClientConfig{
-			Version:             version,
-			PollIntervalSeconds: cfg.PollIntervalSeconds,
-			NetworkEnabled:      cfg.NetworkEnabled,
-			Thresholds: httpapi.Thresholds{
-				TemperatureWarnC:  cfg.Thresholds.TemperatureWarnC,
-				TemperatureCritC:  cfg.Thresholds.TemperatureCritC,
-				CPUWarnPercent:    cfg.Thresholds.CPUWarnPercent,
-				CPUCritPercent:    cfg.Thresholds.CPUCritPercent,
-				DiskWarnPercent:   cfg.Thresholds.DiskWarnPercent,
-				DiskCritPercent:   cfg.Thresholds.DiskCritPercent,
-				SwapWarnPercent:   cfg.Thresholds.SwapWarnPercent,
-				SwapCritPercent:   cfg.Thresholds.SwapCritPercent,
-				MemoryWarnPercent: cfg.Thresholds.MemoryWarnPercent,
-				MemoryCritPercent: cfg.Thresholds.MemoryCritPercent,
-			},
-		},
+		Client:     clientConfig(cfg, version),
 	}, staticHandler, log)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -130,6 +114,19 @@ func run(args []string) error {
 		return nil
 	case err := <-serveErr:
 		return err
+	}
+}
+
+// clientConfig maps the resolved configuration to the non-sensitive shape
+// served by GET /api/v1/config. Thresholds is passed through as-is (see
+// httpapi.ClientConfig), since config.Thresholds already carries the json
+// tags the API response needs.
+func clientConfig(cfg config.Config, version string) httpapi.ClientConfig {
+	return httpapi.ClientConfig{
+		Version:             version,
+		PollIntervalSeconds: cfg.PollIntervalSeconds,
+		NetworkEnabled:      cfg.NetworkEnabled,
+		Thresholds:          cfg.Thresholds,
 	}
 }
 

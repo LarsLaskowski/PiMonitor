@@ -12,6 +12,7 @@ import (
 
 	"github.com/larslaskowski/pimonitor/internal/alert"
 	"github.com/larslaskowski/pimonitor/internal/collector"
+	"github.com/larslaskowski/pimonitor/internal/config"
 )
 
 // MetricsProvider is the subset of *collector.Collector the HTTP layer
@@ -39,34 +40,21 @@ type MetricsProvider interface {
 // than a config option to keep the config surface small.
 const defaultMaxInFlight = 16
 
-// Thresholds are the color-coding thresholds the frontend uses to render
-// metric cards as ok/warn/critical.
-type Thresholds struct {
-	TemperatureWarnC  float64 `json:"temperature_warn_c"`
-	TemperatureCritC  float64 `json:"temperature_crit_c"`
-	CPUWarnPercent    float64 `json:"cpu_warn_percent"`
-	CPUCritPercent    float64 `json:"cpu_crit_percent"`
-	DiskWarnPercent   float64 `json:"disk_warn_percent"`
-	DiskCritPercent   float64 `json:"disk_crit_percent"`
-	SwapWarnPercent   float64 `json:"swap_warn_percent"`
-	SwapCritPercent   float64 `json:"swap_crit_percent"`
-	MemoryWarnPercent float64 `json:"memory_warn_percent"`
-	MemoryCritPercent float64 `json:"memory_crit_percent"`
-}
-
 // ClientConfig is the non-sensitive runtime configuration exposed via
 // GET /api/v1/config, so the frontend doesn't have to duplicate values
 // (poll interval, thresholds, feature toggles) that are already defined
-// server-side.
+// server-side. Thresholds reuses config.Thresholds directly rather than a
+// second, hand-copied struct, so the yaml-configured and JSON-served
+// representations can never drift apart in the field set.
 type ClientConfig struct {
 	// Version is the build-time version of the running binary (the release
 	// tag for release builds, or "dev" for an unversioned local build). It
 	// is set from main.version via -ldflags. The frontend renders it in the
 	// footer; it may carry a leading "v" depending on the build path.
-	Version             string     `json:"version"`
-	PollIntervalSeconds float64    `json:"poll_interval_seconds"`
-	NetworkEnabled      bool       `json:"network_enabled"`
-	Thresholds          Thresholds `json:"thresholds"`
+	Version             string            `json:"version"`
+	PollIntervalSeconds float64           `json:"poll_interval_seconds"`
+	NetworkEnabled      bool              `json:"network_enabled"`
+	Thresholds          config.Thresholds `json:"thresholds"`
 }
 
 // Config configures the HTTP server.
