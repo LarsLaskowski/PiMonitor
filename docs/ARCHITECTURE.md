@@ -41,7 +41,7 @@ see [Privilege separation](#privilege-separation-and-deployment) below and
 ## Process wiring (`cmd/pimonitor/main.go`)
 
 `run()` is the composition root: it resolves configuration, then constructs and wires
-together exactly four collaborators before starting anything:
+together the following collaborators before starting anything:
 
 1. `config.Load` — resolves `Config` from built-in defaults, an optional YAML file, and
    CLI flags (see [Configuration](#configuration)).
@@ -228,12 +228,18 @@ reporting an alert that has actually cleared; only repeated *firings* are coales
 
 ## HTTP layer (`internal/httpapi`)
 
-`httpapi.Server` wraps a single `http.ServeMux` behind two chained middleware layers
-(`server.go`, `middleware.go`):
+`httpapi.Server` wraps a single `http.ServeMux` behind two distinct middleware layers
+(`server.go`, `middleware.go`): a pair of wrappers around the whole mux, and a longer
+chain (`apiRoute`) applied individually to each of the four `/api/v1/...` handlers:
 
 ```
-withLogging(withSecurityHeaders(mux))
+global:              withLogging(withSecurityHeaders(mux))
+per /api/v1 route:   withNoStore(withMaxInFlight(withGzip(withAPIKey(handler))))
 ```
+
+`/healthz` and the static dashboard assets only pass through the global layer — that is
+exactly why they are the routes not gated by `withAPIKey`, not rate-limited by
+`withMaxInFlight`, and not marked uncacheable by `withNoStore`.
 
 - **`withSecurityHeaders`**: sets a strict `Content-Security-Policy` (`default-src
   'self'`, no inline scripts/styles), `X-Content-Type-Options: nosniff`,
@@ -252,6 +258,14 @@ withLogging(withSecurityHeaders(mux))
   or the configured key's *length* through response timing. When `APIKey` is empty (the
   default), every request is allowed — the common case (dashboard on a trusted LAN) stays
   unauthenticated and simple.
+- **`withGzip`**: engages only when the request advertises `Accept-Encoding: gzip`; when it
+  does, it sets `Content-Encoding: gzip`, drops the now-stale `Content-Length`, and appends
+  (`Header.Add`, not `Set`) `Vary: Accept-Encoding` so it doesn't clobber the `Vary` values
+  `withNoStore` already set. The underlying `gzip.Writer`s come from a `sync.Pool` rather
+  than being allocated per request, since all four `/api/v1/...` endpoints are polled every
+  few seconds. A client that doesn't negotiate gzip gets an unmodified identity response,
+  so `withGzip` stays backwards compatible for naive `/api/v1` consumers — see
+  [`API.md`](API.md#compression) for the wire-level contract.
 - **`withMaxInFlight`**: wraps each of the four `/api/v1/...` routes (not `/healthz` or
   the static dashboard) in a shared semaphore of capacity `defaultMaxInFlight` (16). A
   request beyond the limit gets `503 Service Unavailable` with `Retry-After: 1` instead of
@@ -354,12 +368,15 @@ bug that produced issue #19 (see the test's own doc comment). Any new dashboard 
 touching `app.js` is bound by this same rule, enforced automatically rather than by review
 alone.
 
-The dashboard polls `/api/v1/metrics`, `/api/v1/metrics/history`, `/api/v1/config`, and
-`/api/v1/alerts` on the interval `/api/v1/config` reports, colors metric cards using the
-same warn/crit cutoffs the server-side alert engine evaluates against (`>=`), and — when
-`api_key` is configured — prompts for the key once per browser and persists it in
-`localStorage`, sending it as `X-Api-Key` on every subsequent request (see
-[`SECURITY.md`](../SECURITY.md) for why this is an accepted trade-off rather than a gap).
+The dashboard polls `/api/v1/metrics`, `/api/v1/metrics/history`, and `/api/v1/config` on
+the interval `/api/v1/config` reports, and colors metric cards using the same warn/crit
+cutoffs the server-side alert engine evaluates against (`>=`) — that coloring is
+threshold-based, not alert-state-based, and the two should not be conflated: the alert
+engine's own output (`GET /api/v1/alerts`) has no dashboard representation at all yet;
+surfacing it in the UI is tracked separately (issue #11). When `api_key` is configured,
+the dashboard prompts for the key once per browser and persists it in `localStorage`,
+sending it as `X-Api-Key` on every subsequent request (see [`SECURITY.md`](../SECURITY.md)
+for why this is an accepted trade-off rather than a gap).
 
 History is polled incrementally (issue #112): after an initial full-window fetch the
 dashboard passes the timestamp of its newest point back as `?since=` — verbatim, since
