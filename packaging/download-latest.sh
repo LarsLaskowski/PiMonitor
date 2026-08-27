@@ -11,7 +11,11 @@ readonly REPOSITORY='larslaskowski/pimonitor'
 # Restrict both the initial request and any redirect to HTTPS, so a
 # compromised or misconfigured server can't downgrade the download to plain
 # HTTP.
-readonly CURL=(curl -fsSL --proto '=https' --proto-redir '=https')
+# --retry-all-errors makes curl retry on any transfer error (not just the
+# default "clearly transient" subset), so a flaky connection that manifests
+# as e.g. "curl: (23) Failed writing body" is retried automatically instead
+# of requiring the user to re-run the script by hand.
+readonly CURL=(curl -fsSL --proto '=https' --proto-redir '=https' --retry 3 --retry-delay 2 --retry-all-errors)
 
 if [[ -z "${ARCH:-}" ]]; then
   case "$(uname -m)" in
@@ -46,8 +50,12 @@ for command in curl tar; do
   fi
 done
 
-version=$("${CURL[@]}" "https://api.github.com/repos/${REPOSITORY}/releases/latest" \
-  | awk -F '"' '/"tag_name"/ { print $4; exit }')
+release_json=$("${CURL[@]}" "https://api.github.com/repos/${REPOSITORY}/releases/latest")
+# Parse from the already-captured variable rather than piping curl straight
+# into awk: awk's "exit" closes its end of the pipe as soon as it stops
+# reading, which risks curl trying to write into an already-closed pipe
+# (curl: (23) Failed writing body) if that ever happens before curl is done.
+version=$(printf '%s\n' "$release_json" | awk -F '"' '/"tag_name"/ { print $4; exit }')
 
 if [[ -z "$version" ]]; then
   printf 'Could not determine the latest PiMonitor release version.\n' >&2
