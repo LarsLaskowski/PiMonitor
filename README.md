@@ -40,7 +40,8 @@ automation systems like openHAB). Runs as a systemd service.
 - **Light/dark theme toggle** - follows the OS setting by default, with a
   manual override remembered in the browser
 - A versioned REST API (`/api/v1/...`) for third-party consumers, with
-  optional API-key authentication - see [`docs/API.md`](docs/API.md)
+  optional API-key authentication and gzip-compressed responses - see
+  [`docs/API.md`](docs/API.md)
 
 ## Architecture
 
@@ -371,9 +372,22 @@ leaves an existing `/etc/pimonitor/config.yaml` untouched.
    journalctl -u pimonitor -n 20
    ```
 
-Because nothing is persisted across restarts (the in-memory history is
-rebuilt from scratch), the sparklines will simply start empty again after an
-update — there is no database to migrate.
+Metric history survives the upgrade: with `history_persist_enabled` (the
+default), history is snapshotted to `data_dir`/`history.bin` — by default
+`/var/lib/pimonitor/history.bin` — and restored on startup, so the sparklines
+pick up where they left off rather than starting empty. Points older than
+`history_window_minutes` are dropped on restore.
+
+There is no database and no migration step. If a release changes the history
+file format, the old file is simply ignored and history starts empty once —
+it is derived data that is always safe to discard. To deliberately reset the
+sparklines, stop the service, delete `history.bin`, and start it again:
+
+```sh
+sudo systemctl stop pimonitor.service
+sudo rm -f /var/lib/pimonitor/history.bin
+sudo systemctl start pimonitor.service
+```
 
 **New configuration options:** upgrades never modify your existing
 `config.yaml`. When a release adds settings, compare your file against the
@@ -395,6 +409,9 @@ example openHAB HTTP Binding configuration. Quick example:
 ```sh
 curl -s http://raspberrypi.local:8080/api/v1/metrics | jq '.cpu.overall_percent'
 ```
+
+`GET /healthz` is a lightweight, unauthenticated liveness endpoint - point
+your monitoring system at it rather than an `/api/v1/...` route.
 
 ### Integrations
 
