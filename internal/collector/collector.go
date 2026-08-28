@@ -132,14 +132,18 @@ func dropPrefix(points []HistoryPoint, keep func(HistoryPoint) bool) []HistoryPo
 // WorstCaseTickOverhead is the most a single fastTick may legitimately run
 // over instant /proc-style reads before c.latest is updated. Within
 // collectFastTickSamples, TemperatureCollector and ThrottledCollector each
-// shell out to vcgencmd (bounded by vcgencmdTimeout) and DiskCollector
-// bounds a stalled statfs at defaultStatfsTimeout; all of these run
-// sequentially, not concurrently, so the worst case is additive. Callers
-// that derive a bound from tick timing (e.g. httpapi's /healthz staleness
-// check) should add this on top of FastInterval so a slow-but-healthy tick
-// — a hung firmware call or an unresponsive mount, both of which the
-// collector deliberately degrades rather than dies on — isn't mistaken for
-// a stalled collector.
+// shell out to vcgencmd (bounded by vcgencmdTimeout), and these run
+// sequentially, not concurrently, so their worst case is additive.
+// DiskCollector bounds a stalled statfs at defaultStatfsTimeout — counted
+// once here, which is the common case: a single dying device or
+// unresponsive network mount. Several mounts stalling at the same time cost
+// that much each (they are retried together every defaultStatfsCooldown
+// once it lapses), and would exceed this budget. Callers that derive a
+// bound from tick timing (e.g. httpapi's /healthz staleness check) should
+// add this on top of FastInterval so a slow-but-healthy tick — a hung
+// firmware call or an unresponsive mount, both of which the collector
+// deliberately degrades rather than dies on — isn't mistaken for a stalled
+// collector.
 const WorstCaseTickOverhead = 2*vcgencmdTimeout + defaultStatfsTimeout
 
 // Collector periodically samples every metric source and keeps the latest
