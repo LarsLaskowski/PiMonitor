@@ -62,7 +62,7 @@ func freeAddr(t *testing.T) string {
 		t.Fatalf("reserve port: %v", err)
 	}
 	addr := ln.Addr().String()
-	ln.Close()
+	_ = ln.Close()
 	return addr
 }
 
@@ -91,7 +91,7 @@ func TestListenAndServe_TLSConfigured(t *testing.T) {
 	defer func() {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 		defer cancel()
-		s.Shutdown(ctx)
+		_ = s.Shutdown(ctx)
 	}()
 
 	waitUntilUp(t, func() error {
@@ -99,7 +99,7 @@ func TestListenAndServe_TLSConfigured(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		conn.Close()
+		_ = conn.Close()
 		return nil
 	})
 
@@ -111,7 +111,7 @@ func TestListenAndServe_TLSConfigured(t *testing.T) {
 	plainClient := http.Client{Timeout: 500 * time.Millisecond}
 	resp, err := plainClient.Get("http://" + addr + "/healthz")
 	if err == nil {
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		if resp.StatusCode == http.StatusOK {
 			t.Fatalf("plain HTTP request to a TLS-configured server got 200 OK, want a TLS/connection error or a non-200 status")
 		}
@@ -122,11 +122,11 @@ func TestListenAndServe_PlainHTTPByDefault(t *testing.T) {
 	addr := freeAddr(t)
 	s, _ := newTestServer(Config{ListenAddr: addr})
 
-	go s.ListenAndServe()
+	go func() { _ = s.ListenAndServe() }()
 	defer func() {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 		defer cancel()
-		s.Shutdown(ctx)
+		_ = s.Shutdown(ctx)
 	}()
 
 	client := http.Client{Timeout: 500 * time.Millisecond}
@@ -135,7 +135,7 @@ func TestListenAndServe_PlainHTTPByDefault(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		return nil
 	})
 }

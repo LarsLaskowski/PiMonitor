@@ -24,6 +24,38 @@ func newTestNotifier(t *testing.T) *alert.Notifier {
 	return n
 }
 
+// TestServerConfig_MapsFields guards the config.Config -> httpapi.Config
+// mapping, in particular that TLSCertFile/TLSKeyFile (issue #41) are wired
+// through to the HTTP layer rather than silently dropped.
+func TestServerConfig_MapsFields(t *testing.T) {
+	cfg := config.Config{
+		ListenAddr:                 ":9443",
+		APIKey:                     "secret",
+		TLSCertFile:                "/etc/pimonitor/cert.pem",
+		TLSKeyFile:                 "/etc/pimonitor/key.pem",
+		PollIntervalSeconds:        5,
+		HealthzMaxStalenessSeconds: 30,
+	}
+
+	got := serverConfig(cfg, "v1.2.3")
+
+	if got.ListenAddr != ":9443" {
+		t.Errorf("ListenAddr = %q, want :9443", got.ListenAddr)
+	}
+	if got.APIKey != "secret" {
+		t.Errorf("APIKey = %q, want secret", got.APIKey)
+	}
+	if got.TLSCertFile != "/etc/pimonitor/cert.pem" {
+		t.Errorf("TLSCertFile = %q, want /etc/pimonitor/cert.pem", got.TLSCertFile)
+	}
+	if got.TLSKeyFile != "/etc/pimonitor/key.pem" {
+		t.Errorf("TLSKeyFile = %q, want /etc/pimonitor/key.pem", got.TLSKeyFile)
+	}
+	if got.Client.Version != "v1.2.3" {
+		t.Errorf("Client.Version = %q, want v1.2.3", got.Client.Version)
+	}
+}
+
 // TestClientConfig_ThresholdsRoundTrip guards against a field-by-field
 // mapping mistake (e.g. a copy-paste swap like assigning SwapWarnPercent to
 // DiskWarnPercent) going unnoticed between config.Thresholds and the JSON
