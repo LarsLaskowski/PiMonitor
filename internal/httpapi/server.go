@@ -75,6 +75,12 @@ type Config struct {
 	// static 200 ok. Zero disables the staleness check entirely, so
 	// /healthz stays a pure liveness probe unless a caller opts in.
 	HealthzMaxStaleness time.Duration
+	// TLSCertFile and TLSKeyFile, when both set, make ListenAndServe start
+	// the server with HTTPS instead of plain HTTP. Leave both empty to serve
+	// plain HTTP. The caller (config.Config.Validate) is responsible for
+	// rejecting the case where only one is set.
+	TLSCertFile string
+	TLSKeyFile  string
 	// Client is echoed back verbatim by GET /api/v1/config.
 	Client ClientConfig
 }
@@ -149,9 +155,15 @@ func (s *Server) Handler() http.Handler {
 	return s.httpServer.Handler
 }
 
-// ListenAndServe starts serving. It blocks until the server stops.
+// ListenAndServe starts serving. It blocks until the server stops. When both
+// cfg.TLSCertFile and cfg.TLSKeyFile are set, it serves HTTPS; otherwise
+// plain HTTP.
 func (s *Server) ListenAndServe() error {
-	s.log.Info("http server listening", "addr", s.cfg.ListenAddr)
+	if s.cfg.TLSCertFile != "" && s.cfg.TLSKeyFile != "" {
+		s.log.Info("http server listening", "addr", s.cfg.ListenAddr, "tls", true)
+		return s.httpServer.ListenAndServeTLS(s.cfg.TLSCertFile, s.cfg.TLSKeyFile)
+	}
+	s.log.Info("http server listening", "addr", s.cfg.ListenAddr, "tls", false)
 	return s.httpServer.ListenAndServe()
 }
 

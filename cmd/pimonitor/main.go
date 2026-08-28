@@ -73,12 +73,7 @@ func run(args []string) error {
 		return fmt.Errorf("load embedded web assets: %w", err)
 	}
 
-	server := httpapi.New(coll, httpapi.Config{
-		ListenAddr:          cfg.ListenAddr,
-		APIKey:              cfg.APIKey,
-		HealthzMaxStaleness: cfg.HealthzMaxStaleness(collector.WorstCaseTickOverhead),
-		Client:              clientConfig(cfg, version),
-	}, staticHandler, log)
+	server := httpapi.New(coll, serverConfig(cfg, version), staticHandler, log)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
@@ -115,6 +110,20 @@ func run(args []string) error {
 		return nil
 	case err := <-serveErr:
 		return err
+	}
+}
+
+// serverConfig maps the resolved configuration to httpapi.Config, factored
+// out of run() (like clientConfig below) so the mapping is unit-testable
+// without starting a real server.
+func serverConfig(cfg config.Config, version string) httpapi.Config {
+	return httpapi.Config{
+		ListenAddr:          cfg.ListenAddr,
+		APIKey:              cfg.APIKey,
+		TLSCertFile:         cfg.TLSCertFile,
+		TLSKeyFile:          cfg.TLSKeyFile,
+		HealthzMaxStaleness: cfg.HealthzMaxStaleness(collector.WorstCaseTickOverhead),
+		Client:              clientConfig(cfg, version),
 	}
 }
 

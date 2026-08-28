@@ -65,6 +65,30 @@ pi_model_enabled: true
 # /proc/<pid>/cmdline, so every local user could read the key.
 api_key: ""
 
+# Optional built-in HTTPS. When both tls_cert and tls_key are set, the
+# server listens with HTTPS (std-lib ListenAndServeTLS) instead of plain
+# HTTP - useful for a simple single-Pi setup that doesn't want to stand up
+# a separate reverse proxy (nginx/Caddy) just for TLS termination. Leave
+# both empty (the default) for plain HTTP. Setting only one of the two is
+# a config error. Paths must be readable by the pimonitor service user.
+#
+# Two things to know before enabling this:
+# - Privileged ports: pimonitor.service runs as the unprivileged 'pimonitor'
+#   user with no CAP_NET_BIND_SERVICE, so listen_addr on a port below 1024
+#   (e.g. ":443") will fail with "permission denied" - which, on this code
+#   path, surfaces from ListenAndServeTLS and can look like a TLS problem
+#   rather than a port problem. Keep listen_addr on a high port (the
+#   default :8080 works fine over HTTPS too), or deliberately add
+#   AmbientCapabilities=CAP_NET_BIND_SERVICE to the systemd unit - note
+#   that this does widen the sandbox described in SECURITY.md.
+# - Certificate renewal: the cert/key pair is read once at startup and
+#   never again, so after a renewal (e.g. certbot) the service keeps
+#   serving the expired certificate until it is restarted. Point your
+#   renewal hook at `systemctl restart pimonitor`
+#   (e.g. certbot --deploy-hook "systemctl restart pimonitor").
+tls_cert: ""
+tls_key: ""
+
 # How old (in seconds) the latest collected snapshot may be before
 # GET /healthz reports unhealthy (503) instead of 200 ok - catches a
 # stalled collector goroutine that a plain liveness check would miss.

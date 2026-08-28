@@ -100,6 +100,14 @@ type Config struct {
 	DistroInfoEnabled            bool    `yaml:"distro_info_enabled"`
 	PiModelEnabled               bool    `yaml:"pi_model_enabled"`
 	APIKey                       string  `yaml:"api_key"`
+	// TLSCertFile and TLSKeyFile, when both set, make the server listen with
+	// HTTPS (ListenAndServeTLS) instead of plain HTTP, for a single-Pi setup
+	// that doesn't want to stand up a separate reverse proxy for TLS. Leave
+	// both empty (the default) to serve plain HTTP. Setting only one is a
+	// config error (see Validate) rather than silently falling back to
+	// plain HTTP.
+	TLSCertFile string `yaml:"tls_cert"`
+	TLSKeyFile  string `yaml:"tls_key"`
 	// HealthzMaxStalenessSeconds bounds how old the latest collected
 	// snapshot may be before GET /healthz reports unhealthy. Zero (the
 	// default) computes the bound automatically as a multiple of
@@ -277,6 +285,9 @@ func (c Config) Validate() error {
 	}
 	if c.HealthzMaxStalenessSeconds < 0 {
 		return fmt.Errorf("healthz_max_staleness_seconds must be >= 0 (got %v)", c.HealthzMaxStalenessSeconds)
+	}
+	if (c.TLSCertFile == "") != (c.TLSKeyFile == "") {
+		return fmt.Errorf("tls_cert and tls_key must both be set to enable HTTPS, or both left empty for plain HTTP")
 	}
 	if c.HealthzMaxStalenessSeconds > 0 && c.HealthzMaxStalenessSeconds < c.PollIntervalSeconds {
 		return fmt.Errorf("healthz_max_staleness_seconds (%v) must be >= poll_interval_seconds (%v), or /healthz reports unhealthy permanently", c.HealthzMaxStalenessSeconds, c.PollIntervalSeconds)

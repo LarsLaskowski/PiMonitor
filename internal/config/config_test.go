@@ -160,6 +160,34 @@ thresholds:
 	}
 }
 
+func TestLoad_TLSFromYAML(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	writeFile(t, path, "tls_cert: \"/etc/pimonitor/cert.pem\"\ntls_key: \"/etc/pimonitor/key.pem\"\n")
+
+	result, err := Load([]string{"-config", path})
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	if result.Config.TLSCertFile != "/etc/pimonitor/cert.pem" {
+		t.Fatalf("TLSCertFile = %q, want /etc/pimonitor/cert.pem", result.Config.TLSCertFile)
+	}
+	if result.Config.TLSKeyFile != "/etc/pimonitor/key.pem" {
+		t.Fatalf("TLSKeyFile = %q, want /etc/pimonitor/key.pem", result.Config.TLSKeyFile)
+	}
+}
+
+func TestLoad_TLSOnlyCertIsRejected(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	writeFile(t, path, "tls_cert: \"/etc/pimonitor/cert.pem\"\n")
+
+	if _, err := Load([]string{"-config", path}); err == nil {
+		t.Fatal("expected Load to reject tls_cert set without tls_key")
+	}
+}
+
 func TestLoad_FlagsOverrideFile(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yaml")
@@ -376,6 +404,8 @@ func TestValidate_RejectsBadValues(t *testing.T) {
 		{"webhook with negative timeout", func(c *Config) {
 			c.Alerts.Webhooks = []Webhook{{URL: "http://x", TimeoutSeconds: -1}}
 		}},
+		{"tls_cert set without tls_key", func(c *Config) { c.TLSCertFile = "cert.pem" }},
+		{"tls_key set without tls_cert", func(c *Config) { c.TLSKeyFile = "key.pem" }},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -383,6 +413,37 @@ func TestValidate_RejectsBadValues(t *testing.T) {
 			tt.mutate(&cfg)
 			if err := cfg.Validate(); err == nil {
 				t.Fatalf("Validate() accepted invalid config (%s)", tt.name)
+			}
+		})
+	}
+}
+
+func TestValidate_TLS(t *testing.T) {
+	tests := []struct {
+		name        string
+		certFile    string
+		keyFile     string
+		wantErr     bool
+		description string
+	}{
+		{"both set", "cert.pem", "key.pem", false, "cert and key both configured enables TLS and is valid"},
+		{"neither set", "", "", false, "the default (plain HTTP) is valid"},
+		{"only cert set", "cert.pem", "", true, "cert without key is a config error"},
+		{"only key set", "", "key.pem", true, "key without cert is a config error"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := Default()
+			cfg.TLSCertFile = tt.certFile
+			cfg.TLSKeyFile = tt.keyFile
+
+			err := cfg.Validate()
+
+			if tt.wantErr && err == nil {
+				t.Fatalf("Validate() = nil, want error (%s)", tt.description)
+			}
+			if !tt.wantErr && err != nil {
+				t.Fatalf("Validate() = %v, want nil (%s)", err, tt.description)
 			}
 		})
 	}
