@@ -76,6 +76,8 @@ func run(args []string) error {
 	server := httpapi.New(coll, httpapi.Config{
 		ListenAddr:          cfg.ListenAddr,
 		APIKey:              cfg.APIKey,
+		TLSCertFile:         cfg.TLSCertFile,
+		TLSKeyFile:          cfg.TLSKeyFile,
 		HealthzMaxStaleness: cfg.HealthzMaxStaleness(collector.WorstCaseTickOverhead),
 		Client:              clientConfig(cfg, version),
 	}, staticHandler, log)

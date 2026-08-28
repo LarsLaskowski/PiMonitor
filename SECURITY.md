@@ -48,8 +48,10 @@ reporters and reviewers have context:
   by default (no authentication, plain HTTP). If you expose the API to other
   systems (e.g. for home automation integrations), set the optional `api_key`
   configuration value to require a bearer token on `/api/v1/...` requests,
-  and do not expose the service directly to the public internet without a
-  reverse proxy providing TLS and additional access control. The bundled
+  and do not expose the service directly to the public internet without
+  TLS and additional access control, either via a reverse proxy or by
+  setting the optional `tls_cert` / `tls_key` configuration values to have
+  the service terminate TLS itself. The bundled
   dashboard keeps working with `api_key` set: it prompts for the key once
   per browser and persists it in `localStorage` (an accepted trade-off —
   anyone with access to the browser profile can read it, and without TLS
