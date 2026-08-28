@@ -182,14 +182,24 @@ const healthzStalenessMultiple = 3
 
 // HealthzMaxStaleness is how old the latest collected snapshot may be
 // before GET /healthz reports unhealthy instead of the static 200 ok.
-// HealthzMaxStalenessSeconds set to a positive value is used as-is;
-// left at its default of 0, the bound is derived from the poll interval
-// instead of a fixed constant, so it scales with FastInterval.
-func (c Config) HealthzMaxStaleness() time.Duration {
+// HealthzMaxStalenessSeconds set to a positive value is used as-is
+// (Validate requires it be >= PollIntervalSeconds). Left at its default of
+// 0, the bound is derived instead of a fixed constant: healthzStalenessMultiple
+// intervals plus 2*tickOverhead. The 2x accounts for how the collector
+// publishes its snapshot timestamp only when a tick completes (not when it
+// starts), so immediately before a tick publishes, the visible age can
+// reach one in-flight tick's duration plus the one still queued behind it.
+// tickOverhead should be collector.WorstCaseTickOverhead in production, the
+// most a single tick may legitimately run over instant reads (hung
+// firmware calls, a stalled mount) without the collector actually being
+// stuck; this package cannot import collector directly (collector already
+// imports config for Thresholds), so the caller supplies it. Tests that
+// don't care about tick timing may pass 0.
+func (c Config) HealthzMaxStaleness(tickOverhead time.Duration) time.Duration {
 	if c.HealthzMaxStalenessSeconds > 0 {
 		return time.Duration(c.HealthzMaxStalenessSeconds * float64(time.Second))
 	}
-	return healthzStalenessMultiple * c.FastInterval()
+	return healthzStalenessMultiple*c.FastInterval() + 2*tickOverhead
 }
 
 // HistoryWindow is the rolling window of history retained per metric
@@ -267,6 +277,9 @@ func (c Config) Validate() error {
 	}
 	if c.HealthzMaxStalenessSeconds < 0 {
 		return fmt.Errorf("healthz_max_staleness_seconds must be >= 0 (got %v)", c.HealthzMaxStalenessSeconds)
+	}
+	if c.HealthzMaxStalenessSeconds > 0 && c.HealthzMaxStalenessSeconds < c.PollIntervalSeconds {
+		return fmt.Errorf("healthz_max_staleness_seconds (%v) must be >= poll_interval_seconds (%v), or /healthz reports unhealthy permanently", c.HealthzMaxStalenessSeconds, c.PollIntervalSeconds)
 	}
 	if err := c.Thresholds.validate(); err != nil {
 		return err

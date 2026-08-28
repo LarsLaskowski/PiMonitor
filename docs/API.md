@@ -82,9 +82,11 @@ tooling, not for metric data.
 
 Returns `200 ok` when the latest collected snapshot is fresh. It returns
 `503 Service Unavailable` with a plain-text body when the snapshot is older
-than `healthz_max_staleness_seconds` (default: 3x `poll_interval_seconds`)
-— this catches a stalled collector goroutine that would otherwise leave
-`/healthz` reporting healthy while `/api/v1/metrics` silently serves stale
+than `healthz_max_staleness_seconds` (default: `3x poll_interval_seconds`
+plus a margin for the slowest a single healthy collection cycle may
+legitimately take, e.g. a hung `vcgencmd` call) — this catches a stalled
+collector goroutine that would otherwise leave `/healthz` reporting healthy
+while `/api/v1/metrics` silently serves stale
 data. Set `healthz_max_staleness_seconds` in the config file to tune the
 bound; see [`packaging/pimonitor.example.yaml`](../packaging/pimonitor.example.yaml).
 

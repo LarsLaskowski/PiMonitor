@@ -23,14 +23,12 @@ func writeJSON(w http.ResponseWriter, log func(msg string, args ...any), v any) 
 // monitors can detect that failure mode instead of seeing a static 200 that
 // never reflects collection health. s.cfg.HealthzMaxStaleness left at its
 // zero value keeps this a pure liveness probe, as in tests that construct
-// Config{} directly; production always sets it via
-// config.Config.HealthzMaxStaleness(), which never returns zero.
+// Config{} directly; production always sets it from
+// config.Config.HealthzMaxStaleness(...), which never returns zero.
 func (s *Server) handleHealthz(w http.ResponseWriter, _ *http.Request) {
-	if max := s.cfg.HealthzMaxStaleness; max > 0 {
-		if age := time.Since(s.metrics.Snapshot().Timestamp); age > max {
-			http.Error(w, "stale: latest snapshot is older than the configured healthz_max_staleness_seconds", http.StatusServiceUnavailable)
-			return
-		}
+	if max := s.cfg.HealthzMaxStaleness; max > 0 && time.Since(s.metrics.Snapshot().Timestamp) > max {
+		http.Error(w, "stale: latest snapshot is older than the configured healthz_max_staleness_seconds", http.StatusServiceUnavailable)
+		return
 	}
 	w.Header().Set(contentTypeHeader, "text/plain; charset=utf-8")
 	_, _ = w.Write([]byte("ok"))

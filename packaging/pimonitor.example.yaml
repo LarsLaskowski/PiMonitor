@@ -69,7 +69,10 @@ api_key: ""
 # GET /healthz reports unhealthy (503) instead of 200 ok - catches a
 # stalled collector goroutine that a plain liveness check would miss.
 # 0 (the default) computes this automatically as 3x poll_interval_seconds
-# instead of a fixed value, so it stays sensible if you change that.
+# plus a margin for the slowest a single healthy collection cycle may
+# legitimately take (e.g. a hung vcgencmd call), so a slow-but-healthy
+# tick isn't mistaken for a stalled collector. If set explicitly, it must
+# be >= poll_interval_seconds, or /healthz would report unhealthy always.
 healthz_max_staleness_seconds: 0
 
 # Color-coding thresholds for the dashboard (and the load-average gauge

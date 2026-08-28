@@ -61,23 +61,46 @@ func TestDurationHelpers(t *testing.T) {
 	}
 }
 
-func TestHealthzMaxStaleness_DefaultsToMultipleOfPollInterval(t *testing.T) {
-	cfg := Default()
-	cfg.PollIntervalSeconds = 5
-	cfg.HealthzMaxStalenessSeconds = 0
-
-	if got, want := cfg.HealthzMaxStaleness(), 15*time.Second; got != want {
-		t.Fatalf("HealthzMaxStaleness() = %v, want %v (3x poll interval)", got, want)
+func TestHealthzMaxStaleness(t *testing.T) {
+	tests := []struct {
+		name         string
+		pollSeconds  float64
+		staleSeconds float64
+		tickOverhead time.Duration
+		want         time.Duration
+	}{
+		{
+			name:         "default derives from poll interval alone when tick overhead is zero",
+			pollSeconds:  5,
+			staleSeconds: 0,
+			tickOverhead: 0,
+			want:         15 * time.Second, // 3x poll interval
+		},
+		{
+			name:         "default adds 2x tick overhead on top of the poll-interval multiple",
+			pollSeconds:  5,
+			staleSeconds: 0,
+			tickOverhead: 12 * time.Second, // collector.WorstCaseTickOverhead in production
+			want:         15*time.Second + 24*time.Second,
+		},
+		{
+			name:         "explicit value overrides the default and ignores tick overhead",
+			pollSeconds:  5,
+			staleSeconds: 42,
+			tickOverhead: 12 * time.Second,
+			want:         42 * time.Second,
+		},
 	}
-}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := Default()
+			cfg.PollIntervalSeconds = tt.pollSeconds
+			cfg.HealthzMaxStalenessSeconds = tt.staleSeconds
 
-func TestHealthzMaxStaleness_ExplicitValueOverridesDefault(t *testing.T) {
-	cfg := Default()
-	cfg.PollIntervalSeconds = 5
-	cfg.HealthzMaxStalenessSeconds = 42
-
-	if got, want := cfg.HealthzMaxStaleness(), 42*time.Second; got != want {
-		t.Fatalf("HealthzMaxStaleness() = %v, want %v", got, want)
+			if got := cfg.HealthzMaxStaleness(tt.tickOverhead); got != tt.want {
+				t.Fatalf("HealthzMaxStaleness(%v) = %v, want %v", tt.tickOverhead, got, tt.want)
+			}
+		})
 	}
 }
 
@@ -319,6 +342,10 @@ func TestValidate_RejectsBadValues(t *testing.T) {
 		{"empty listen addr", func(c *Config) { c.ListenAddr = "" }},
 		{"unknown log level", func(c *Config) { c.LogLevel = "verbose" }},
 		{"negative healthz max staleness", func(c *Config) { c.HealthzMaxStalenessSeconds = -1 }},
+		{"healthz max staleness below poll interval", func(c *Config) {
+			c.PollIntervalSeconds = 5
+			c.HealthzMaxStalenessSeconds = 2
+		}},
 		{"negative temperature warn", func(c *Config) { c.Thresholds.TemperatureWarnC = -1 }},
 		{"temperature warn above crit", func(c *Config) { c.Thresholds.TemperatureWarnC = 90 }},
 		{"cpu warn above crit", func(c *Config) { c.Thresholds.CPUWarnPercent = 99 }},
@@ -388,6 +415,9 @@ func TestValidate_AcceptsValidEdgeCases(t *testing.T) {
 	cfg.DataDir = ""
 	// A well-formed webhook with an empty min_level (defaults to warn) is valid.
 	cfg.Alerts.Webhooks = []Webhook{{URL: "https://example.com/hook"}}
+	// healthz_max_staleness_seconds exactly equal to poll_interval_seconds is
+	// the smallest accepted value, not rejected as "below" it.
+	cfg.HealthzMaxStalenessSeconds = cfg.PollIntervalSeconds
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("Validate() rejected a valid edge-case config: %v", err)
 	}
