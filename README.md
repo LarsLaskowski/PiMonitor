@@ -411,7 +411,10 @@ curl -s http://raspberrypi.local:8080/api/v1/metrics | jq '.cpu.overall_percent'
 ```
 
 `GET /healthz` is a lightweight, unauthenticated liveness endpoint - point
-your monitoring system at it rather than an `/api/v1/...` route.
+your monitoring system at it rather than an `/api/v1/...` route. It returns
+`503` instead of `200` when the latest collected snapshot is stale (e.g. a
+stalled collector), so it also doubles as a deeper healthcheck - see
+[`docs/API.md`](docs/API.md#get-healthz).
 
 ### Integrations
 

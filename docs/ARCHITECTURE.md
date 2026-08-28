@@ -288,6 +288,15 @@ API-key-gated routes — `GET /api/v1/metrics`, `GET /api/v1/metrics/history`,
 via the `staticHandler` passed into `New` (`nil` in tests, to exercise the API layer
 without the frontend). See [`API.md`](API.md) for the full response schemas.
 
+`/healthz` is a liveness check, not just a process-alive probe: `handleHealthz`
+(`handlers.go`) also compares `now - MetricsProvider.Snapshot().Timestamp` against
+`Config.HealthzMaxStaleness` and returns `503` when the latest snapshot is older than
+that bound — e.g. the collector goroutine has stalled while the HTTP server is still
+serving requests. `Config.HealthzMaxStaleness` is zero (the check disabled) unless the
+caller sets it; `main.go` always sets it from `config.Config.HealthzMaxStaleness()`,
+which defaults to three poll intervals when `healthz_max_staleness_seconds` is left
+unset in the YAML config.
+
 **`MetricsProvider` is a narrow interface** (`Snapshot() / History() / HistoryGeneration()
 / Alerts()`) implemented by `*collector.Collector`, so `httpapi` can be unit-tested
 against a fake implementation (see `handlers_test.go`) entirely independent of real

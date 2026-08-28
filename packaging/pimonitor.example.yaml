@@ -65,6 +65,13 @@ pi_model_enabled: true
 # /proc/<pid>/cmdline, so every local user could read the key.
 api_key: ""
 
+# How old (in seconds) the latest collected snapshot may be before
+# GET /healthz reports unhealthy (503) instead of 200 ok - catches a
+# stalled collector goroutine that a plain liveness check would miss.
+# 0 (the default) computes this automatically as 3x poll_interval_seconds
+# instead of a fixed value, so it stays sensible if you change that.
+healthz_max_staleness_seconds: 0
+
 # Color-coding thresholds for the dashboard (and the load-average gauge
 # scale, which uses the CPU thresholds relative to core count).
 thresholds:

@@ -88,20 +88,26 @@ type Webhook struct {
 
 // Config is PiMonitor's full runtime configuration.
 type Config struct {
-	ListenAddr                   string     `yaml:"listen_addr"`
-	LogLevel                     string     `yaml:"log_level"`
-	PollIntervalSeconds          float64    `yaml:"poll_interval_seconds"`
-	UpdatesCheckMinutes          float64    `yaml:"updates_check_minutes"`
-	UpdatesStaleThresholdMinutes float64    `yaml:"updates_stale_threshold_minutes"`
-	HistoryWindowMinutes         float64    `yaml:"history_window_minutes"`
-	HistoryPersistEnabled        bool       `yaml:"history_persist_enabled"`
-	DataDir                      string     `yaml:"data_dir"`
-	NetworkEnabled               bool       `yaml:"network_enabled"`
-	DistroInfoEnabled            bool       `yaml:"distro_info_enabled"`
-	PiModelEnabled               bool       `yaml:"pi_model_enabled"`
-	APIKey                       string     `yaml:"api_key"`
-	Thresholds                   Thresholds `yaml:"thresholds"`
-	Alerts                       Alerts     `yaml:"alerts"`
+	ListenAddr                   string  `yaml:"listen_addr"`
+	LogLevel                     string  `yaml:"log_level"`
+	PollIntervalSeconds          float64 `yaml:"poll_interval_seconds"`
+	UpdatesCheckMinutes          float64 `yaml:"updates_check_minutes"`
+	UpdatesStaleThresholdMinutes float64 `yaml:"updates_stale_threshold_minutes"`
+	HistoryWindowMinutes         float64 `yaml:"history_window_minutes"`
+	HistoryPersistEnabled        bool    `yaml:"history_persist_enabled"`
+	DataDir                      string  `yaml:"data_dir"`
+	NetworkEnabled               bool    `yaml:"network_enabled"`
+	DistroInfoEnabled            bool    `yaml:"distro_info_enabled"`
+	PiModelEnabled               bool    `yaml:"pi_model_enabled"`
+	APIKey                       string  `yaml:"api_key"`
+	// HealthzMaxStalenessSeconds bounds how old the latest collected
+	// snapshot may be before GET /healthz reports unhealthy. Zero (the
+	// default) computes the bound automatically as a multiple of
+	// PollIntervalSeconds instead of a fixed value, so it stays sensible
+	// across very different poll intervals — see HealthzMaxStaleness.
+	HealthzMaxStalenessSeconds float64    `yaml:"healthz_max_staleness_seconds"`
+	Thresholds                 Thresholds `yaml:"thresholds"`
+	Alerts                     Alerts     `yaml:"alerts"`
 }
 
 // Default returns PiMonitor's built-in default configuration.
@@ -119,6 +125,7 @@ func Default() Config {
 		DistroInfoEnabled:            true,
 		PiModelEnabled:               true,
 		APIKey:                       "",
+		HealthzMaxStalenessSeconds:   0,
 		Thresholds: Thresholds{
 			TemperatureWarnC:  60,
 			TemperatureCritC:  75,
@@ -163,6 +170,26 @@ func (c Config) SlowInterval() time.Duration {
 // flagged as stale.
 func (c Config) UpdatesStaleThreshold() time.Duration {
 	return time.Duration(c.UpdatesStaleThresholdMinutes * float64(time.Minute))
+}
+
+// healthzStalenessMultiple is how many fast-poll intervals GET /healthz
+// tolerates before reporting unhealthy when HealthzMaxStalenessSeconds is
+// left at its default (0). Three ticks allows for one missed/slow
+// collection cycle without flapping the health check, while still catching
+// a genuinely stalled collector goroutine well before an operator would
+// notice via stale dashboard data.
+const healthzStalenessMultiple = 3
+
+// HealthzMaxStaleness is how old the latest collected snapshot may be
+// before GET /healthz reports unhealthy instead of the static 200 ok.
+// HealthzMaxStalenessSeconds set to a positive value is used as-is;
+// left at its default of 0, the bound is derived from the poll interval
+// instead of a fixed constant, so it scales with FastInterval.
+func (c Config) HealthzMaxStaleness() time.Duration {
+	if c.HealthzMaxStalenessSeconds > 0 {
+		return time.Duration(c.HealthzMaxStalenessSeconds * float64(time.Second))
+	}
+	return healthzStalenessMultiple * c.FastInterval()
 }
 
 // HistoryWindow is the rolling window of history retained per metric
@@ -237,6 +264,9 @@ func (c Config) Validate() error {
 	}
 	if !validLogLevels[c.LogLevel] {
 		return fmt.Errorf("log_level must be one of debug, info, warn, error (got %q)", c.LogLevel)
+	}
+	if c.HealthzMaxStalenessSeconds < 0 {
+		return fmt.Errorf("healthz_max_staleness_seconds must be >= 0 (got %v)", c.HealthzMaxStalenessSeconds)
 	}
 	if err := c.Thresholds.validate(); err != nil {
 		return err

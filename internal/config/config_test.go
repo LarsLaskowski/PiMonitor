@@ -61,6 +61,26 @@ func TestDurationHelpers(t *testing.T) {
 	}
 }
 
+func TestHealthzMaxStaleness_DefaultsToMultipleOfPollInterval(t *testing.T) {
+	cfg := Default()
+	cfg.PollIntervalSeconds = 5
+	cfg.HealthzMaxStalenessSeconds = 0
+
+	if got, want := cfg.HealthzMaxStaleness(), 15*time.Second; got != want {
+		t.Fatalf("HealthzMaxStaleness() = %v, want %v (3x poll interval)", got, want)
+	}
+}
+
+func TestHealthzMaxStaleness_ExplicitValueOverridesDefault(t *testing.T) {
+	cfg := Default()
+	cfg.PollIntervalSeconds = 5
+	cfg.HealthzMaxStalenessSeconds = 42
+
+	if got, want := cfg.HealthzMaxStaleness(), 42*time.Second; got != want {
+		t.Fatalf("HealthzMaxStaleness() = %v, want %v", got, want)
+	}
+}
+
 func TestHistoryCapacity_ZeroPollInterval(t *testing.T) {
 	cfg := Default()
 	cfg.PollIntervalSeconds = 0
@@ -298,6 +318,7 @@ func TestValidate_RejectsBadValues(t *testing.T) {
 		{"persistence enabled with empty data dir", func(c *Config) { c.HistoryPersistEnabled = true; c.DataDir = "" }},
 		{"empty listen addr", func(c *Config) { c.ListenAddr = "" }},
 		{"unknown log level", func(c *Config) { c.LogLevel = "verbose" }},
+		{"negative healthz max staleness", func(c *Config) { c.HealthzMaxStalenessSeconds = -1 }},
 		{"negative temperature warn", func(c *Config) { c.Thresholds.TemperatureWarnC = -1 }},
 		{"temperature warn above crit", func(c *Config) { c.Thresholds.TemperatureWarnC = 90 }},
 		{"cpu warn above crit", func(c *Config) { c.Thresholds.CPUWarnPercent = 99 }},

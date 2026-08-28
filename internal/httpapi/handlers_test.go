@@ -64,6 +64,35 @@ func TestHandleHealthz(t *testing.T) {
 	}
 }
 
+func TestHandleHealthz_StaleSnapshotReportsUnhealthy(t *testing.T) {
+	s, fm := newTestServer(Config{HealthzMaxStaleness: 30 * time.Second})
+	fm.snapshot.Timestamp = time.Now().Add(-time.Hour)
+
+	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusServiceUnavailable)
+	}
+}
+
+func TestHandleHealthz_FreshSnapshotReportsHealthy(t *testing.T) {
+	s, fm := newTestServer(Config{HealthzMaxStaleness: 30 * time.Second})
+	fm.snapshot.Timestamp = time.Now()
+
+	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if rec.Body.String() != "ok" {
+		t.Fatalf("body = %q, want %q", rec.Body.String(), "ok")
+	}
+}
+
 func TestHandleMetrics(t *testing.T) {
 	s, _ := newTestServer(Config{})
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/metrics", nil)
