@@ -64,6 +64,46 @@ func TestHandleHealthz(t *testing.T) {
 	}
 }
 
+func TestHandleHealthz_SnapshotStaleness(t *testing.T) {
+	const maxStaleness = 30 * time.Second
+	// Exact-equality boundary ("age == maxStaleness") can't be pinned
+	// deterministically here: the check compares against real wall-clock
+	// time.Since, and the microseconds/milliseconds that elapse between
+	// setting fm.snapshot.Timestamp and the handler evaluating it would
+	// nondeterministically flip an exactly-at-bound age to just over it.
+	// A small, fixed margin on either side of the bound pins the handler's
+	// strict "age > max" (not ">=") semantics without that flakiness.
+	const margin = 100 * time.Millisecond
+
+	tests := []struct {
+		name     string
+		age      time.Duration
+		wantCode int
+	}{
+		{"snapshot far older than the bound", time.Hour, http.StatusServiceUnavailable},
+		{"fresh snapshot well within the bound", 0, http.StatusOK},
+		{"snapshot just within the bound", maxStaleness - margin, http.StatusOK},
+		{"snapshot just over the bound", maxStaleness + margin, http.StatusServiceUnavailable},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s, fm := newTestServer(Config{HealthzMaxStaleness: maxStaleness})
+			fm.snapshot.Timestamp = time.Now().Add(-tt.age)
+
+			req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+			rec := httptest.NewRecorder()
+			s.Handler().ServeHTTP(rec, req)
+
+			if rec.Code != tt.wantCode {
+				t.Fatalf("status = %d, want %d", rec.Code, tt.wantCode)
+			}
+			if tt.wantCode == http.StatusOK && rec.Body.String() != "ok" {
+				t.Fatalf("body = %q, want %q", rec.Body.String(), "ok")
+			}
+		})
+	}
+}
+
 func TestHandleMetrics(t *testing.T) {
 	s, _ := newTestServer(Config{})
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/metrics", nil)

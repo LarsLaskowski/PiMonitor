@@ -70,6 +70,11 @@ type Config struct {
 	// header) to access /api/v1/... endpoints. Leave empty to keep the
 	// dashboard usable without authentication on a trusted LAN.
 	APIKey string
+	// HealthzMaxStaleness bounds how old MetricsProvider.Snapshot().Timestamp
+	// may be before GET /healthz reports unhealthy (503) instead of the
+	// static 200 ok. Zero disables the staleness check entirely, so
+	// /healthz stays a pure liveness probe unless a caller opts in.
+	HealthzMaxStaleness time.Duration
 	// Client is echoed back verbatim by GET /api/v1/config.
 	Client ClientConfig
 }

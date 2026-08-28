@@ -74,9 +74,10 @@ func run(args []string) error {
 	}
 
 	server := httpapi.New(coll, httpapi.Config{
-		ListenAddr: cfg.ListenAddr,
-		APIKey:     cfg.APIKey,
-		Client:     clientConfig(cfg, version),
+		ListenAddr:          cfg.ListenAddr,
+		APIKey:              cfg.APIKey,
+		HealthzMaxStaleness: cfg.HealthzMaxStaleness(collector.WorstCaseTickOverhead),
+		Client:              clientConfig(cfg, version),
 	}, staticHandler, log)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)

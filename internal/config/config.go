@@ -88,20 +88,26 @@ type Webhook struct {
 
 // Config is PiMonitor's full runtime configuration.
 type Config struct {
-	ListenAddr                   string     `yaml:"listen_addr"`
-	LogLevel                     string     `yaml:"log_level"`
-	PollIntervalSeconds          float64    `yaml:"poll_interval_seconds"`
-	UpdatesCheckMinutes          float64    `yaml:"updates_check_minutes"`
-	UpdatesStaleThresholdMinutes float64    `yaml:"updates_stale_threshold_minutes"`
-	HistoryWindowMinutes         float64    `yaml:"history_window_minutes"`
-	HistoryPersistEnabled        bool       `yaml:"history_persist_enabled"`
-	DataDir                      string     `yaml:"data_dir"`
-	NetworkEnabled               bool       `yaml:"network_enabled"`
-	DistroInfoEnabled            bool       `yaml:"distro_info_enabled"`
-	PiModelEnabled               bool       `yaml:"pi_model_enabled"`
-	APIKey                       string     `yaml:"api_key"`
-	Thresholds                   Thresholds `yaml:"thresholds"`
-	Alerts                       Alerts     `yaml:"alerts"`
+	ListenAddr                   string  `yaml:"listen_addr"`
+	LogLevel                     string  `yaml:"log_level"`
+	PollIntervalSeconds          float64 `yaml:"poll_interval_seconds"`
+	UpdatesCheckMinutes          float64 `yaml:"updates_check_minutes"`
+	UpdatesStaleThresholdMinutes float64 `yaml:"updates_stale_threshold_minutes"`
+	HistoryWindowMinutes         float64 `yaml:"history_window_minutes"`
+	HistoryPersistEnabled        bool    `yaml:"history_persist_enabled"`
+	DataDir                      string  `yaml:"data_dir"`
+	NetworkEnabled               bool    `yaml:"network_enabled"`
+	DistroInfoEnabled            bool    `yaml:"distro_info_enabled"`
+	PiModelEnabled               bool    `yaml:"pi_model_enabled"`
+	APIKey                       string  `yaml:"api_key"`
+	// HealthzMaxStalenessSeconds bounds how old the latest collected
+	// snapshot may be before GET /healthz reports unhealthy. Zero (the
+	// default) computes the bound automatically as a multiple of
+	// PollIntervalSeconds instead of a fixed value, so it stays sensible
+	// across very different poll intervals — see HealthzMaxStaleness.
+	HealthzMaxStalenessSeconds float64    `yaml:"healthz_max_staleness_seconds"`
+	Thresholds                 Thresholds `yaml:"thresholds"`
+	Alerts                     Alerts     `yaml:"alerts"`
 }
 
 // Default returns PiMonitor's built-in default configuration.
@@ -119,6 +125,7 @@ func Default() Config {
 		DistroInfoEnabled:            true,
 		PiModelEnabled:               true,
 		APIKey:                       "",
+		HealthzMaxStalenessSeconds:   0,
 		Thresholds: Thresholds{
 			TemperatureWarnC:  60,
 			TemperatureCritC:  75,
@@ -163,6 +170,36 @@ func (c Config) SlowInterval() time.Duration {
 // flagged as stale.
 func (c Config) UpdatesStaleThreshold() time.Duration {
 	return time.Duration(c.UpdatesStaleThresholdMinutes * float64(time.Minute))
+}
+
+// healthzStalenessMultiple is how many fast-poll intervals GET /healthz
+// tolerates before reporting unhealthy when HealthzMaxStalenessSeconds is
+// left at its default (0). Three ticks allows for one missed/slow
+// collection cycle without flapping the health check, while still catching
+// a genuinely stalled collector goroutine well before an operator would
+// notice via stale dashboard data.
+const healthzStalenessMultiple = 3
+
+// HealthzMaxStaleness is how old the latest collected snapshot may be
+// before GET /healthz reports unhealthy instead of the static 200 ok.
+// HealthzMaxStalenessSeconds set to a positive value is used as-is
+// (Validate requires it be >= PollIntervalSeconds). Left at its default of
+// 0, the bound is derived instead of a fixed constant: healthzStalenessMultiple
+// intervals plus 2*tickOverhead. The 2x accounts for how the collector
+// publishes its snapshot timestamp only when a tick completes (not when it
+// starts), so immediately before a tick publishes, the visible age can
+// reach one in-flight tick's duration plus the one still queued behind it.
+// tickOverhead should be collector.WorstCaseTickOverhead in production, the
+// most a single tick may legitimately run over instant reads (hung
+// firmware calls, a stalled mount) without the collector actually being
+// stuck; this package cannot import collector directly (collector already
+// imports config for Thresholds), so the caller supplies it. Tests that
+// don't care about tick timing may pass 0.
+func (c Config) HealthzMaxStaleness(tickOverhead time.Duration) time.Duration {
+	if c.HealthzMaxStalenessSeconds > 0 {
+		return time.Duration(c.HealthzMaxStalenessSeconds * float64(time.Second))
+	}
+	return healthzStalenessMultiple*c.FastInterval() + 2*tickOverhead
 }
 
 // HistoryWindow is the rolling window of history retained per metric
@@ -237,6 +274,12 @@ func (c Config) Validate() error {
 	}
 	if !validLogLevels[c.LogLevel] {
 		return fmt.Errorf("log_level must be one of debug, info, warn, error (got %q)", c.LogLevel)
+	}
+	if c.HealthzMaxStalenessSeconds < 0 {
+		return fmt.Errorf("healthz_max_staleness_seconds must be >= 0 (got %v)", c.HealthzMaxStalenessSeconds)
+	}
+	if c.HealthzMaxStalenessSeconds > 0 && c.HealthzMaxStalenessSeconds < c.PollIntervalSeconds {
+		return fmt.Errorf("healthz_max_staleness_seconds (%v) must be >= poll_interval_seconds (%v), or /healthz reports unhealthy permanently", c.HealthzMaxStalenessSeconds, c.PollIntervalSeconds)
 	}
 	if err := c.Thresholds.validate(); err != nil {
 		return err

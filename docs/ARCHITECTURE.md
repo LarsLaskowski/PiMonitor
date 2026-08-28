@@ -288,6 +288,28 @@ API-key-gated routes — `GET /api/v1/metrics`, `GET /api/v1/metrics/history`,
 via the `staticHandler` passed into `New` (`nil` in tests, to exercise the API layer
 without the frontend). See [`API.md`](API.md) for the full response schemas.
 
+`/healthz` is a liveness check, not just a process-alive probe: `handleHealthz`
+(`handlers.go`) also compares `now - MetricsProvider.Snapshot().Timestamp` against
+`Config.HealthzMaxStaleness` and returns `503` when the latest snapshot is older than
+that bound — e.g. the collector goroutine has stalled while the HTTP server is still
+serving requests. `Config.HealthzMaxStaleness` is zero (the check disabled) unless the
+caller sets it; `main.go` always sets it from
+`config.Config.HealthzMaxStaleness(collector.WorstCaseTickOverhead)`.
+
+Left at its default (`healthz_max_staleness_seconds: 0`), that bound is `3 *
+poll_interval_seconds + 2 * collector.WorstCaseTickOverhead`, not just the poll
+interval alone: `Collector.fastTick` (`collector.go`) publishes `latest.Timestamp`
+only when a tick *completes*, sequentially running collectors that themselves
+degrade via timeout rather than fail fast — `TemperatureCollector`/`ThrottledCollector`
+each bound a hung `vcgencmd` call at `vcgencmdTimeout`, `DiskCollector` bounds a
+stalled `statfs` at `defaultStatfsTimeout` — so a single legitimately slow tick can
+already take `collector.WorstCaseTickOverhead`, and the timestamp visible right
+before the *next* tick publishes can lag by up to twice that. Ignoring this would
+make `/healthz` flap unhealthy on a Pi whose only problem is slow firmware calls,
+exactly the failure mode `internal/config` cannot compute for itself: it cannot
+import `collector` (which already imports `config` for `Thresholds`), so `main.go`
+is where the two are combined.
+
 **`MetricsProvider` is a narrow interface** (`Snapshot() / History() / HistoryGeneration()
 / Alerts()`) implemented by `*collector.Collector`, so `httpapi` can be unit-tested
 against a fake implementation (see `handlers_test.go`) entirely independent of real
