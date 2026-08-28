@@ -1,3 +1,10 @@
+// The tests in this file bind a real TCP socket rather than following
+// docs/TESTS.md's httptest.NewRecorder()/s.Handler().ServeHTTP(...)
+// convention, because that convention has no way to exercise which of
+// ListenAndServe/ListenAndServeTLS actually gets called — the branch under
+// test here is the network-level choice itself, not request routing or
+// middleware. Do not take this file as the template for a handler test;
+// use handlers_test.go's newTestServer + Handler().ServeHTTP for that.
 package httpapi
 
 import (
@@ -66,11 +73,22 @@ func freeAddr(t *testing.T) string {
 	return addr
 }
 
-func waitUntilUp(t *testing.T, dial func() error) {
+// waitUntilUp polls dial until it succeeds or the deadline passes. errCh is
+// the server's ListenAndServe/ListenAndServeTLS result: if the server
+// already exited (e.g. an unreadable cert pair, or freeAddr's reserved port
+// getting taken by another process before the server could bind it), that
+// is the actual failure and is reported immediately instead of masking it
+// behind a generic "did not come up in time" timeout.
+func waitUntilUp(t *testing.T, errCh <-chan error, dial func() error) {
 	t.Helper()
 	deadline := time.Now().Add(2 * time.Second)
 	var lastErr error
 	for time.Now().Before(deadline) {
+		select {
+		case err := <-errCh:
+			t.Fatalf("server stopped before it came up: %v", err)
+		default:
+		}
 		if err := dial(); err == nil {
 			return
 		} else {
@@ -94,7 +112,7 @@ func TestListenAndServe_TLSConfigured(t *testing.T) {
 		_ = s.Shutdown(ctx)
 	}()
 
-	waitUntilUp(t, func() error {
+	waitUntilUp(t, errCh, func() error {
 		conn, err := tls.Dial("tcp", addr, &tls.Config{InsecureSkipVerify: true})
 		if err != nil {
 			return err
@@ -122,7 +140,8 @@ func TestListenAndServe_PlainHTTPByDefault(t *testing.T) {
 	addr := freeAddr(t)
 	s, _ := newTestServer(Config{ListenAddr: addr})
 
-	go func() { _ = s.ListenAndServe() }()
+	errCh := make(chan error, 1)
+	go func() { errCh <- s.ListenAndServe() }()
 	defer func() {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 		defer cancel()
@@ -130,7 +149,7 @@ func TestListenAndServe_PlainHTTPByDefault(t *testing.T) {
 	}()
 
 	client := http.Client{Timeout: 500 * time.Millisecond}
-	waitUntilUp(t, func() error {
+	waitUntilUp(t, errCh, func() error {
 		resp, err := client.Get("http://" + addr + "/healthz")
 		if err != nil {
 			return err
