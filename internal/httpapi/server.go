@@ -70,6 +70,11 @@ type Config struct {
 	// header) to access /api/v1/... endpoints. Leave empty to keep the
 	// dashboard usable without authentication on a trusted LAN.
 	APIKey string
+	// AccessLogEnabled toggles the per-request debug log line withLogging
+	// emits. See config.Config.AccessLogEnabled; it does not affect the
+	// in-memory counters served by GET /api/v1/serverstats, which are
+	// always recorded.
+	AccessLogEnabled bool
 	// HealthzMaxStaleness bounds how old MetricsProvider.Snapshot().Timestamp
 	// may be before GET /healthz reports unhealthy (503) instead of the
 	// static 200 ok. Zero disables the staleness check entirely, so
@@ -97,6 +102,11 @@ type Server struct {
 	// limit bounds total concurrent API work, not each endpoint separately.
 	inFlight chan struct{}
 
+	// stats holds in-memory counters of PiMonitor's own HTTP traffic,
+	// recorded by withLogging on every request regardless of
+	// cfg.AccessLogEnabled and served by GET /api/v1/serverstats.
+	stats *serverStats
+
 	// historyCacheMu guards the historyCache* fields below. historyCacheData
 	// is the deep copy History() returned for historyCacheGen (served, sliced,
 	// to ?since= requests); historyCacheJSON is its full-window encoding, built
@@ -115,7 +125,7 @@ func New(metrics MetricsProvider, cfg Config, staticHandler http.Handler, log *s
 	if log == nil {
 		log = slog.Default()
 	}
-	s := &Server{metrics: metrics, cfg: cfg, log: log, inFlight: make(chan struct{}, defaultMaxInFlight)}
+	s := &Server{metrics: metrics, cfg: cfg, log: log, inFlight: make(chan struct{}, defaultMaxInFlight), stats: newServerStats()}
 
 	mux := http.NewServeMux()
 	// /healthz and the static dashboard assets are intentionally not wrapped
@@ -127,6 +137,7 @@ func New(metrics MetricsProvider, cfg Config, staticHandler http.Handler, log *s
 	mux.Handle("GET /api/v1/metrics/history", s.apiRoute(s.handleHistory))
 	mux.Handle("GET /api/v1/alerts", s.apiRoute(s.handleAlerts))
 	mux.Handle("GET /api/v1/config", s.apiRoute(s.handleConfig))
+	mux.Handle("GET /api/v1/serverstats", s.apiRoute(s.handleServerStats))
 	if staticHandler != nil {
 		mux.Handle("/", staticHandler)
 	}
@@ -142,7 +153,7 @@ func New(metrics MetricsProvider, cfg Config, staticHandler http.Handler, log *s
 }
 
 // apiRoute wraps a /api/v1/... handler in the common middleware chain shared
-// by all four routes, outermost first: withNoStore must run before withGzip
+// by all five routes, outermost first: withNoStore must run before withGzip
 // so its Cache-Control/Vary headers are set before withGzip mutates Vary
 // itself (Add, not Set, so neither clobbers the other).
 func (s *Server) apiRoute(h http.HandlerFunc) http.Handler {

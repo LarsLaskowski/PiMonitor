@@ -406,6 +406,51 @@ Notes:
   retains points. A client accumulating history from `?since=` deltas needs
   it to bound its local window to the same span the server keeps.
 
+### `GET /api/v1/serverstats`
+
+Returns in-memory counters of PiMonitor's own HTTP traffic: total requests
+served, broken down by response status class and by route. These are
+recorded for every request regardless of the `access_log_enabled` config
+setting (see [`packaging/pimonitor.example.yaml`](../packaging/pimonitor.example.yaml)),
+so request volume stays visible even with per-request debug logging turned
+off.
+
+```json
+{
+  "total": 143,
+  "by_status_class": {
+    "1xx": 0,
+    "2xx": 140,
+    "3xx": 0,
+    "4xx": 3,
+    "5xx": 0
+  },
+  "by_route": {
+    "/healthz": 12,
+    "/api/v1/metrics": 100,
+    "/api/v1/metrics/history": 20,
+    "/api/v1/alerts": 5,
+    "/api/v1/config": 3,
+    "/api/v1/serverstats": 1,
+    "other-api": 0,
+    "static": 2
+  }
+}
+```
+
+Notes:
+
+- Counters are process-lifetime totals, in-memory only: they start at zero
+  after every restart and are not persisted.
+- `by_route` covers every registered route by exact path; a request to any
+  other `/api/v1/...` path is counted under `other-api`, and any other path
+  (the dashboard's static assets) under `static` — this keeps the counter
+  set a fixed, bounded size regardless of what a client (or a scanner)
+  requests.
+- A request is only counted once its response has been fully written, so a
+  call to this endpoint never sees itself reflected in the numbers it
+  returns — a following call does.
+
 ## Example: polling with curl
 
 ```sh

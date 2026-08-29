@@ -19,6 +19,9 @@ func TestDefault(t *testing.T) {
 	if cfg.APIKey != "" {
 		t.Fatal("expected APIKey to default to empty (no auth)")
 	}
+	if !cfg.AccessLogEnabled {
+		t.Fatal("expected AccessLogEnabled to default to true")
+	}
 	if !cfg.HistoryPersistEnabled {
 		t.Fatal("expected HistoryPersistEnabled to default to true")
 	}
@@ -175,6 +178,21 @@ func TestLoad_TLSFromYAML(t *testing.T) {
 	}
 	if result.Config.TLSKeyFile != "/etc/pimonitor/key.pem" {
 		t.Fatalf("TLSKeyFile = %q, want /etc/pimonitor/key.pem", result.Config.TLSKeyFile)
+	}
+}
+
+func TestLoad_AccessLogEnabledFromYAML(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	writeFile(t, path, "access_log_enabled: false\n")
+
+	result, err := Load([]string{"-config", path})
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	if result.Config.AccessLogEnabled {
+		t.Fatal("expected AccessLogEnabled to be overridden to false")
 	}
 }
 

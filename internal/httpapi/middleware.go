@@ -12,19 +12,25 @@ import (
 	"time"
 )
 
-// withLogging logs every request's method, path, status code, and
-// duration at debug level.
+// withLogging records self-metrics for every request (see serverStats) and,
+// when cfg.AccessLogEnabled is true, also logs the request's method, path,
+// status code, and duration at debug level. The counters are recorded
+// unconditionally so GET /api/v1/serverstats keeps reporting request volume
+// even when per-request debug logging has been turned off.
 func (s *Server) withLogging(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
 		next.ServeHTTP(rec, r)
-		s.log.Debug("http request",
-			"method", r.Method,
-			"path", r.URL.Path,
-			"status", rec.status,
-			"duration", time.Since(start),
-		)
+		s.stats.record(routeBucket(r.URL.Path), rec.status)
+		if s.cfg.AccessLogEnabled {
+			s.log.Debug("http request",
+				"method", r.Method,
+				"path", r.URL.Path,
+				"status", rec.status,
+				"duration", time.Since(start),
+			)
+		}
 	})
 }
 

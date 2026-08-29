@@ -120,6 +120,7 @@ func serverConfig(cfg config.Config, version string) httpapi.Config {
 	return httpapi.Config{
 		ListenAddr:          cfg.ListenAddr,
 		APIKey:              cfg.APIKey,
+		AccessLogEnabled:    cfg.AccessLogEnabled,
 		TLSCertFile:         cfg.TLSCertFile,
 		TLSKeyFile:          cfg.TLSKeyFile,
 		HealthzMaxStaleness: cfg.HealthzMaxStaleness(collector.WorstCaseTickOverhead),

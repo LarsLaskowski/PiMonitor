@@ -8,6 +8,13 @@ listen_addr: ":8080"
 # debug, info, warn, or error.
 log_level: "info"
 
+# Whether every HTTP request is logged as a debug-level "http request" line
+# (method, path, status, duration). Defaults to true. Set to false to
+# silence per-request logging entirely, e.g. on a busy Pi where every
+# dashboard poll would otherwise add a debug line - request volume stays
+# visible via GET /api/v1/serverstats regardless of this setting.
+access_log_enabled: true
+
 # How often live metrics (CPU, load average, temperature, memory/swap,
 # disk, network) are sampled.
 poll_interval_seconds: 5
