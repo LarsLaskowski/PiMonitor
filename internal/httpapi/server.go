@@ -153,7 +153,7 @@ func New(metrics MetricsProvider, cfg Config, staticHandler http.Handler, log *s
 }
 
 // apiRoute wraps a /api/v1/... handler in the common middleware chain shared
-// by all four routes, outermost first: withNoStore must run before withGzip
+// by all five routes, outermost first: withNoStore must run before withGzip
 // so its Cache-Control/Vary headers are set before withGzip mutates Vary
 // itself (Add, not Set, so neither clobbers the other).
 func (s *Server) apiRoute(h http.HandlerFunc) http.Handler {

@@ -529,7 +529,7 @@ func TestHandleConfig(t *testing.T) {
 func TestHandleServerStats_CountsAcrossRoutesAndStatusClasses(t *testing.T) {
 	s, _ := newTestServer(Config{APIKey: "secret123"})
 
-	get := func(path string, apiKey string) int {
+	get := func(path, apiKey string) int {
 		req := httptest.NewRequest(http.MethodGet, path, nil)
 		if apiKey != "" {
 			req.Header.Set("X-Api-Key", apiKey)
