@@ -100,6 +100,14 @@ type Config struct {
 	DistroInfoEnabled            bool    `yaml:"distro_info_enabled"`
 	PiModelEnabled               bool    `yaml:"pi_model_enabled"`
 	APIKey                       string  `yaml:"api_key"`
+	// AccessLogEnabled toggles the per-request debug log line withLogging
+	// emits for every HTTP request. It is on by default, matching the
+	// pre-existing behaviour (that line has always been emitted, gated only
+	// by log_level); set it to false to silence per-request logging
+	// entirely, e.g. on a busy Pi where every dashboard poll would otherwise
+	// add a debug line. In-memory request counters (GET /api/v1/serverstats)
+	// keep working regardless of this setting.
+	AccessLogEnabled bool `yaml:"access_log_enabled"`
 	// TLSCertFile and TLSKeyFile, when both set, make the server listen with
 	// HTTPS (ListenAndServeTLS) instead of plain HTTP, for a single-Pi setup
 	// that doesn't want to stand up a separate reverse proxy for TLS. Leave
@@ -133,6 +141,7 @@ func Default() Config {
 		DistroInfoEnabled:            true,
 		PiModelEnabled:               true,
 		APIKey:                       "",
+		AccessLogEnabled:             true,
 		HealthzMaxStalenessSeconds:   0,
 		Thresholds: Thresholds{
 			TemperatureWarnC:  60,

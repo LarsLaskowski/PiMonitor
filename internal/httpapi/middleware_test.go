@@ -5,8 +5,10 @@ import (
 	"compress/gzip"
 	"encoding/json"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/larslaskowski/pimonitor/internal/collector"
@@ -52,6 +54,53 @@ func TestSecurityHeaders_SetOnUnauthorizedResponses(t *testing.T) {
 	}
 	if rec.Header().Get("Content-Security-Policy") == "" {
 		t.Error("Content-Security-Policy missing on 401 response")
+	}
+}
+
+// TestWithLogging_AccessLogToggle is the acceptance test for issue #43:
+// disabling access logging must suppress the per-request debug log line,
+// while leaving it enabled (the default) must keep emitting it.
+func TestWithLogging_AccessLogToggle(t *testing.T) {
+	tests := []struct {
+		name             string
+		accessLogEnabled bool
+		wantLogLine      bool
+	}{
+		{"enabled logs the request", true, true},
+		{"disabled suppresses the request", false, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			log := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+			s := New(&fakeMetrics{}, Config{AccessLogEnabled: tt.accessLogEnabled}, nil, log)
+
+			req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+			rec := httptest.NewRecorder()
+			s.Handler().ServeHTTP(rec, req)
+
+			gotLogLine := strings.Contains(buf.String(), "http request")
+			if gotLogLine != tt.wantLogLine {
+				t.Fatalf("access log line present = %v, want %v (log output: %q)", gotLogLine, tt.wantLogLine, buf.String())
+			}
+		})
+	}
+}
+
+// TestWithLogging_RecordsStatsRegardlessOfToggle guards the acceptance
+// criterion that self-metrics (GET /api/v1/serverstats) keep incrementing
+// even when access_log_enabled is false, since disabling the debug log line
+// is the whole reason to fall back on the counters.
+func TestWithLogging_RecordsStatsRegardlessOfToggle(t *testing.T) {
+	s := New(&fakeMetrics{}, Config{AccessLogEnabled: false}, nil, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+
+	if got := s.stats.snapshot().ByRoute["/healthz"]; got != 1 {
+		t.Fatalf("ByRoute[/healthz] = %d, want 1 even with AccessLogEnabled=false", got)
 	}
 }
 

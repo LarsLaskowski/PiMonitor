@@ -134,3 +134,13 @@ func (s *Server) handleAlerts(w http.ResponseWriter, _ *http.Request) {
 func (s *Server) handleConfig(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, s.log.Error, s.cfg.Client)
 }
+
+// handleServerStats serves GET /api/v1/serverstats: in-memory counters of
+// PiMonitor's own HTTP traffic (total requests, broken down by response
+// status class and by route), recorded by withLogging on every request.
+// These stay available even when access_log_enabled is false, since they
+// are the intended replacement for eyeballing request volume from the
+// per-request debug log lines.
+func (s *Server) handleServerStats(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, s.log.Error, s.stats.snapshot())
+}

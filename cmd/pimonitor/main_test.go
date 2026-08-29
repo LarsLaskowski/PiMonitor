@@ -31,6 +31,7 @@ func TestServerConfig_MapsFields(t *testing.T) {
 	cfg := config.Config{
 		ListenAddr:                 ":9443",
 		APIKey:                     "secret",
+		AccessLogEnabled:           false,
 		TLSCertFile:                "/etc/pimonitor/cert.pem",
 		TLSKeyFile:                 "/etc/pimonitor/key.pem",
 		PollIntervalSeconds:        5,
@@ -44,6 +45,9 @@ func TestServerConfig_MapsFields(t *testing.T) {
 	}
 	if got.APIKey != "secret" {
 		t.Errorf("APIKey = %q, want secret", got.APIKey)
+	}
+	if got.AccessLogEnabled {
+		t.Errorf("AccessLogEnabled = true, want false (mapped from cfg.AccessLogEnabled)")
 	}
 	if got.TLSCertFile != "/etc/pimonitor/cert.pem" {
 		t.Errorf("TLSCertFile = %q, want /etc/pimonitor/cert.pem", got.TLSCertFile)

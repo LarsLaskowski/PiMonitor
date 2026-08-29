@@ -523,6 +523,90 @@ func TestHandleConfig(t *testing.T) {
 	}
 }
 
+// TestHandleServerStats_CountsAcrossRoutesAndStatusClasses is the
+// acceptance test for issue #43: counters must increment as expected under
+// httptest traffic, broken down both by route and by response status class.
+func TestHandleServerStats_CountsAcrossRoutesAndStatusClasses(t *testing.T) {
+	s, _ := newTestServer(Config{APIKey: "secret123"})
+
+	get := func(path string, apiKey string) int {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		if apiKey != "" {
+			req.Header.Set("X-Api-Key", apiKey)
+		}
+		rec := httptest.NewRecorder()
+		s.Handler().ServeHTTP(rec, req)
+		return rec.Code
+	}
+
+	if code := get("/healthz", ""); code != http.StatusOK {
+		t.Fatalf("GET /healthz status = %d, want 200", code)
+	}
+	if code := get("/api/v1/metrics", "secret123"); code != http.StatusOK {
+		t.Fatalf("GET /api/v1/metrics status = %d, want 200", code)
+	}
+	if code := get("/api/v1/metrics", "secret123"); code != http.StatusOK {
+		t.Fatalf("GET /api/v1/metrics status = %d, want 200", code)
+	}
+	// An unauthorized request still counts, at its actual 401 status.
+	if code := get("/api/v1/alerts", ""); code != http.StatusUnauthorized {
+		t.Fatalf("GET /api/v1/alerts without key status = %d, want 401", code)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/serverstats", nil)
+	req.Header.Set("X-Api-Key", "secret123")
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET /api/v1/serverstats status = %d, want 200", rec.Code)
+	}
+
+	var got serverStatsSnapshot
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+
+	// The 4 requests made above; a request's own counters are only recorded
+	// once its response has already been written (withLogging records after
+	// the handler returns), so this /api/v1/serverstats call can never see
+	// itself in the snapshot it returns.
+	if got.Total != 4 {
+		t.Fatalf("Total = %d, want 4", got.Total)
+	}
+	if got.ByRoute["/healthz"] != 1 {
+		t.Fatalf("ByRoute[/healthz] = %d, want 1", got.ByRoute["/healthz"])
+	}
+	if got.ByRoute["/api/v1/metrics"] != 2 {
+		t.Fatalf("ByRoute[/api/v1/metrics] = %d, want 2", got.ByRoute["/api/v1/metrics"])
+	}
+	if got.ByRoute["/api/v1/alerts"] != 1 {
+		t.Fatalf("ByRoute[/api/v1/alerts] = %d, want 1", got.ByRoute["/api/v1/alerts"])
+	}
+	if got.ByRoute["/api/v1/serverstats"] != 0 {
+		t.Fatalf("ByRoute[/api/v1/serverstats] = %d, want 0 (not yet recorded when this response was built)", got.ByRoute["/api/v1/serverstats"])
+	}
+	if got.ByStatusClass["2xx"] != 3 {
+		t.Fatalf("ByStatusClass[2xx] = %d, want 3", got.ByStatusClass["2xx"])
+	}
+	if got.ByStatusClass["4xx"] != 1 {
+		t.Fatalf("ByStatusClass[4xx] = %d, want 1", got.ByStatusClass["4xx"])
+	}
+}
+
+// TestHandleServerStats_GatedByAPIKey guards against the new endpoint
+// bypassing the same auth gating every other /api/v1/... route applies.
+func TestHandleServerStats_GatedByAPIKey(t *testing.T) {
+	s, _ := newTestServer(Config{APIKey: "secret123"})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/serverstats", nil)
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status without key = %d, want 401", rec.Code)
+	}
+}
+
 func TestAPIKey_RequiredWhenConfigured(t *testing.T) {
 	s, _ := newTestServer(Config{APIKey: "secret123"})
 

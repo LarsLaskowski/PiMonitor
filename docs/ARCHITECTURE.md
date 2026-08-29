@@ -230,7 +230,7 @@ reporting an alert that has actually cleared; only repeated *firings* are coales
 
 `httpapi.Server` wraps a single `http.ServeMux` behind two distinct middleware layers
 (`server.go`, `middleware.go`): a pair of wrappers around the whole mux, and a longer
-chain (`apiRoute`) applied individually to each of the four `/api/v1/...` handlers:
+chain (`apiRoute`) applied individually to each of the five `/api/v1/...` handlers:
 
 ```
 global:              withLogging(withSecurityHeaders(mux))
@@ -247,9 +247,14 @@ exactly why they are the routes not gated by `withAPIKey`, not rate-limited by
   can be this strict specifically because the dashboard is fully self-contained — all
   scripts/styles are same-origin embedded files and the favicon is a `data:` URI, hence
   the narrow `img-src 'self' data:'` allowance.
-- **`withLogging`**: logs method/path/status/duration at debug level via a
-  `statusRecorder` wrapper that captures the status code a downstream handler wrote (not
-  otherwise exposed by `http.ResponseWriter`).
+- **`withLogging`**: via a `statusRecorder` wrapper that captures the status code a
+  downstream handler wrote (not otherwise exposed by `http.ResponseWriter`), always
+  records the request in `serverStats` (`serverstats.go`) — total count, response status
+  class, and route, bucketed by `routeBucket` to keep the counter set a fixed size
+  regardless of what path a client requests — and, when `cfg.AccessLogEnabled` is true
+  (the default), also logs method/path/status/duration at debug level. Setting
+  `access_log_enabled: false` in the config file silences the debug line while leaving
+  the counters, served via `GET /api/v1/serverstats`, unaffected — see issue #43.
 - **`withAPIKey`**: gates every `/api/v1/...` route (but not `/healthz`, so external
   health checks work regardless of auth configuration) when `cfg.APIKey` is set. The
   provided key (from `X-Api-Key` or `Authorization: Bearer`) and the configured key are
@@ -262,11 +267,11 @@ exactly why they are the routes not gated by `withAPIKey`, not rate-limited by
   does, it sets `Content-Encoding: gzip`, drops the now-stale `Content-Length`, and appends
   (`Header.Add`, not `Set`) `Vary: Accept-Encoding` so it doesn't clobber the `Vary` values
   `withNoStore` already set. The underlying `gzip.Writer`s come from a `sync.Pool` rather
-  than being allocated per request, since all four `/api/v1/...` endpoints are polled every
+  than being allocated per request, since all five `/api/v1/...` endpoints are polled every
   few seconds. A client that doesn't negotiate gzip gets an unmodified identity response,
   so `withGzip` stays backwards compatible for naive `/api/v1` consumers — see
   [`API.md`](API.md#compression) for the wire-level contract.
-- **`withMaxInFlight`**: wraps each of the four `/api/v1/...` routes (not `/healthz` or
+- **`withMaxInFlight`**: wraps each of the five `/api/v1/...` routes (not `/healthz` or
   the static dashboard) in a shared semaphore of capacity `defaultMaxInFlight` (16). A
   request beyond the limit gets `503 Service Unavailable` with `Retry-After: 1` instead of
   being queued indefinitely. This bounds worst-case concurrent CPU/memory on a Pi Zero: an
@@ -274,7 +279,7 @@ exactly why they are the routes not gated by `withAPIKey`, not rate-limited by
   below) can no longer multiply without limit. `/healthz` is deliberately excluded so a
   monitoring system can still tell the process is alive while the API is shedding load.
 - **`withNoStore`**: sets `Cache-Control: no-store` plus `Vary: Authorization` /
-  `Vary: X-Api-Key` on each of the four `/api/v1/...` routes, outermost in the chain so the
+  `Vary: X-Api-Key` on each of the five `/api/v1/...` routes, outermost in the chain so the
   headers land before anything downstream writes (including on a `401` from `withAPIKey`).
   Metric/alert/config responses are point-in-time and, when `cfg.APIKey` is set,
   credential-protected — a shared cache such as a reverse proxy fronting the Pi must not
@@ -282,11 +287,12 @@ exactly why they are the routes not gated by `withAPIKey`, not rate-limited by
   `Header.Add` rather than `Header.Set` for its own `Vary` value so it appends to, rather
   than clobbers, the `Vary` values `withNoStore` already set.
 
-**Routes**: `GET /healthz` (plain-text liveness, never gated), and four versioned,
+**Routes**: `GET /healthz` (plain-text liveness, never gated), and five versioned,
 API-key-gated routes — `GET /api/v1/metrics`, `GET /api/v1/metrics/history`,
-`GET /api/v1/alerts`, `GET /api/v1/config` — plus `GET /` serving the embedded dashboard
-via the `staticHandler` passed into `New` (`nil` in tests, to exercise the API layer
-without the frontend). See [`API.md`](API.md) for the full response schemas.
+`GET /api/v1/alerts`, `GET /api/v1/config`, `GET /api/v1/serverstats` — plus `GET /`
+serving the embedded dashboard via the `staticHandler` passed into `New` (`nil` in
+tests, to exercise the API layer without the frontend). See [`API.md`](API.md) for the
+full response schemas.
 
 `/healthz` is a liveness check, not just a process-alive probe: `handleHealthz`
 (`handlers.go`) also compares `now - MetricsProvider.Snapshot().Timestamp` against
