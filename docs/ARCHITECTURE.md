@@ -250,7 +250,13 @@ counters from it. Those three used to be separate lists, and a route added to on
 first got no bucket of its own: its requests fell into whichever shared fallback matched
 the path — `other-api` under `/api/v1/`, `static` otherwise — so
 `GET /api/v1/serverstats` misattributed them. That is how `GET /metrics` scrapes came to
-be counted as dashboard-asset traffic. Bucketing deliberately ignores the
+be counted as dashboard-asset traffic. The per-metric sub-resources are part of that
+same table: they are generated from `metricsSubResources` (also `routes.go`), a list of
+snapshot field name/accessor pairs that `routeTable` is built by appending, so each one
+gets its route, its middleware chain and its own counter bucket from a single entry —
+and, because the accessor returns the snapshot field itself, its response can never
+become a second representation of a metric that drifts from `GET /api/v1/metrics`.
+Bucketing deliberately ignores the
 predicate, so the response shape does not vary with configuration and a request to a
 disabled route is still visible under its own key with a matching `4xx` — the bucket
 comes from the request path, not from which handler (or the mux's `404` fallback) served
@@ -282,7 +288,7 @@ the request.
   does, it sets `Content-Encoding: gzip`, drops the now-stale `Content-Length`, and appends
   (`Header.Add`, not `Set`) `Vary: Accept-Encoding` so it doesn't clobber the `Vary` values
   `withNoStore` already set. The underlying `gzip.Writer`s come from a `sync.Pool` rather
-  than being allocated per request, since all five `/api/v1/...` endpoints are polled every
+  than being allocated per request, since the `/api/v1/...` endpoints are polled every
   few seconds. A client that doesn't negotiate gzip gets an unmodified identity response,
   so `withGzip` stays backwards compatible for naive `/api/v1` consumers — see
   [`API.md`](API.md#compression) for the wire-level contract.
@@ -304,9 +310,11 @@ the request.
 
 **Routes** (every exact-path route below comes from `routeTable`; the catch-all does
 not): `GET /healthz` (plain-text liveness, never
-gated), five versioned, API-key-gated routes — `GET /api/v1/metrics`,
+gated), the versioned, API-key-gated routes — `GET /api/v1/metrics`,
 `GET /api/v1/metrics/history`, `GET /api/v1/alerts`, `GET /api/v1/config`,
-`GET /api/v1/serverstats` — and `GET /metrics`, registered only when
+`GET /api/v1/serverstats`, plus one per-metric sub-resource of the snapshot
+(`GET /api/v1/metrics/cpu`, `/temperature`, `/memory`, `/disks`, `/network`,
+`/updates`) — and `GET /metrics`, registered only when
 `prometheus_enabled` is set but gated the same way, plus `GET /` serving the embedded
 dashboard via the `staticHandler` passed into `New` (`nil` in tests, to exercise the API
 layer without the frontend). See [`API.md`](API.md) for the

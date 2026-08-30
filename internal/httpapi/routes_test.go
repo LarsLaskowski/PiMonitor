@@ -1,10 +1,14 @@
 package httpapi
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/larslaskowski/pimonitor/internal/collector"
 )
 
 // TestRouteTable_PathsAreUnique guards the assumption both routeBucket and
@@ -104,5 +108,142 @@ func TestRouteTable_VersionedRoutesGoThroughAPIRoute(t *testing.T) {
 				t.Fatalf("%s %s without credentials = %d, want 401", rt.method, rt.path, rec.Code)
 			}
 		})
+	}
+}
+
+// fullSubResourceSnapshot is a snapshot with every field a metrics
+// sub-resource serves populated with a distinct, non-zero value, so a
+// handler wired to the wrong field can't pass by coincidence.
+func fullSubResourceSnapshot() collector.Snapshot {
+	return collector.Snapshot{
+		Timestamp:     time.Date(2026, 7, 13, 12, 0, 0, 0, time.UTC),
+		UptimeSeconds: 372014.5,
+		CPU:           collector.CPUUsage{OverallPercent: 12.4, PerCorePercent: []float64{10.1, 14.8, 11.2, 13.5}},
+		Load:          collector.LoadAverage{Load1: 0.4, Load5: 0.38, Load15: 0.31},
+		CPUCount:      4,
+		Temperature:   collector.Temperature{Zone: "cpu-thermal", Celsius: 48.1},
+		Memory:        collector.Memory{TotalBytes: 4127195136, AvailableBytes: 2893406208, UsedPercent: 29.9},
+		Swap:          collector.Swap{TotalBytes: 104853504, UsedBytes: 0, UsedPercent: 0},
+		Disks: []collector.Disk{{
+			Mountpoint: "/", Device: "/dev/mmcblk0p2", FSType: "ext4",
+			TotalBytes: 31036735488, UsedBytes: 8007122944, UsedPercent: 25.8,
+		}},
+		Network: []collector.NetworkInterface{{Name: "eth0", RxBytesPerSec: 1240.5, TxBytesPerSec: 302.1}},
+		System:  collector.SystemInfo{KernelVersion: "6.1.0", Distribution: "Raspberry Pi OS", PiModel: "Raspberry Pi 4 Model B"},
+		Updates: collector.Updates{
+			Count:           3,
+			Packages:        []collector.PackageUpdate{{Name: "openssl", NewVersion: "3.0.11-1", OldVersion: "3.0.9-1", Arch: "arm64"}},
+			CacheAgeSeconds: 7200,
+			CheckedAt:       time.Date(2026, 7, 13, 10, 0, 0, 0, time.UTC),
+		},
+	}
+}
+
+// TestMetricsSubResources_MatchFullSnapshot is the acceptance test for the
+// per-metric endpoints (issue #8): each must return exactly the
+// correspondingly named sub-object of GET /api/v1/metrics, so integrators
+// polling a single metric parse the same JSON they already do — not a
+// second, drift-prone representation of it. Comparing raw bytes against the
+// full snapshot's own field, rather than against a hand-written expectation,
+// is what makes that hold automatically as the snapshot's structs evolve.
+func TestMetricsSubResources_MatchFullSnapshot(t *testing.T) {
+	s, fm := newTestServer(Config{})
+	fm.snapshot = fullSubResourceSnapshot()
+
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/metrics", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET /api/v1/metrics = %d, want 200", rec.Code)
+	}
+	var full map[string]json.RawMessage
+	if err := json.Unmarshal(rec.Body.Bytes(), &full); err != nil {
+		t.Fatalf("unmarshal /api/v1/metrics: %v", err)
+	}
+
+	for _, sub := range metricsSubResources {
+		t.Run(sub.name, func(t *testing.T) {
+			want, ok := full[sub.name]
+			if !ok {
+				t.Fatalf("GET /api/v1/metrics has no %q field; a sub-resource must be named after the snapshot field it serves", sub.name)
+			}
+
+			rec := httptest.NewRecorder()
+			s.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, sub.path(), nil))
+			if rec.Code != http.StatusOK {
+				t.Fatalf("GET %s = %d, want 200", sub.path(), rec.Code)
+			}
+			const wantType = "application/json; charset=utf-8"
+			if got := rec.Header().Get(contentTypeHeader); got != wantType {
+				t.Fatalf("GET %s Content-Type = %q, want %q", sub.path(), got, wantType)
+			}
+			// Both bodies are produced by the same encoder over the same
+			// struct, so field order matches and an exact byte comparison is
+			// the strongest available statement of "the same JSON".
+			if got := strings.TrimSpace(rec.Body.String()); got != string(want) {
+				t.Fatalf("GET %s body = %s, want %s (the %q field of /api/v1/metrics)", sub.path(), got, want, sub.name)
+			}
+		})
+	}
+}
+
+// TestMetricsSubResources_NoData pins what a sub-resource serves when its
+// field holds nothing — before the first collection tick, or for network
+// with network monitoring switched off. Never a 404: the endpoint exists and
+// is answering, and a 404 would be indistinguishable from a misspelled path.
+// What it does serve follows the field's type, since the body is the field's
+// own encoding: a nil slice is null (the full snapshot either omits such a
+// key via omitempty or reports null for it, but a sub-resource has no key to
+// omit), while a struct degrades to its zero value, exactly as it does
+// inside the full snapshot. docs/API.md documents both halves, so both are
+// pinned here.
+func TestMetricsSubResources_NoData(t *testing.T) {
+	tests := []struct {
+		path string
+		want string
+	}{
+		{path: "/api/v1/metrics/network", want: "null"},
+		{path: "/api/v1/metrics/disks", want: "null"},
+		{path: "/api/v1/metrics/temperature", want: `{"zone":"","celsius":0}`},
+		{path: "/api/v1/metrics/memory", want: `{"total_bytes":0,"available_bytes":0,"used_percent":0}`},
+	}
+
+	s, fm := newTestServer(Config{})
+	fm.snapshot = collector.Snapshot{}
+
+	for _, tt := range tests {
+		t.Run(tt.path, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			s.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, tt.path, nil))
+			if rec.Code != http.StatusOK {
+				t.Fatalf("GET %s = %d, want 200", tt.path, rec.Code)
+			}
+			if got := strings.TrimSpace(rec.Body.String()); got != tt.want {
+				t.Fatalf("GET %s body = %s, want %s", tt.path, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestMetricsSubResources_CountedUnderOwnStatsBucket checks the practical
+// consequence of the sub-resources being routeTable entries: their traffic
+// is attributable per endpoint in GET /api/v1/serverstats instead of
+// collapsing into the shared other-api bucket. The generic table invariant
+// is covered by TestRouteTable_EveryRouteHasItsOwnStatsBucket; this exercises
+// it through a real request.
+func TestMetricsSubResources_CountedUnderOwnStatsBucket(t *testing.T) {
+	s, _ := newTestServer(Config{})
+	for _, sub := range metricsSubResources {
+		rec := httptest.NewRecorder()
+		s.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, sub.path(), nil))
+	}
+
+	got := s.stats.snapshot()
+	for _, sub := range metricsSubResources {
+		if got.ByRoute[sub.path()] != 1 {
+			t.Errorf("ByRoute[%s] = %d, want 1", sub.path(), got.ByRoute[sub.path()])
+		}
+	}
+	if got.ByRoute[bucketOtherAPI] != 0 {
+		t.Errorf("ByRoute[%s] = %d, want 0 (sub-resource requests must not fall into the shared bucket)", bucketOtherAPI, got.ByRoute[bucketOtherAPI])
 	}
 }

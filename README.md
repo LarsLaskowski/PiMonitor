@@ -40,7 +40,9 @@ automation systems like openHAB). Runs as a systemd service.
 - **Light/dark theme toggle** - follows the OS setting by default, with a
   manual override remembered in the browser
 - A versioned REST API (`/api/v1/...`) for third-party consumers, with
-  optional API-key authentication and gzip-compressed responses - see
+  optional API-key authentication and gzip-compressed responses, including
+  per-metric endpoints (`/api/v1/metrics/temperature`, `/memory`, ...) for
+  integrations that only poll a single value - see
   [`docs/API.md`](docs/API.md)
 - **Prometheus `/metrics` endpoint** (optional, off by default) - the
   current snapshot in the Prometheus text exposition format, for scraping
@@ -412,6 +414,13 @@ example openHAB HTTP Binding configuration. Quick example:
 
 ```sh
 curl -s http://raspberrypi.local:8080/api/v1/metrics | jq '.cpu.overall_percent'
+```
+
+Integrations that only need one metric can poll its own endpoint instead of
+the full snapshot - the body is exactly that field of `/api/v1/metrics`:
+
+```sh
+curl -s http://raspberrypi.local:8080/api/v1/metrics/temperature
 ```
 
 `GET /healthz` is a lightweight, unauthenticated liveness endpoint - point
