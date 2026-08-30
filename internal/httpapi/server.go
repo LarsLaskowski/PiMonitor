@@ -86,6 +86,12 @@ type Config struct {
 	// rejecting the case where only one is set.
 	TLSCertFile string
 	TLSKeyFile  string
+	// PrometheusEnabled registers GET /metrics: the current snapshot
+	// rendered in the Prometheus text exposition format, for a Prometheus
+	// server to scrape directly. Left false (the default) the route isn't
+	// registered at all, so it 404s rather than existing-but-empty. See
+	// config.Config.PrometheusEnabled.
+	PrometheusEnabled bool
 	// Client is echoed back verbatim by GET /api/v1/config.
 	Client ClientConfig
 }
@@ -138,6 +144,9 @@ func New(metrics MetricsProvider, cfg Config, staticHandler http.Handler, log *s
 	mux.Handle("GET /api/v1/alerts", s.apiRoute(s.handleAlerts))
 	mux.Handle("GET /api/v1/config", s.apiRoute(s.handleConfig))
 	mux.Handle("GET /api/v1/serverstats", s.apiRoute(s.handleServerStats))
+	if cfg.PrometheusEnabled {
+		mux.Handle("GET /metrics", s.apiRoute(s.handlePrometheusMetrics))
+	}
 	if staticHandler != nil {
 		mux.Handle("/", staticHandler)
 	}
@@ -152,8 +161,9 @@ func New(metrics MetricsProvider, cfg Config, staticHandler http.Handler, log *s
 	return s
 }
 
-// apiRoute wraps a /api/v1/... handler in the common middleware chain shared
-// by all five routes, outermost first: withNoStore must run before withGzip
+// apiRoute wraps a /api/v1/... handler (and, when enabled, GET /metrics) in
+// the common middleware chain shared by every such route, outermost first:
+// withNoStore must run before withGzip
 // so its Cache-Control/Vary headers are set before withGzip mutates Vary
 // itself (Add, not Set, so neither clobbers the other).
 func (s *Server) apiRoute(h http.HandlerFunc) http.Handler {

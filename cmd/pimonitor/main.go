@@ -123,6 +123,7 @@ func serverConfig(cfg config.Config, version string) httpapi.Config {
 		AccessLogEnabled:    cfg.AccessLogEnabled,
 		TLSCertFile:         cfg.TLSCertFile,
 		TLSKeyFile:          cfg.TLSKeyFile,
+		PrometheusEnabled:   cfg.PrometheusEnabled,
 		HealthzMaxStaleness: cfg.HealthzMaxStaleness(collector.WorstCaseTickOverhead),
 		Client:              clientConfig(cfg, version),
 	}

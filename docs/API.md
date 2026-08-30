@@ -451,6 +451,70 @@ Notes:
   call to this endpoint never sees itself reflected in the numbers it
   returns — a following call does.
 
+### `GET /metrics` (Prometheus)
+
+Returns the current snapshot rendered in the
+[Prometheus text exposition format](https://prometheus.io/docs/instrumenting/exposition_formats/),
+for a Prometheus server to scrape directly instead of polling the JSON
+`GET /api/v1/metrics` endpoint. Unlike the rest of this document, this path
+is deliberately **not** under `/api/v1/...` — it is a different wire format
+entirely, not a versioned JSON contract.
+
+It is **off by default**: set `prometheus_enabled: true` in the config file
+(see [`packaging/pimonitor.example.yaml`](../packaging/pimonitor.example.yaml))
+to register the route. Left disabled, `GET /metrics` returns `404 Not
+Found` rather than existing but empty. When `api_key` is set, `GET /metrics`
+honours it exactly like every other endpoint (`Authorization: Bearer` or
+`X-Api-Key`) — configure the same value as your Prometheus scrape config's
+`authorization`/`bearer_token`.
+
+```
+# HELP pimonitor_cpu_usage_percent CPU usage percentage.
+# TYPE pimonitor_cpu_usage_percent gauge
+pimonitor_cpu_usage_percent{core="overall"} 12.4
+pimonitor_cpu_usage_percent{core="0"} 10.1
+# HELP pimonitor_temperature_celsius CPU temperature in Celsius.
+# TYPE pimonitor_temperature_celsius gauge
+pimonitor_temperature_celsius{zone="cpu-thermal"} 48.6
+# HELP pimonitor_memory_used_percent RAM used percentage.
+# TYPE pimonitor_memory_used_percent gauge
+pimonitor_memory_used_percent 29.9
+# HELP pimonitor_disk_used_percent Filesystem used percentage (df semantics).
+# TYPE pimonitor_disk_used_percent gauge
+pimonitor_disk_used_percent{mount="/"} 25.8
+# HELP pimonitor_network_receive_bytes_per_second Network interface receive throughput in bytes/sec.
+# TYPE pimonitor_network_receive_bytes_per_second gauge
+pimonitor_network_receive_bytes_per_second{iface="eth0"} 1240.5
+# HELP pimonitor_updates_pending Number of upgradable apt packages.
+# TYPE pimonitor_updates_pending gauge
+pimonitor_updates_pending 3
+```
+
+Metrics exposed (all gauges, prefixed `pimonitor_`):
+
+| Metric | Labels | Notes |
+| --- | --- | --- |
+| `cpu_usage_percent` | `core` (`overall`, or a 0-based core index) | Per-core series omitted on platforms without per-core data |
+| `temperature_celsius` | `zone` | Omitted (well, absent) on platforms without a readable thermal zone — the whole family is skipped |
+| `gpu_temperature_celsius` | — | Only present when `vcgencmd` responded, like `gpu_temperature` in `GET /api/v1/metrics` |
+| `memory_total_bytes`, `memory_available_bytes`, `memory_used_percent` | — | |
+| `swap_total_bytes`, `swap_used_bytes`, `swap_used_percent` | — | |
+| `disk_total_bytes`, `disk_used_bytes`, `disk_used_percent` | `mount` | One series per mounted filesystem, same set as `disks` in `GET /api/v1/metrics` (pseudo-filesystems and network filesystems already excluded) |
+| `network_receive_bytes_per_second`, `network_transmit_bytes_per_second` | `iface` | Omitted entirely when network monitoring is disabled (`network_enabled: false`), same as `network` in `GET /api/v1/metrics` |
+| `updates_pending` | — | Count of upgradable apt packages |
+
+Example `prometheus.yml` scrape config:
+
+```yaml
+scrape_configs:
+  - job_name: pimonitor
+    static_configs:
+      - targets: ["raspberrypi.local:8080"]
+    # Only needed when api_key is set in PiMonitor's config.
+    # authorization:
+    #   credentials: "your-api-key"
+```
+
 ## Example: polling with curl
 
 ```sh

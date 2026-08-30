@@ -16,6 +16,9 @@ func TestDefault(t *testing.T) {
 	if !cfg.NetworkEnabled {
 		t.Fatal("expected NetworkEnabled to default to true")
 	}
+	if cfg.PrometheusEnabled {
+		t.Fatal("expected PrometheusEnabled to default to false")
+	}
 	if cfg.APIKey != "" {
 		t.Fatal("expected APIKey to default to empty (no auth)")
 	}
@@ -134,6 +137,7 @@ func TestLoad_YAMLFilePartialOverride(t *testing.T) {
 	yamlContent := `
 listen_addr: ":9090"
 network_enabled: false
+prometheus_enabled: true
 thresholds:
   temperature_warn_c: 55
 `
@@ -150,6 +154,9 @@ thresholds:
 	}
 	if cfg.NetworkEnabled {
 		t.Fatal("expected NetworkEnabled to be overridden to false")
+	}
+	if !cfg.PrometheusEnabled {
+		t.Fatal("expected PrometheusEnabled to be overridden to true")
 	}
 	if cfg.Thresholds.TemperatureWarnC != 55 {
 		t.Fatalf("Thresholds.TemperatureWarnC = %v, want 55", cfg.Thresholds.TemperatureWarnC)

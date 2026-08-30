@@ -34,6 +34,7 @@ func TestServerConfig_MapsFields(t *testing.T) {
 		AccessLogEnabled:           false,
 		TLSCertFile:                "/etc/pimonitor/cert.pem",
 		TLSKeyFile:                 "/etc/pimonitor/key.pem",
+		PrometheusEnabled:          true,
 		PollIntervalSeconds:        5,
 		HealthzMaxStalenessSeconds: 30,
 	}
@@ -54,6 +55,9 @@ func TestServerConfig_MapsFields(t *testing.T) {
 	}
 	if got.TLSKeyFile != "/etc/pimonitor/key.pem" {
 		t.Errorf("TLSKeyFile = %q, want /etc/pimonitor/key.pem", got.TLSKeyFile)
+	}
+	if !got.PrometheusEnabled {
+		t.Error("PrometheusEnabled = false, want true (mapped from cfg.PrometheusEnabled)")
 	}
 	if got.Client.Version != "v1.2.3" {
 		t.Errorf("Client.Version = %q, want v1.2.3", got.Client.Version)
