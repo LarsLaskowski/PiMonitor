@@ -625,9 +625,9 @@ func TestHandlePrometheusMetrics_NotRegisteredByDefault(t *testing.T) {
 // TestHandlePrometheusMetrics_DisabledRequestsStillCountedUnderOwnBucket
 // pins the docs/API.md claim that a scrape against a disabled endpoint
 // still shows up under the "/metrics" serverstats bucket (with a matching
-// 4xx count) rather than staying invisible at 0: withLogging buckets by
-// request path before the mux decides 404, so counting happens regardless
-// of whether the route is registered.
+// 4xx count) rather than staying invisible at 0: routeBucket classifies
+// r.URL.Path itself, so the bucket doesn't depend on which handler — or
+// the mux's 404 fallback — ended up serving the request.
 func TestHandlePrometheusMetrics_DisabledRequestsStillCountedUnderOwnBucket(t *testing.T) {
 	s, _ := newTestServer(Config{})
 

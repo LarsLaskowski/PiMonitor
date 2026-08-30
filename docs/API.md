@@ -465,8 +465,9 @@ Notes:
   has its own key, regardless of `prometheus_enabled` — the response shape
   doesn't vary with configuration. The key stays `0` until something
   actually requests that path; a scraper pointed at an instance with the
-  endpoint disabled shows up here too, with a matching `4xx` count, since
-  request counting happens before routing decides `404`.
+  endpoint disabled shows up here too, with a matching `4xx` count, since the
+  bucket comes from the request path, not from which handler — or the mux's
+  `404` fallback — ended up serving the request.
 - A request is only counted once its response has been fully written, so a
   call to this endpoint never sees itself reflected in the numbers it
   returns — a following call does.
