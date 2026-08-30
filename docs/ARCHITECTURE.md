@@ -230,16 +230,31 @@ reporting an alert that has actually cleared; only repeated *firings* are coales
 
 `httpapi.Server` wraps a single `http.ServeMux` behind two distinct middleware layers
 (`server.go`, `middleware.go`): a pair of wrappers around the whole mux, and a longer
-chain (`apiRoute`) applied individually to each of the five `/api/v1/...` handlers:
+chain (`apiRoute`) applied to each route that asks for it — every `/api/v1/...` handler,
+plus `GET /metrics` when `prometheus_enabled` is set:
 
 ```
-global:              withLogging(withSecurityHeaders(mux))
-per /api/v1 route:   withNoStore(withMaxInFlight(withGzip(withAPIKey(handler))))
+global:            withLogging(withSecurityHeaders(mux))
+per apiRoute:      withNoStore(withMaxInFlight(withGzip(withAPIKey(handler))))
 ```
 
 `/healthz` and the static dashboard assets only pass through the global layer — that is
 exactly why they are the routes not gated by `withAPIKey`, not rate-limited by
 `withMaxInFlight`, and not marked uncacheable by `withNoStore`.
+
+The route set itself lives in one place: `routeTable` in `routes.go`, which records each
+route's method, path, whether `apiRoute` wraps it, and an optional predicate deciding
+whether the running configuration registers it at all. `New` registers from that table,
+`routeBucket` classifies request paths against it, and `newServerStats` pre-populates its
+counters from it. Those three used to be separate lists, and a route added to only the
+first got no bucket of its own: its requests fell into whichever shared fallback matched
+the path — `other-api` under `/api/v1/`, `static` otherwise — so
+`GET /api/v1/serverstats` misattributed them. That is how `GET /metrics` scrapes came to
+be counted as dashboard-asset traffic. Bucketing deliberately ignores the
+predicate, so the response shape does not vary with configuration and a request to a
+disabled route is still visible under its own key with a matching `4xx` — the bucket
+comes from the request path, not from which handler (or the mux's `404` fallback) served
+the request.
 
 - **`withSecurityHeaders`**: sets a strict `Content-Security-Policy` (`default-src
   'self'`, no inline scripts/styles), `X-Content-Type-Options: nosniff`,
@@ -250,12 +265,12 @@ exactly why they are the routes not gated by `withAPIKey`, not rate-limited by
 - **`withLogging`**: via a `statusRecorder` wrapper that captures the status code a
   downstream handler wrote (not otherwise exposed by `http.ResponseWriter`), always
   records the request in `serverStats` (`serverstats.go`) — total count, response status
-  class, and route, bucketed by `routeBucket` to keep the counter set a fixed size
-  regardless of what path a client requests — and, when `cfg.AccessLogEnabled` is true
+  class, and route, bucketed by `routeBucket` (against `routeTable`, above) to keep the
+  counter set a fixed size regardless of what path a client requests — and, when `cfg.AccessLogEnabled` is true
   (the default), also logs method/path/status/duration at debug level. Setting
   `access_log_enabled: false` in the config file silences the debug line while leaving
   the counters, served via `GET /api/v1/serverstats`, unaffected — see issue #43.
-- **`withAPIKey`**: gates every `/api/v1/...` route (but not `/healthz`, so external
+- **`withAPIKey`**: gates every route behind `apiRoute` (but not `/healthz`, so external
   health checks work regardless of auth configuration) when `cfg.APIKey` is set. The
   provided key (from `X-Api-Key` or `Authorization: Bearer`) and the configured key are
   both SHA-256 hashed before `crypto/subtle.ConstantTimeCompare`, so the comparison runs
@@ -271,7 +286,7 @@ exactly why they are the routes not gated by `withAPIKey`, not rate-limited by
   few seconds. A client that doesn't negotiate gzip gets an unmodified identity response,
   so `withGzip` stays backwards compatible for naive `/api/v1` consumers — see
   [`API.md`](API.md#compression) for the wire-level contract.
-- **`withMaxInFlight`**: wraps each of the five `/api/v1/...` routes (not `/healthz` or
+- **`withMaxInFlight`**: wraps every route behind `apiRoute` (not `/healthz` or
   the static dashboard) in a shared semaphore of capacity `defaultMaxInFlight` (16). A
   request beyond the limit gets `503 Service Unavailable` with `Retry-After: 1` instead of
   being queued indefinitely. This bounds worst-case concurrent CPU/memory on a Pi Zero: an
@@ -279,7 +294,7 @@ exactly why they are the routes not gated by `withAPIKey`, not rate-limited by
   below) can no longer multiply without limit. `/healthz` is deliberately excluded so a
   monitoring system can still tell the process is alive while the API is shedding load.
 - **`withNoStore`**: sets `Cache-Control: no-store` plus `Vary: Authorization` /
-  `Vary: X-Api-Key` on each of the five `/api/v1/...` routes, outermost in the chain so the
+  `Vary: X-Api-Key` on every route behind `apiRoute`, outermost in the chain so the
   headers land before anything downstream writes (including on a `401` from `withAPIKey`).
   Metric/alert/config responses are point-in-time and, when `cfg.APIKey` is set,
   credential-protected — a shared cache such as a reverse proxy fronting the Pi must not
@@ -287,11 +302,14 @@ exactly why they are the routes not gated by `withAPIKey`, not rate-limited by
   `Header.Add` rather than `Header.Set` for its own `Vary` value so it appends to, rather
   than clobbers, the `Vary` values `withNoStore` already set.
 
-**Routes**: `GET /healthz` (plain-text liveness, never gated), and five versioned,
-API-key-gated routes — `GET /api/v1/metrics`, `GET /api/v1/metrics/history`,
-`GET /api/v1/alerts`, `GET /api/v1/config`, `GET /api/v1/serverstats` — plus `GET /`
-serving the embedded dashboard via the `staticHandler` passed into `New` (`nil` in
-tests, to exercise the API layer without the frontend). See [`API.md`](API.md) for the
+**Routes** (every exact-path route below comes from `routeTable`; the catch-all does
+not): `GET /healthz` (plain-text liveness, never
+gated), five versioned, API-key-gated routes — `GET /api/v1/metrics`,
+`GET /api/v1/metrics/history`, `GET /api/v1/alerts`, `GET /api/v1/config`,
+`GET /api/v1/serverstats` — and `GET /metrics`, registered only when
+`prometheus_enabled` is set but gated the same way, plus `GET /` serving the embedded
+dashboard via the `staticHandler` passed into `New` (`nil` in tests, to exercise the API
+layer without the frontend). See [`API.md`](API.md) for the
 full response schemas.
 
 `/healthz` is a liveness check, not just a process-alive probe: `handleHealthz`

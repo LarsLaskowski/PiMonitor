@@ -137,18 +137,10 @@ func New(metrics MetricsProvider, cfg Config, staticHandler http.Handler, log *s
 	s := &Server{metrics: metrics, cfg: cfg, log: log, inFlight: make(chan struct{}, defaultMaxInFlight), stats: newServerStats()}
 
 	mux := http.NewServeMux()
-	// /healthz and the static dashboard assets are intentionally not wrapped
-	// by withMaxInFlight: a monitoring system should still be able to tell
-	// the process is alive while the API is shedding load, and the shell
-	// the dashboard needs to render its "server busy" state must load too.
-	mux.HandleFunc("GET /healthz", s.handleHealthz)
-	mux.Handle("GET /api/v1/metrics", s.apiRoute(s.handleMetrics))
-	mux.Handle("GET /api/v1/metrics/history", s.apiRoute(s.handleHistory))
-	mux.Handle("GET /api/v1/alerts", s.apiRoute(s.handleAlerts))
-	mux.Handle("GET /api/v1/config", s.apiRoute(s.handleConfig))
-	mux.Handle("GET /api/v1/serverstats", s.apiRoute(s.handleServerStats))
-	if cfg.PrometheusEnabled {
-		mux.Handle("GET /metrics", s.apiRoute(s.handlePrometheusMetrics))
+	// Every route comes from routeTable, which is also what routeBucket and
+	// newServerStats derive from — see routes.go.
+	for _, rt := range routeTable {
+		rt.register(mux, s)
 	}
 	if staticHandler != nil {
 		mux.Handle("/", staticHandler)

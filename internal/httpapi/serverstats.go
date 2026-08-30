@@ -9,17 +9,19 @@ import (
 // buckets for serverStats, rather than using the raw path as a map key.
 // Without this, a client (or an attacker) probing arbitrary paths could grow
 // an unbounded number of distinct map entries; bucketing by known route
-// (falling back to "other-api"/"static" for anything else) keeps the counter
-// set bounded regardless of what a request asks for.
+// (falling back to bucketOtherAPI/bucketStatic for anything else) keeps the
+// counter set bounded regardless of what a request asks for.
+//
+// The known routes are exactly routeTable's paths, so a route registered by
+// New always has its own bucket instead of falling through to bucketStatic.
 func routeBucket(path string) string {
-	switch path {
-	case "/healthz", "/metrics", "/api/v1/metrics", "/api/v1/metrics/history", "/api/v1/alerts", "/api/v1/config", "/api/v1/serverstats":
+	if _, ok := routePaths[path]; ok {
 		return path
 	}
 	if strings.HasPrefix(path, "/api/v1/") {
-		return "other-api"
+		return bucketOtherAPI
 	}
-	return "static"
+	return bucketStatic
 }
 
 // serverStats holds in-memory counters describing PiMonitor's own HTTP
@@ -46,21 +48,17 @@ type serverStats struct {
 // newServerStats builds a serverStats with every known route bucket
 // pre-populated at zero, so a GET /api/v1/serverstats response always lists
 // the full set of routes rather than only the ones that happened to be hit.
+// The buckets are routeTable's paths plus the two fallbacks, which is the
+// same set routeBucket can return — including routes the running
+// configuration does not register, so the response shape does not vary with
+// configuration.
 func newServerStats() *serverStats {
-	names := []string{
-		"/healthz",
-		"/metrics",
-		"/api/v1/metrics",
-		"/api/v1/metrics/history",
-		"/api/v1/alerts",
-		"/api/v1/config",
-		"/api/v1/serverstats",
-		"other-api",
-		"static",
+	routes := make(map[string]*atomic.Uint64, len(routeTable)+2)
+	for _, rt := range routeTable {
+		routes[rt.path] = &atomic.Uint64{}
 	}
-	routes := make(map[string]*atomic.Uint64, len(names))
-	for _, name := range names {
-		routes[name] = &atomic.Uint64{}
+	for _, fallback := range []string{bucketOtherAPI, bucketStatic} {
+		routes[fallback] = &atomic.Uint64{}
 	}
 	return &serverStats{routes: routes}
 }
