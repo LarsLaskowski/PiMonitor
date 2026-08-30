@@ -526,59 +526,6 @@ func TestHandleConfig(t *testing.T) {
 // TestHandleServerStats_CountsAcrossRoutesAndStatusClasses is the
 // acceptance test for issue #43: counters must increment as expected under
 // httptest traffic, broken down both by route and by response status class.
-// TestHandlePrometheusMetrics_NotRegisteredByDefault guards the "opt-in,
-// off by default" acceptance criterion from issue #6: without
-// prometheus_enabled, GET /metrics must not exist at all (404), rather than
-// existing but empty.
-func TestHandlePrometheusMetrics_NotRegisteredByDefault(t *testing.T) {
-	s, _ := newTestServer(Config{})
-	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
-	rec := httptest.NewRecorder()
-	s.Handler().ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusNotFound {
-		t.Fatalf("status = %d, want 404 (route should not be registered when PrometheusEnabled is false)", rec.Code)
-	}
-}
-
-func TestHandlePrometheusMetrics(t *testing.T) {
-	s, _ := newTestServer(Config{PrometheusEnabled: true})
-	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
-	rec := httptest.NewRecorder()
-	s.Handler().ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200", rec.Code)
-	}
-	if ct := rec.Header().Get("Content-Type"); ct != prometheusContentType {
-		t.Fatalf("Content-Type = %q, want %q", ct, prometheusContentType)
-	}
-	if !strings.Contains(rec.Body.String(), `pimonitor_cpu_usage_percent{core="overall"} 12.5`) {
-		t.Fatalf("body missing expected CPU gauge line, got:\n%s", rec.Body.String())
-	}
-}
-
-// TestHandlePrometheusMetrics_GatedByAPIKey ensures enabling the endpoint
-// does not create a way to bypass an already-configured API key.
-func TestHandlePrometheusMetrics_GatedByAPIKey(t *testing.T) {
-	s, _ := newTestServer(Config{PrometheusEnabled: true, APIKey: "secret123"})
-
-	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
-	rec := httptest.NewRecorder()
-	s.Handler().ServeHTTP(rec, req)
-	if rec.Code != http.StatusUnauthorized {
-		t.Fatalf("status without key = %d, want 401", rec.Code)
-	}
-
-	req = httptest.NewRequest(http.MethodGet, "/metrics", nil)
-	req.Header.Set("X-Api-Key", "secret123")
-	rec = httptest.NewRecorder()
-	s.Handler().ServeHTTP(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status with correct key = %d, want 200", rec.Code)
-	}
-}
-
 func TestHandleServerStats_CountsAcrossRoutesAndStatusClasses(t *testing.T) {
 	s, _ := newTestServer(Config{APIKey: "secret123"})
 
@@ -657,6 +604,59 @@ func TestHandleServerStats_GatedByAPIKey(t *testing.T) {
 
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("status without key = %d, want 401", rec.Code)
+	}
+}
+
+// TestHandlePrometheusMetrics_NotRegisteredByDefault guards the "opt-in,
+// off by default" acceptance criterion from issue #6: without
+// prometheus_enabled, GET /metrics must not exist at all (404), rather than
+// existing but empty.
+func TestHandlePrometheusMetrics_NotRegisteredByDefault(t *testing.T) {
+	s, _ := newTestServer(Config{})
+	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404 (route should not be registered when PrometheusEnabled is false)", rec.Code)
+	}
+}
+
+func TestHandlePrometheusMetrics(t *testing.T) {
+	s, _ := newTestServer(Config{PrometheusEnabled: true})
+	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if ct := rec.Header().Get("Content-Type"); ct != prometheusContentType {
+		t.Fatalf("Content-Type = %q, want %q", ct, prometheusContentType)
+	}
+	if !strings.Contains(rec.Body.String(), "pimonitor_cpu_usage_percent 12.5") {
+		t.Fatalf("body missing expected CPU gauge line, got:\n%s", rec.Body.String())
+	}
+}
+
+// TestHandlePrometheusMetrics_GatedByAPIKey ensures enabling the endpoint
+// does not create a way to bypass an already-configured API key.
+func TestHandlePrometheusMetrics_GatedByAPIKey(t *testing.T) {
+	s, _ := newTestServer(Config{PrometheusEnabled: true, APIKey: "secret123"})
+
+	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status without key = %d, want 401", rec.Code)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	req.Header.Set("X-Api-Key", "secret123")
+	rec = httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status with correct key = %d, want 200", rec.Code)
 	}
 }
 

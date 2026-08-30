@@ -477,6 +477,7 @@ func (c *Collector) fastTick(ctx context.Context) {
 	c.latest.CPUFrequency = s.cpuFreq
 	c.latest.Load = s.load
 	c.latest.Temperature = s.temp
+	c.latest.TemperatureValid = s.tempErr == nil
 	c.latest.GPUTemperature = s.gpuTemp
 	c.latest.Throttled = s.throttled
 	c.latest.Memory = s.mem

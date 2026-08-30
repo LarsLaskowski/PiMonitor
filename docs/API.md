@@ -469,10 +469,12 @@ honours it exactly like every other endpoint (`Authorization: Bearer` or
 `authorization`/`bearer_token`.
 
 ```
-# HELP pimonitor_cpu_usage_percent CPU usage percentage.
+# HELP pimonitor_cpu_usage_percent Overall CPU usage percentage.
 # TYPE pimonitor_cpu_usage_percent gauge
-pimonitor_cpu_usage_percent{core="overall"} 12.4
-pimonitor_cpu_usage_percent{core="0"} 10.1
+pimonitor_cpu_usage_percent 12.4
+# HELP pimonitor_cpu_core_usage_percent Per-core CPU usage percentage.
+# TYPE pimonitor_cpu_core_usage_percent gauge
+pimonitor_cpu_core_usage_percent{core="0"} 10.1
 # HELP pimonitor_temperature_celsius CPU temperature in Celsius.
 # TYPE pimonitor_temperature_celsius gauge
 pimonitor_temperature_celsius{zone="cpu-thermal"} 48.6
@@ -494,8 +496,9 @@ Metrics exposed (all gauges, prefixed `pimonitor_`):
 
 | Metric | Labels | Notes |
 | --- | --- | --- |
-| `cpu_usage_percent` | `core` (`overall`, or a 0-based core index) | Per-core series omitted on platforms without per-core data |
-| `temperature_celsius` | `zone` | Omitted (well, absent) on platforms without a readable thermal zone — the whole family is skipped |
+| `cpu_usage_percent` | — | Overall CPU usage. Deliberately its own unlabeled family rather than a `core="overall"` value inside `cpu_core_usage_percent`, so a naive `sum()`/`avg by (...)` over the per-core family can't silently double-count it |
+| `cpu_core_usage_percent` | `core` (0-based index) | Omitted entirely on platforms without per-core data |
+| `temperature_celsius` | `zone` | Omitted entirely — the whole family is skipped — whenever the most recent temperature collection failed (e.g. no readable thermal zone) or hasn't completed yet; a `0` reading is never fabricated for a missing sensor |
 | `gpu_temperature_celsius` | — | Only present when `vcgencmd` responded, like `gpu_temperature` in `GET /api/v1/metrics` |
 | `memory_total_bytes`, `memory_available_bytes`, `memory_used_percent` | — | |
 | `swap_total_bytes`, `swap_used_bytes`, `swap_used_percent` | — | |

@@ -18,20 +18,43 @@ const prometheusContentType = "text/plain; version=0.0.4; charset=utf-8"
 // gauges. Every metric is prefixed pimonitor_ and, where the underlying
 // data is per-device, labeled the same way GET /api/v1/metrics already
 // groups it: core for CPU cores, mount for filesystems, iface for network
-// interfaces. Disks/network are rendered in snap's own order (already
-// filtered of pseudo-filesystems/excluded interfaces by the collector), so
-// this stays a pure rendering step with no filtering logic of its own.
+// interfaces. The overall CPU figure is its own unlabeled family rather than
+// a core="overall" value mixed into the per-core one, so a naive PromQL
+// aggregation over the per-core family can't silently double-count it.
+// Disks/network are rendered in snap's own order (already filtered of
+// pseudo-filesystems/excluded interfaces by the collector), so this stays a
+// pure rendering step with no filtering logic of its own.
 func renderPrometheusMetrics(snap collector.Snapshot) []byte {
 	var buf bytes.Buffer
 
-	writeGaugeHeader(&buf, "pimonitor_cpu_usage_percent", "CPU usage percentage.")
-	writeMetric(&buf, "pimonitor_cpu_usage_percent", "core", "overall", snap.CPU.OverallPercent)
-	for i, pct := range snap.CPU.PerCorePercent {
-		writeMetric(&buf, "pimonitor_cpu_usage_percent", "core", strconv.Itoa(i), pct)
+	writeGaugeHeader(&buf, "pimonitor_cpu_usage_percent", "Overall CPU usage percentage.")
+	writeMetric(&buf, "pimonitor_cpu_usage_percent", "", "", snap.CPU.OverallPercent)
+	// A separate family, rather than an "overall" value in the same family
+	// as the per-core ones: mixing an aggregate into the series it
+	// aggregates makes naive PromQL (sum(...), avg by (...)(...)) silently
+	// double-count unless every query remembers to exclude core="overall".
+	if len(snap.CPU.PerCorePercent) > 0 {
+		writeGaugeHeader(&buf, "pimonitor_cpu_core_usage_percent", "Per-core CPU usage percentage.")
+		for i, pct := range snap.CPU.PerCorePercent {
+			writeMetric(&buf, "pimonitor_cpu_core_usage_percent", "core", strconv.Itoa(i), pct)
+		}
 	}
 
-	writeGaugeHeader(&buf, "pimonitor_temperature_celsius", "CPU temperature in Celsius.")
-	writeMetric(&buf, "pimonitor_temperature_celsius", "zone", snap.Temperature.Zone, snap.Temperature.Celsius)
+	// Temperature is only rendered once a reading has actually succeeded.
+	// Snapshot.Temperature is a plain (non-pointer) value that reads as its
+	// zero value both before the first successful collection and whenever
+	// collection fails (e.g. no readable thermal zone), and 0°C is a
+	// perfectly valid real reading — so unlike the JSON API (which keeps
+	// its historical documented shape of always including the field),
+	// rendering it here unconditionally would let a host with no sensor
+	// report a fabricated {zone=""} 0 sample instead of no sample at all,
+	// and Prometheus treats an empty label value as the label's absence,
+	// so a sensor that appears mid-run would silently split the metric
+	// into two series.
+	if snap.TemperatureValid {
+		writeGaugeHeader(&buf, "pimonitor_temperature_celsius", "CPU temperature in Celsius.")
+		writeMetric(&buf, "pimonitor_temperature_celsius", "zone", snap.Temperature.Zone, snap.Temperature.Celsius)
+	}
 
 	if snap.GPUTemperature != nil {
 		writeGaugeHeader(&buf, "pimonitor_gpu_temperature_celsius", "GPU/SoC temperature in Celsius (vcgencmd).")

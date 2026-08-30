@@ -3,6 +3,7 @@ package collector
 import (
 	"context"
 	"encoding/json"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -101,6 +102,44 @@ func TestCollector_FastTick_DiskCollectionErrorYieldsEmptyNotNilDisks(t *testing
 	if len(snap.Disks) != 0 {
 		t.Fatalf("expected 0 disks after a failed collection, got %d", len(snap.Disks))
 	}
+}
+
+// TestCollector_FastTick_TemperatureValid guards Snapshot.TemperatureValid
+// (issue #6 review: the Prometheus renderer must be able to tell a
+// genuine 0°C reading apart from no reading at all, which a bare zero
+// Temperature can't express). It must be true only when the tick's
+// temperature collection actually succeeded, mirroring the disk case above
+// rather than just reflecting whether Temperature ended up non-zero.
+func TestCollector_FastTick_TemperatureValid(t *testing.T) {
+	t.Run("no thermal zone", func(t *testing.T) {
+		c := newTestCollector()
+		c.temp = &TemperatureCollector{zoneGlob: filepath.Join(t.TempDir(), "thermal_zone*")}
+
+		c.fastTick(context.Background())
+
+		snap := c.Snapshot()
+		if snap.TemperatureValid {
+			t.Fatalf("expected TemperatureValid = false with no thermal zone, got Temperature = %+v", snap.Temperature)
+		}
+	})
+
+	t.Run("thermal zone present", func(t *testing.T) {
+		root := t.TempDir()
+		writeThermalZone(t, root, "thermal_zone0", "cpu-thermal", "40000")
+
+		c := newTestCollector()
+		c.temp = &TemperatureCollector{zoneGlob: filepath.Join(root, "thermal_zone*")}
+
+		c.fastTick(context.Background())
+
+		snap := c.Snapshot()
+		if !snap.TemperatureValid {
+			t.Fatal("expected TemperatureValid = true after a successful collection")
+		}
+		if diffFloat(snap.Temperature.Celsius, 40.0) > 0.001 {
+			t.Fatalf("Temperature.Celsius = %v, want 40.0", snap.Temperature.Celsius)
+		}
+	})
 }
 
 func TestCollector_FastTick_BuildsHistory(t *testing.T) {

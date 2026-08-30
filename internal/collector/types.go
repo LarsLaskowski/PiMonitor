@@ -116,21 +116,33 @@ type Updates struct {
 
 // Snapshot is the full set of current metric values.
 type Snapshot struct {
-	Timestamp      time.Time          `json:"timestamp"`
-	UptimeSeconds  float64            `json:"uptime_seconds"`
-	CPU            CPUUsage           `json:"cpu"`
-	CPUFrequency   []CPUCoreFrequency `json:"cpu_frequency,omitempty"`
-	Load           LoadAverage        `json:"load_average"`
-	CPUCount       int                `json:"cpu_count"`
-	Temperature    Temperature        `json:"temperature"`
-	GPUTemperature *GPUTemperature    `json:"gpu_temperature,omitempty"`
-	Throttled      *Throttled         `json:"throttled,omitempty"`
-	Memory         Memory             `json:"memory"`
-	Swap           Swap               `json:"swap"`
-	Disks          []Disk             `json:"disks"`
-	Network        []NetworkInterface `json:"network,omitempty"`
-	System         SystemInfo         `json:"system"`
-	Updates        Updates            `json:"updates"`
+	Timestamp     time.Time          `json:"timestamp"`
+	UptimeSeconds float64            `json:"uptime_seconds"`
+	CPU           CPUUsage           `json:"cpu"`
+	CPUFrequency  []CPUCoreFrequency `json:"cpu_frequency,omitempty"`
+	Load          LoadAverage        `json:"load_average"`
+	CPUCount      int                `json:"cpu_count"`
+	Temperature   Temperature        `json:"temperature"`
+	// TemperatureValid reports whether the most recent temperature
+	// collection succeeded — false both before the first successful
+	// collection and whenever the most recent one failed (e.g. no readable
+	// thermal zone). Temperature itself stays a plain, non-pointer value so
+	// the /api/v1/metrics JSON shape (which has always reported zero values
+	// there rather than omitting the field) doesn't change; this field is
+	// deliberately excluded from JSON via json:"-" and exists purely for
+	// in-process consumers — namely the Prometheus renderer in
+	// internal/httpapi — that need to tell a genuine 0°C reading apart from
+	// no reading at all, the same distinction alert.Sample.TemperatureValid
+	// already draws for the alert engine.
+	TemperatureValid bool               `json:"-"`
+	GPUTemperature   *GPUTemperature    `json:"gpu_temperature,omitempty"`
+	Throttled        *Throttled         `json:"throttled,omitempty"`
+	Memory           Memory             `json:"memory"`
+	Swap             Swap               `json:"swap"`
+	Disks            []Disk             `json:"disks"`
+	Network          []NetworkInterface `json:"network,omitempty"`
+	System           SystemInfo         `json:"system"`
+	Updates          Updates            `json:"updates"`
 }
 
 // HistoryPoint is a single timestamped sample in a metric's ring buffer.
