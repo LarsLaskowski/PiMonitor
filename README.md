@@ -42,6 +42,10 @@ automation systems like openHAB). Runs as a systemd service.
 - A versioned REST API (`/api/v1/...`) for third-party consumers, with
   optional API-key authentication and gzip-compressed responses - see
   [`docs/API.md`](docs/API.md)
+- **Prometheus `/metrics` endpoint** (optional, off by default) - the
+  current snapshot in the Prometheus text exposition format, for scraping
+  straight into Prometheus/Grafana with no extra exporter - see
+  [`docs/API.md`](docs/API.md#get-metrics-prometheus)
 
 ## Architecture
 

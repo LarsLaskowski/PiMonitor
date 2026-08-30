@@ -99,7 +99,15 @@ type Config struct {
 	NetworkEnabled               bool    `yaml:"network_enabled"`
 	DistroInfoEnabled            bool    `yaml:"distro_info_enabled"`
 	PiModelEnabled               bool    `yaml:"pi_model_enabled"`
-	APIKey                       string  `yaml:"api_key"`
+	// PrometheusEnabled toggles GET /metrics, a Prometheus text-exposition
+	// rendering of the current snapshot, served alongside the JSON
+	// /api/v1/... API. It defaults to false — a distinct opt-in rather than
+	// always-on avoids confusion between this path and /api/v1/metrics. When
+	// api_key is set, GET /metrics honours it exactly like every other
+	// endpoint (configure it as a Prometheus scrape bearer_token/authorization
+	// header), so enabling this does not bypass existing API authentication.
+	PrometheusEnabled bool   `yaml:"prometheus_enabled"`
+	APIKey            string `yaml:"api_key"`
 	// AccessLogEnabled toggles the per-request debug log line withLogging
 	// emits for every HTTP request. It is on by default, matching the
 	// pre-existing behaviour (that line has always been emitted, gated only
@@ -140,6 +148,7 @@ func Default() Config {
 		NetworkEnabled:               true,
 		DistroInfoEnabled:            true,
 		PiModelEnabled:               true,
+		PrometheusEnabled:            false,
 		APIKey:                       "",
 		AccessLogEnabled:             true,
 		HealthzMaxStalenessSeconds:   0,

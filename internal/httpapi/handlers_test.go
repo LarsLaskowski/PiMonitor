@@ -607,6 +607,127 @@ func TestHandleServerStats_GatedByAPIKey(t *testing.T) {
 	}
 }
 
+// TestHandlePrometheusMetrics_NotRegisteredByDefault guards the "opt-in,
+// off by default" acceptance criterion from issue #6: without
+// prometheus_enabled, GET /metrics must not exist at all (404), rather than
+// existing but empty.
+func TestHandlePrometheusMetrics_NotRegisteredByDefault(t *testing.T) {
+	s, _ := newTestServer(Config{})
+	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404 (route should not be registered when PrometheusEnabled is false)", rec.Code)
+	}
+}
+
+// TestHandlePrometheusMetrics_DisabledRequestsStillCountedUnderOwnBucket
+// pins the docs/API.md claim that a scrape against a disabled endpoint
+// still shows up under the "/metrics" serverstats bucket (with a matching
+// 4xx count) rather than staying invisible at 0: routeBucket classifies
+// r.URL.Path itself, so the bucket doesn't depend on which handler — or
+// the mux's 404 fallback — ended up serving the request.
+func TestHandlePrometheusMetrics_DisabledRequestsStillCountedUnderOwnBucket(t *testing.T) {
+	s, _ := newTestServer(Config{})
+
+	for i := 0; i < 2; i++ {
+		req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+		rec := httptest.NewRecorder()
+		s.Handler().ServeHTTP(rec, req)
+		if rec.Code != http.StatusNotFound {
+			t.Fatalf("GET /metrics status = %d, want 404", rec.Code)
+		}
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/serverstats", nil)
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+
+	var got serverStatsSnapshot
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if got.ByRoute["/metrics"] != 2 {
+		t.Fatalf("ByRoute[/metrics] = %d, want 2 (counted even though the route 404s)", got.ByRoute["/metrics"])
+	}
+	if got.ByStatusClass["4xx"] != 2 {
+		t.Fatalf("ByStatusClass[4xx] = %d, want 2", got.ByStatusClass["4xx"])
+	}
+}
+
+func TestHandlePrometheusMetrics(t *testing.T) {
+	s, _ := newTestServer(Config{PrometheusEnabled: true})
+	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if ct := rec.Header().Get("Content-Type"); ct != prometheusContentType {
+		t.Fatalf("Content-Type = %q, want %q", ct, prometheusContentType)
+	}
+	if !strings.Contains(rec.Body.String(), "pimonitor_cpu_usage_percent 12.5") {
+		t.Fatalf("body missing expected CPU gauge line, got:\n%s", rec.Body.String())
+	}
+}
+
+// TestHandlePrometheusMetrics_GatedByAPIKey ensures enabling the endpoint
+// does not create a way to bypass an already-configured API key.
+func TestHandlePrometheusMetrics_GatedByAPIKey(t *testing.T) {
+	s, _ := newTestServer(Config{PrometheusEnabled: true, APIKey: "secret123"})
+
+	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status without key = %d, want 401", rec.Code)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	req.Header.Set("X-Api-Key", "secret123")
+	rec = httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status with correct key = %d, want 200", rec.Code)
+	}
+}
+
+// TestHandlePrometheusMetrics_CountedInItsOwnServerStatsBucket is the
+// regression test for the PR #146 review: /metrics has no /api/v1/ prefix
+// and, before routeBucket gained a case for it, fell through to the
+// "static" bucket shared with dashboard asset requests — silently mixing
+// Prometheus scrape volume into a counter meant for something else. A
+// scrape must land in its own "/metrics" key instead.
+func TestHandlePrometheusMetrics_CountedInItsOwnServerStatsBucket(t *testing.T) {
+	s, _ := newTestServer(Config{PrometheusEnabled: true})
+
+	for i := 0; i < 3; i++ {
+		req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+		rec := httptest.NewRecorder()
+		s.Handler().ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("GET /metrics status = %d, want 200", rec.Code)
+		}
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/serverstats", nil)
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+
+	var got serverStatsSnapshot
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if got.ByRoute["/metrics"] != 3 {
+		t.Fatalf("ByRoute[/metrics] = %d, want 3", got.ByRoute["/metrics"])
+	}
+	if got.ByRoute["static"] != 0 {
+		t.Fatalf("ByRoute[static] = %d, want 0 (the 3 /metrics requests must not have landed here)", got.ByRoute["static"])
+	}
+}
+
 func TestAPIKey_RequiredWhenConfigured(t *testing.T) {
 	s, _ := newTestServer(Config{APIKey: "secret123"})
 

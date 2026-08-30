@@ -152,11 +152,18 @@ String               PiMonitor_Kernel      "Kernel [%s]"                  <netwo
 
 ## Prometheus alternative
 
-PiMonitor does not expose a native Prometheus `/metrics` endpoint — its API is
-JSON-only. To scrape it into Prometheus, put the
+PiMonitor exposes a native `GET /metrics` endpoint in the Prometheus text
+exposition format — set `prometheus_enabled: true` in the config file and
+point a `scrape_config` at it directly, no extra exporter required. See
+[`docs/API.md`](../API.md#get-metrics-prometheus) for the metric names,
+labels, and an example `prometheus.yml`.
+
+The rest of this section describes an alternative for cases where the
+built-in metric names/labels don't fit (e.g. an existing dashboard already
+built against different names): put the
 [`json_exporter`](https://github.com/prometheus-community/json_exporter)
-(from prometheus-community) in front of `/api/v1/metrics`; it maps JSON fields
-to Prometheus samples.
+(from prometheus-community) in front of `/api/v1/metrics` instead; it maps
+JSON fields to Prometheus samples with whatever names/labels you configure.
 
 `json_exporter` config (`json_exporter.yml`):
 

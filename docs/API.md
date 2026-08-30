@@ -12,8 +12,9 @@ existing integrations against `/api/v1/...` keep working.
 
 By default, no authentication is required — PiMonitor is meant to run on a
 trusted local network. If you set `api_key` in `config.yaml` (or the
-`PIMONITOR_API_KEY` environment variable), every `/api/v1/...` request must
-include one of:
+`PIMONITOR_API_KEY` environment variable), every request to an endpoint
+behind `apiRoute` — every `/api/v1/...` route, plus `GET /metrics` when
+`prometheus_enabled` is set (see below) — must include one of:
 
 - `Authorization: Bearer <api_key>`
 - `X-Api-Key: <api_key>`
@@ -39,11 +40,14 @@ browser just has to unlock it once.
 
 ## Compression
 
-`/api/v1/...` responses are gzip-compressed when the request sends
+Responses from any endpoint behind `apiRoute` (every `/api/v1/...` route,
+plus `GET /metrics`) are gzip-compressed when the request sends
 `Accept-Encoding: gzip` (the response then carries `Content-Encoding: gzip`
-and `Vary: Accept-Encoding`); the JSON body is unchanged, only its wire
+and `Vary: Accept-Encoding`); the body itself is unchanged, only its wire
 encoding differs. Requests without that header receive the identity
-(uncompressed) response, so existing clients keep working unmodified.
+(uncompressed) response, so existing clients keep working unmodified. A
+Prometheus server sends `Accept-Encoding: gzip` by default, so a scrape of
+`GET /metrics` normally takes this path rather than the identity one.
 
 The header is parsed as the q-value list it is (RFC 9110 §12.5.3): an
 explicit refusal (`Accept-Encoding: gzip;q=0`) is honoured and yields an
@@ -52,16 +56,19 @@ deprecated `x-gzip` token is not treated as `gzip`.
 
 ## Caching
 
-`/api/v1/...` responses carry `Cache-Control: no-store` and a `Vary` naming
+Responses from any endpoint behind `apiRoute` (every `/api/v1/...` route,
+plus `GET /metrics`) carry `Cache-Control: no-store` and a `Vary` naming
 `Authorization` and `X-Api-Key` alongside `Accept-Encoding`. Metric/alert/
-config snapshots are point-in-time data with no reuse value, and when
-`api_key` is configured they are credential-protected, so a reverse proxy
-placed in front of PiMonitor (see "Authentication" above) must not cache
-them or serve a response captured with one client's credentials to another.
+config snapshots — and the Prometheus rendering of the same snapshot — are
+point-in-time data with no reuse value, and when `api_key` is configured
+they are credential-protected, so a reverse proxy placed in front of
+PiMonitor (see "Authentication" above) must not cache them or serve a
+response captured with one client's credentials to another.
 
 ## Rate limiting
 
-Every `/api/v1/...` endpoint shares a single limit on how many requests may be actively
+Every endpoint behind `apiRoute` (every `/api/v1/...` route, plus `GET
+/metrics`) shares a single limit on how many requests may be actively
 processing at once. `GET /api/v1/metrics/history` is the expensive one — it can require
 copying and re-serialising the whole retained history window — so an unbounded number of
 concurrent callers could otherwise starve metric collection on constrained hardware such
@@ -72,6 +79,13 @@ header and a plain-text body, instead of being queued. Clients should treat this
 as any other transient server error: back off (the `Retry-After` value is in seconds) and
 retry. `GET /healthz` is never subject to this limit, so liveness checks keep working even
 while the API is shedding load.
+
+A Prometheus scrape of `GET /metrics` that lands on this `503` is recorded as a *failed*
+scrape (`up == 0` for that target) rather than a gap in an otherwise-successful one — unlike
+a JSON client, Prometheus doesn't retry mid-scrape-interval. This is normally a non-issue
+(the limit is generous relative to a typical scrape concurrency), but worth knowing if
+`/metrics` is scraped from multiple Prometheus instances, or alongside heavy dashboard
+polling of `GET /api/v1/metrics/history`, against the same PiMonitor instance.
 
 ## Endpoints
 
@@ -427,6 +441,7 @@ off.
   },
   "by_route": {
     "/healthz": 12,
+    "/metrics": 0,
     "/api/v1/metrics": 100,
     "/api/v1/metrics/history": 20,
     "/api/v1/alerts": 5,
@@ -446,10 +461,92 @@ Notes:
   other `/api/v1/...` path is counted under `other-api`, and any other path
   (the dashboard's static assets) under `static` — this keeps the counter
   set a fixed, bounded size regardless of what a client (or a scanner)
-  requests.
+  requests. `/metrics` (see [`GET /metrics`](#get-metrics-prometheus)) always
+  has its own key, regardless of `prometheus_enabled` — the response shape
+  doesn't vary with configuration. The key stays `0` until something
+  actually requests that path; a scraper pointed at an instance with the
+  endpoint disabled shows up here too, with a matching `4xx` count, since the
+  bucket comes from the request path, not from which handler — or the mux's
+  `404` fallback — ended up serving the request.
 - A request is only counted once its response has been fully written, so a
   call to this endpoint never sees itself reflected in the numbers it
   returns — a following call does.
+
+### `GET /metrics` (Prometheus)
+
+Returns the current snapshot rendered in the
+[Prometheus text exposition format](https://prometheus.io/docs/instrumenting/exposition_formats/),
+for a Prometheus server to scrape directly instead of polling the JSON
+`GET /api/v1/metrics` endpoint. Unlike the rest of this document, this path
+is deliberately **not** under `/api/v1/...` — it is a different wire format
+entirely, not a versioned JSON contract.
+
+It is **off by default**: set `prometheus_enabled: true` in the config file
+(see [`packaging/pimonitor.example.yaml`](../packaging/pimonitor.example.yaml))
+to register the route. Left disabled, `GET /metrics` returns `404 Not
+Found` rather than existing but empty. When `api_key` is set, `GET /metrics`
+honours it exactly like every other endpoint (`Authorization: Bearer` or
+`X-Api-Key`) — configure the same value as your Prometheus scrape config's
+`authorization`/`bearer_token`.
+
+`GET /metrics` goes through the same middleware chain as every `/api/v1/...`
+route (it's registered via the same `apiRoute` wrapper — see "Compression",
+"Caching", and "Rate limiting" above), so it is gzip-compressed, marked
+`Cache-Control: no-store`, and shares the same concurrency limit. The one
+worth calling out here specifically: if that limit is ever hit, the scrape
+gets `503 Service Unavailable` rather than a slow response, which Prometheus
+records as a failed scrape (`up == 0`) — see "Rate limiting" for when that
+can realistically happen.
+
+```
+# HELP pimonitor_cpu_usage_percent Overall CPU usage percentage.
+# TYPE pimonitor_cpu_usage_percent gauge
+pimonitor_cpu_usage_percent 12.4
+# HELP pimonitor_cpu_core_usage_percent Per-core CPU usage percentage.
+# TYPE pimonitor_cpu_core_usage_percent gauge
+pimonitor_cpu_core_usage_percent{core="0"} 10.1
+# HELP pimonitor_temperature_celsius CPU temperature in Celsius.
+# TYPE pimonitor_temperature_celsius gauge
+pimonitor_temperature_celsius{zone="cpu-thermal"} 48.6
+# HELP pimonitor_memory_used_percent RAM used percentage.
+# TYPE pimonitor_memory_used_percent gauge
+pimonitor_memory_used_percent 29.9
+# HELP pimonitor_disk_used_percent Filesystem used percentage (df semantics).
+# TYPE pimonitor_disk_used_percent gauge
+pimonitor_disk_used_percent{mount="/"} 25.8
+# HELP pimonitor_network_receive_bytes_per_second Network interface receive throughput in bytes/sec.
+# TYPE pimonitor_network_receive_bytes_per_second gauge
+pimonitor_network_receive_bytes_per_second{iface="eth0"} 1240.5
+# HELP pimonitor_updates_pending Number of upgradable apt packages.
+# TYPE pimonitor_updates_pending gauge
+pimonitor_updates_pending 3
+```
+
+Metrics exposed (all gauges, prefixed `pimonitor_`):
+
+| Metric | Labels | Notes |
+| --- | --- | --- |
+| `cpu_usage_percent` | — | Overall CPU usage. Deliberately its own unlabeled family rather than a `core="overall"` value inside `cpu_core_usage_percent`, so a naive `sum()`/`avg by (...)` over the per-core family can't silently double-count it |
+| `cpu_core_usage_percent` | `core` (0-based index) | Omitted entirely on platforms without per-core data |
+| `temperature_celsius` | `zone` | Omitted entirely — the whole family is skipped — whenever the most recent temperature collection failed (e.g. no readable thermal zone) or hasn't completed yet; a `0` reading is never fabricated for a missing sensor |
+| `gpu_temperature_celsius` | — | Only present when `vcgencmd` responded, like `gpu_temperature` in `GET /api/v1/metrics` |
+| `memory_total_bytes`, `memory_available_bytes`, `memory_used_percent` | — | |
+| `swap_total_bytes`, `swap_used_bytes`, `swap_used_percent` | — | |
+| `disk_total_bytes`, `disk_used_bytes`, `disk_used_percent` | `mount` | One series per mounted filesystem, same set as `disks` in `GET /api/v1/metrics` (pseudo-filesystems and network filesystems already excluded) |
+| `network_receive_bytes_per_second`, `network_transmit_bytes_per_second` | `iface` | Omitted entirely when network monitoring is disabled (`network_enabled: false`), same as `network` in `GET /api/v1/metrics` |
+| `updates_pending` | — | Count of upgradable apt packages |
+
+Example `prometheus.yml` scrape config:
+
+```yaml
+scrape_configs:
+  - job_name: pimonitor
+    static_configs:
+      - targets: ["raspberrypi.local:8080"]
+    # Only needed when api_key is set in PiMonitor's config.
+    # authorization:
+    #   credentials: "your-api-key"
+```
 
 ## Example: polling with curl
 

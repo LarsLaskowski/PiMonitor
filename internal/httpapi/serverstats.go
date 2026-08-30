@@ -13,7 +13,7 @@ import (
 // set bounded regardless of what a request asks for.
 func routeBucket(path string) string {
 	switch path {
-	case "/healthz", "/api/v1/metrics", "/api/v1/metrics/history", "/api/v1/alerts", "/api/v1/config", "/api/v1/serverstats":
+	case "/healthz", "/metrics", "/api/v1/metrics", "/api/v1/metrics/history", "/api/v1/alerts", "/api/v1/config", "/api/v1/serverstats":
 		return path
 	}
 	if strings.HasPrefix(path, "/api/v1/") {
@@ -49,6 +49,7 @@ type serverStats struct {
 func newServerStats() *serverStats {
 	names := []string{
 		"/healthz",
+		"/metrics",
 		"/api/v1/metrics",
 		"/api/v1/metrics/history",
 		"/api/v1/alerts",

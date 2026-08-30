@@ -30,8 +30,9 @@ type MetricsProvider interface {
 }
 
 // defaultMaxInFlight bounds how many requests may be actively processing at
-// once across the /api/v1/... endpoints. GET /api/v1/metrics/history is the
-// most expensive of them: on a cache miss it deep-copies every retained
+// once across every endpoint routed through apiRoute (the /api/v1/...
+// endpoints, plus GET /metrics when enabled). GET /api/v1/metrics/history is
+// the most expensive of them: on a cache miss it deep-copies every retained
 // history ring buffer and JSON-encodes the result while holding the
 // collector's lock. Left unbounded, enough concurrent callers can starve
 // the collector's own tick on a single-core Pi. 16 is generous for the
@@ -86,6 +87,12 @@ type Config struct {
 	// rejecting the case where only one is set.
 	TLSCertFile string
 	TLSKeyFile  string
+	// PrometheusEnabled registers GET /metrics: the current snapshot
+	// rendered in the Prometheus text exposition format, for a Prometheus
+	// server to scrape directly. Left false (the default) the route isn't
+	// registered at all, so it 404s rather than existing-but-empty. See
+	// config.Config.PrometheusEnabled.
+	PrometheusEnabled bool
 	// Client is echoed back verbatim by GET /api/v1/config.
 	Client ClientConfig
 }
@@ -98,8 +105,10 @@ type Server struct {
 	log        *slog.Logger
 
 	// inFlight is the semaphore withMaxInFlight acquires from; its capacity
-	// is defaultMaxInFlight. Shared across every /api/v1/... endpoint so the
-	// limit bounds total concurrent API work, not each endpoint separately.
+	// is defaultMaxInFlight. Shared across every endpoint routed through
+	// apiRoute — every /api/v1/... endpoint, plus GET /metrics when
+	// PrometheusEnabled is set — so the limit bounds total concurrent API
+	// work, not each endpoint separately.
 	inFlight chan struct{}
 
 	// stats holds in-memory counters of PiMonitor's own HTTP traffic,
@@ -138,6 +147,9 @@ func New(metrics MetricsProvider, cfg Config, staticHandler http.Handler, log *s
 	mux.Handle("GET /api/v1/alerts", s.apiRoute(s.handleAlerts))
 	mux.Handle("GET /api/v1/config", s.apiRoute(s.handleConfig))
 	mux.Handle("GET /api/v1/serverstats", s.apiRoute(s.handleServerStats))
+	if cfg.PrometheusEnabled {
+		mux.Handle("GET /metrics", s.apiRoute(s.handlePrometheusMetrics))
+	}
 	if staticHandler != nil {
 		mux.Handle("/", staticHandler)
 	}
@@ -152,8 +164,9 @@ func New(metrics MetricsProvider, cfg Config, staticHandler http.Handler, log *s
 	return s
 }
 
-// apiRoute wraps a /api/v1/... handler in the common middleware chain shared
-// by all five routes, outermost first: withNoStore must run before withGzip
+// apiRoute wraps a /api/v1/... handler (and, when enabled, GET /metrics) in
+// the common middleware chain shared by every such route, outermost first:
+// withNoStore must run before withGzip
 // so its Cache-Control/Vary headers are set before withGzip mutates Vary
 // itself (Add, not Set, so neither clobbers the other).
 func (s *Server) apiRoute(h http.HandlerFunc) http.Handler {

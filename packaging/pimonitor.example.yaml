@@ -53,6 +53,16 @@ network_enabled: true
 distro_info_enabled: true
 pi_model_enabled: true
 
+# Whether to expose GET /metrics: the current snapshot rendered in the
+# Prometheus text exposition format, for a Prometheus server to scrape
+# directly instead of polling GET /api/v1/metrics. Off by default - a
+# distinct opt-in avoids confusion between this path and /api/v1/metrics.
+# When api_key is set below, GET /metrics honours it exactly like every
+# other endpoint, so enabling this does not bypass existing API
+# authentication; configure the same value as a bearer_token/authorization
+# header in your Prometheus scrape_config.
+prometheus_enabled: false
+
 # If set, all /api/v1/... requests must include this value as either
 # "Authorization: Bearer <api_key>" or "X-Api-Key: <api_key>". Leave empty
 # (the default) to allow unauthenticated access on a trusted LAN. Set this
