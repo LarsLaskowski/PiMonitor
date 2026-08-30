@@ -8,6 +8,7 @@ func TestRouteBucket_KnownRoutes(t *testing.T) {
 		want string
 	}{
 		{"/healthz", "/healthz"},
+		{"/metrics", "/metrics"},
 		{"/api/v1/metrics", "/api/v1/metrics"},
 		{"/api/v1/metrics/history", "/api/v1/metrics/history"},
 		{"/api/v1/alerts", "/api/v1/alerts"},

@@ -660,6 +660,40 @@ func TestHandlePrometheusMetrics_GatedByAPIKey(t *testing.T) {
 	}
 }
 
+// TestHandlePrometheusMetrics_CountedInItsOwnServerStatsBucket is the
+// regression test for the PR #146 review: /metrics has no /api/v1/ prefix
+// and, before routeBucket gained a case for it, fell through to the
+// "static" bucket shared with dashboard asset requests — silently mixing
+// Prometheus scrape volume into a counter meant for something else. A
+// scrape must land in its own "/metrics" key instead.
+func TestHandlePrometheusMetrics_CountedInItsOwnServerStatsBucket(t *testing.T) {
+	s, _ := newTestServer(Config{PrometheusEnabled: true})
+
+	for i := 0; i < 3; i++ {
+		req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+		rec := httptest.NewRecorder()
+		s.Handler().ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("GET /metrics status = %d, want 200", rec.Code)
+		}
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/serverstats", nil)
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+
+	var got serverStatsSnapshot
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if got.ByRoute["/metrics"] != 3 {
+		t.Fatalf("ByRoute[/metrics] = %d, want 3", got.ByRoute["/metrics"])
+	}
+	if got.ByRoute["static"] != 0 {
+		t.Fatalf("ByRoute[static] = %d, want 0 (the 3 /metrics requests must not have landed here)", got.ByRoute["static"])
+	}
+}
+
 func TestAPIKey_RequiredWhenConfigured(t *testing.T) {
 	s, _ := newTestServer(Config{APIKey: "secret123"})
 

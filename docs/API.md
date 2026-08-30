@@ -441,6 +441,7 @@ off.
   },
   "by_route": {
     "/healthz": 12,
+    "/metrics": 0,
     "/api/v1/metrics": 100,
     "/api/v1/metrics/history": 20,
     "/api/v1/alerts": 5,
@@ -460,7 +461,10 @@ Notes:
   other `/api/v1/...` path is counted under `other-api`, and any other path
   (the dashboard's static assets) under `static` — this keeps the counter
   set a fixed, bounded size regardless of what a client (or a scanner)
-  requests.
+  requests. `/metrics` (see [`GET /metrics`](#get-metrics-prometheus)) always
+  has its own key, even when `prometheus_enabled` is left at its default
+  `false` — the key just stays `0` on those instances, rather than the
+  response shape changing based on configuration.
 - A request is only counted once its response has been fully written, so a
   call to this endpoint never sees itself reflected in the numbers it
   returns — a following call does.
