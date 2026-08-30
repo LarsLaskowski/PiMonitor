@@ -622,6 +622,40 @@ func TestHandlePrometheusMetrics_NotRegisteredByDefault(t *testing.T) {
 	}
 }
 
+// TestHandlePrometheusMetrics_DisabledRequestsStillCountedUnderOwnBucket
+// pins the docs/API.md claim that a scrape against a disabled endpoint
+// still shows up under the "/metrics" serverstats bucket (with a matching
+// 4xx count) rather than staying invisible at 0: withLogging buckets by
+// request path before the mux decides 404, so counting happens regardless
+// of whether the route is registered.
+func TestHandlePrometheusMetrics_DisabledRequestsStillCountedUnderOwnBucket(t *testing.T) {
+	s, _ := newTestServer(Config{})
+
+	for i := 0; i < 2; i++ {
+		req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+		rec := httptest.NewRecorder()
+		s.Handler().ServeHTTP(rec, req)
+		if rec.Code != http.StatusNotFound {
+			t.Fatalf("GET /metrics status = %d, want 404", rec.Code)
+		}
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/serverstats", nil)
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+
+	var got serverStatsSnapshot
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if got.ByRoute["/metrics"] != 2 {
+		t.Fatalf("ByRoute[/metrics] = %d, want 2 (counted even though the route 404s)", got.ByRoute["/metrics"])
+	}
+	if got.ByStatusClass["4xx"] != 2 {
+		t.Fatalf("ByStatusClass[4xx] = %d, want 2", got.ByStatusClass["4xx"])
+	}
+}
+
 func TestHandlePrometheusMetrics(t *testing.T) {
 	s, _ := newTestServer(Config{PrometheusEnabled: true})
 	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)

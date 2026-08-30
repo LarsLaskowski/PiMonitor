@@ -462,9 +462,11 @@ Notes:
   (the dashboard's static assets) under `static` — this keeps the counter
   set a fixed, bounded size regardless of what a client (or a scanner)
   requests. `/metrics` (see [`GET /metrics`](#get-metrics-prometheus)) always
-  has its own key, even when `prometheus_enabled` is left at its default
-  `false` — the key just stays `0` on those instances, rather than the
-  response shape changing based on configuration.
+  has its own key, regardless of `prometheus_enabled` — the response shape
+  doesn't vary with configuration. The key stays `0` until something
+  actually requests that path; a scraper pointed at an instance with the
+  endpoint disabled shows up here too, with a matching `4xx` count, since
+  request counting happens before routing decides `404`.
 - A request is only counted once its response has been fully written, so a
   call to this endpoint never sees itself reflected in the numbers it
   returns — a following call does.
