@@ -226,6 +226,57 @@ Notes:
   permanently on non-Pi/non-Linux systems for hardware-specific fields
   like `temperature` or `pi_model`.
 
+### `GET /api/v1/metrics/<metric>`
+
+Narrow, read-only views of the snapshot above, for integrators that poll a
+single value and would rather not fetch and parse the whole thing:
+
+| Endpoint | Body |
+| --- | --- |
+| `GET /api/v1/metrics/cpu` | the `cpu` object |
+| `GET /api/v1/metrics/temperature` | the `temperature` object |
+| `GET /api/v1/metrics/memory` | the `memory` object |
+| `GET /api/v1/metrics/disks` | the `disks` array |
+| `GET /api/v1/metrics/network` | the `network` array |
+| `GET /api/v1/metrics/updates` | the `updates` object |
+
+Each endpoint returns **exactly** the correspondingly named field of
+`GET /api/v1/metrics` — the same JSON, sliced out, with no wrapper object
+and no shape of its own:
+
+```sh
+curl -s http://raspberrypi.local:8080/api/v1/metrics/temperature
+```
+
+```json
+{ "zone": "cpu-thermal", "celsius": 48.1 }
+```
+
+Field names, types and units are therefore the ones documented under
+[`GET /api/v1/metrics`](#get-apiv1metrics) above, and cannot drift from
+them.
+
+Notes:
+
+- These are additive to `v1`: `GET /api/v1/metrics` is unchanged, and
+  keeps returning every field, including the ones with no endpoint of
+  their own (`timestamp`, `uptime_seconds`, `load_average`, `cpu_count`,
+  `cpu_frequency`, `swap`, `gpu_temperature`, `throttled`, `system`).
+  Poll the full snapshot if you need several metrics at once — six narrow
+  requests cost more than one full one.
+- A field that carries no data returns `null` with a `200`, not a `404`:
+  `GET /api/v1/metrics/network` with `network_enabled: false` (where the
+  full snapshot omits the key entirely), and any of the array-valued
+  endpoints before the first collection tick completes. The endpoint
+  exists and is answering; a `404` there would be indistinguishable from a
+  misspelled path.
+- Any other sub-path (`/api/v1/metrics/cpu/overall`, a typo, ...) is not a
+  route and returns `404`.
+- Authentication, gzip, `Cache-Control: no-store` and the shared in-flight
+  limit apply exactly as they do to every other `/api/v1/...` endpoint, and
+  each endpoint gets its own key in
+  [`GET /api/v1/serverstats`](#get-apiv1serverstats).
+
 ### `GET /api/v1/metrics/history`
 
 Returns the retained history (a rolling window, typically the last 30-60
@@ -444,6 +495,12 @@ off.
     "/metrics": 0,
     "/api/v1/metrics": 100,
     "/api/v1/metrics/history": 20,
+    "/api/v1/metrics/cpu": 0,
+    "/api/v1/metrics/temperature": 4,
+    "/api/v1/metrics/memory": 0,
+    "/api/v1/metrics/disks": 0,
+    "/api/v1/metrics/network": 0,
+    "/api/v1/metrics/updates": 0,
     "/api/v1/alerts": 5,
     "/api/v1/config": 3,
     "/api/v1/serverstats": 1,
