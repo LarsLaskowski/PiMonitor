@@ -1,6 +1,6 @@
 ---
 name: fix-issue
-description: Use when the user asks to fix a specific GitHub issue in PiMonitor. Reproduces the problem (ideally as a failing test), implements a minimal fix, and opens a PR referencing the issue.
+description: Use when the user asks to fix a specific GitHub issue in PiMonitor. Reproduces the problem (ideally as a failing test), implements a minimal fix, reviews it with the pimonitor-reviewer subagent, and opens a PR referencing the issue.
 ---
 
 # Fix Issue
@@ -36,11 +36,20 @@ Use this skill to resolve a reported GitHub issue in this repository.
 6. **Commit** the fix with a concise, imperative summary line (English only)
    and a body explaining *why* the change was made if not obvious from the
    diff.
-7. **Push** the branch (`git push -u origin <branch-name>`) and **open a PR**
+7. **Review the fix before it leaves this session**: run the internal review
+   loop from the `create-pr` skill — one or more `pimonitor-reviewer`
+   subagent passes (Opus, fresh context) against the local branch, fixing
+   blocking findings and re-running the reviewer on the delta until a pass
+   comes back clean, capped at three passes. Non-blocking findings are
+   recorded for the PR's Next Steps, not iterated on. This is what keeps the
+   review out of the pull request comments, so do not skip it and do not
+   defer it to a separate review session.
+8. **Push** the branch (`git push -u origin <branch-name>`) and **open a PR**
    referencing the issue (`Closes #<number>`), following the `create-pr`
    skill's verification and template steps — do not skip the push/PR-creation
-   steps even if verification already ran in step 5.
-8. If the fix is not fully verifiable without physical Pi hardware, say so
+   steps even if verification already ran in step 5. Record the internal
+   review passes and their fix commits in Reviewer Notes.
+9. If the fix is not fully verifiable without physical Pi hardware, say so
    explicitly in the PR description rather than claiming full verification.
 
 ## Notes

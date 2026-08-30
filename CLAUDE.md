@@ -69,3 +69,11 @@ Project-specific Claude Code skills live under `.claude/skills/`:
   project's Go/security conventions.
 - `fix-issue` — reproduce a reported issue (ideally as a failing test),
   implement a minimal fix, and open a PR referencing the issue.
+
+Review runs as a subagent defined in `.claude/agents/pimonitor-reviewer.md`
+(read-only, pinned to Opus, fresh context). `create-pr` and `fix-issue` call
+it *before* pushing, so a change is reviewed while it is still local;
+`review-pr` calls the same agent for a pull request that is already open. The
+review checklist, the integration-surface sweep, the blocking/non-blocking
+severity model and the "round 1 is a full review, later rounds review only
+the delta" rule live in that one file, so they are identical either way.

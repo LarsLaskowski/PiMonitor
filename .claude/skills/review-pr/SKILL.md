@@ -1,52 +1,65 @@
 ---
 name: review-pr
-description: Use when the user asks to review a PiMonitor pull request. Checks out the PR, runs tests, and reviews the diff against this project's Go, security, and API-stability conventions.
+description: Use when the user asks to review a PiMonitor pull request on GitHub. Checks out the PR, runs tests, reviews it with the pimonitor-reviewer subagent against this project's Go, security, and API-stability conventions, and posts the findings with an explicit verdict.
 ---
 
 # Review PR
 
-Use this skill to review a pull request against this repository's
-conventions.
+Use this skill to review a pull request on GitHub — someone else's, or your
+own when you deliberately want a second opinion after it is open.
+
+For a change that has not been pushed yet, do not use this skill: the
+internal review loop in `create-pr` reviews the local branch before the pull
+request exists, which is cheaper and does not fill the PR with comment
+threads.
 
 ## Steps
 
-1. Fetch and check out the PR (or read the diff directly if checkout isn't
-   necessary for the review).
-2. Run `go build ./...`, `go vet ./...`, and `go test ./... -race -cover`
-   against the PR branch. Note any failures.
-3. Review the diff against this checklist:
-   - **Error handling**: are errors from `/proc`, `/sys`, `os.Stat`, and
-     `exec.Command` calls checked and handled gracefully (e.g. missing
-     thermal zone on non-Pi hardware) rather than panicking?
-   - **Resource leaks**: are opened files/readers closed (`defer f.Close()`),
-     are goroutines/tickers properly stopped on shutdown?
-   - **`/proc`/`/sys` parsing robustness**: does the parser handle malformed,
-     truncated, or unexpected-format input without crashing? Is it covered
-     by a unit test with fixture input?
-   - **Command execution safety**: any `exec.Command` calls (`apt list
-     --upgradable`, `vcgencmd measure_temp`) must use fixed argument lists —
-     flag any string-concatenation into a shell command as a blocking issue.
-   - **Privilege separation**: does the change keep `pimonitor.service`
-     unprivileged (no new dependency on root-only files/commands)? See
-     `ARCHITECTURE.md` and `SECURITY.md`.
-   - **REST API stability**: does the change alter the JSON shape of an
-     existing `/api/v1/...` response? If so, it should be a new API version
-     rather than an in-place breaking change (see `ARCHITECTURE.md`).
-   - **Test coverage**: new or changed logic must have tests — this is a hard
-     requirement in this repository, not just a nice-to-have. Check the diff
-     against [`TESTS.md`](../../../docs/TESTS.md): fixture-based (no real
-     `/proc`/`/sys` access), `Test<Subject>_<Scenario>` naming, table-driven
-     for multiple scenarios, no third-party test/assertion/mocking library.
-     Flag a missing test on new/changed behavior as a blocking issue, not a
-     suggestion.
-   - **Language**: all new code, comments, and docs are in English.
-   - **Unnecessary dependencies**: flag any new third-party dependency beyond
-     `gopkg.in/yaml.v3` and ask if it's really justified over hand-rolling
-     (see `CONTRIBUTING.md` dependency philosophy).
-4. Post the results as review comments on the PR (inline where possible,
-   otherwise a single review comment). Only report genuine findings —
-   concrete, actionable issues. Do not comment on things that are fine,
-   pass the checklist, or work as expected; positive remarks and
-   "looks good" filler add noise, not value. Don't nitpick style that a
-   linter would already catch.
-5. If the review produces no findings, do not post any comments.
+1. Fetch and check out the PR (or read the diff directly if a checkout isn't
+   necessary).
+2. Delegate the review itself to the `pimonitor-reviewer` subagent
+   (subagent_type `pimonitor-reviewer`, model `opus`). Give it the base ref,
+   the head SHA, and the round number — round 1 for a first review, and for a
+   re-review the previous round's findings plus the commits that were meant
+   to fix them. The review checklist, the integration-surface sweep, the
+   severity model and the round semantics all live in that agent's
+   definition, so they stay identical whether the review runs before or after
+   the push.
+3. Post the result:
+   - Inline comments for findings anchored to a line, otherwise one review
+     comment.
+   - **Only genuine findings.** No positive remarks, no confirmation that
+     checklist items pass, no "looks good" filler, no style a linter catches.
+   - Lead the review body with the verdict line the subagent produced
+     (`APPROVE`, or the blocking/non-blocking counts), so the author can see
+     whether anything is required of them without reading every thread.
+   - Mark each finding `blocking` or `non-blocking` explicitly.
+4. If the review produces no findings, post nothing beyond a short approving
+   verdict — and if the previous round already said the same, post nothing at
+   all.
+
+## Keeping the loop finite
+
+A pull request review can always produce one more finding. These rules make
+it converge:
+
+- **Round 1 reviews the whole diff. Every later round reviews only the
+  delta**: does each fix resolve its finding, and did the fix commits break
+  something — including in prose they wrote to fix a documentation finding?
+  Never re-review untouched code; that is what turns three findings into
+  four rounds.
+- **Only blocking findings justify another round.** Non-blocking findings go
+  into the PR's Next Steps section or a follow-up issue and are not chased.
+- **Two consecutive rounds without a blocking finding means done.** Say so
+  plainly instead of leaving the review open-ended.
+- **At most two rounds on GitHub.** If blocking findings survive that, the
+  change needs a decision from the author, not another review pass — say what
+  is still blocking and stop.
+
+## Answering findings on your own PR
+
+When acting as the author of a PR under review, keep replies to one line:
+`Fixed in <sha>: <what changed>`. The reasoning belongs in the commit
+message, where it stays with the code; the reviewer verifies the commit, not
+the reply. Resolve the thread once it is answered. One summary comment per
+round beats one essay per thread.
