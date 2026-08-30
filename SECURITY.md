@@ -47,7 +47,8 @@ reporters and reviewers have context:
 - **The HTTP dashboard and REST API are intended for trusted local networks**
   by default (no authentication, plain HTTP). If you expose the API to other
   systems (e.g. for home automation integrations), set the optional `api_key`
-  configuration value to require a bearer token on `/api/v1/...` requests,
+  configuration value to require a bearer token on `/api/v1/...` requests
+  (and on `GET /metrics`, if `prometheus_enabled` is set),
   and do not expose the service directly to the public internet without
   TLS and additional access control, either via a reverse proxy or by
   setting the optional `tls_cert` / `tls_key` configuration values to have
@@ -71,7 +72,9 @@ reporters and reviewers have context:
   anything beyond `PATH` (and, for `apt`, a couple of apt-specific
   variables), so `PIMONITOR_API_KEY` is never copied into a child process's
   `/proc/<pid>/environ`.
-- **`/api/v1/...` requests share a concurrency limit** (`withMaxInFlight`,
+- **Requests to any endpoint behind `apiRoute`** (every `/api/v1/...` route,
+  plus `GET /metrics` when `prometheus_enabled` is set) **share a
+  concurrency limit** (`withMaxInFlight`,
   `internal/httpapi/middleware.go`), so a request flood — from another
   device on the LAN, a misconfigured integration, or a buggy retry loop —
   is bounded rather than able to multiply CPU/memory work without limit on

@@ -30,8 +30,9 @@ type MetricsProvider interface {
 }
 
 // defaultMaxInFlight bounds how many requests may be actively processing at
-// once across the /api/v1/... endpoints. GET /api/v1/metrics/history is the
-// most expensive of them: on a cache miss it deep-copies every retained
+// once across every endpoint routed through apiRoute (the /api/v1/...
+// endpoints, plus GET /metrics when enabled). GET /api/v1/metrics/history is
+// the most expensive of them: on a cache miss it deep-copies every retained
 // history ring buffer and JSON-encodes the result while holding the
 // collector's lock. Left unbounded, enough concurrent callers can starve
 // the collector's own tick on a single-core Pi. 16 is generous for the
@@ -104,8 +105,10 @@ type Server struct {
 	log        *slog.Logger
 
 	// inFlight is the semaphore withMaxInFlight acquires from; its capacity
-	// is defaultMaxInFlight. Shared across every /api/v1/... endpoint so the
-	// limit bounds total concurrent API work, not each endpoint separately.
+	// is defaultMaxInFlight. Shared across every endpoint routed through
+	// apiRoute — every /api/v1/... endpoint, plus GET /metrics when
+	// PrometheusEnabled is set — so the limit bounds total concurrent API
+	// work, not each endpoint separately.
 	inFlight chan struct{}
 
 	// stats holds in-memory counters of PiMonitor's own HTTP traffic,
