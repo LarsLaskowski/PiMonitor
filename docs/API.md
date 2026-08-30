@@ -264,12 +264,21 @@ Notes:
   `cpu_frequency`, `swap`, `gpu_temperature`, `throttled`, `system`).
   Poll the full snapshot if you need several metrics at once — six narrow
   requests cost more than one full one.
-- A field that carries no data returns `null` with a `200`, not a `404`:
-  `GET /api/v1/metrics/network` with `network_enabled: false` (where the
-  full snapshot omits the key entirely), and any of the array-valued
-  endpoints before the first collection tick completes. The endpoint
-  exists and is answering; a `404` there would be indistinguishable from a
-  misspelled path.
+- A field that carries no data is never a `404` — the endpoint exists and
+  is answering, and a `404` would be indistinguishable from a misspelled
+  path. What it returns instead depends on the field's type, exactly as in
+  the full snapshot:
+  - The **array-valued** endpoints (`disks`, `network`) return `null` with
+    a `200`: `GET /api/v1/metrics/network` with `network_enabled: false`
+    (where the full snapshot omits the key entirely), and either of them
+    before the first collection tick completes.
+  - The **object-valued** endpoints degrade to zero values rather than
+    `null` — `GET /api/v1/metrics/temperature` returns
+    `{"zone": "", "celsius": 0}` on a host with no readable thermal zone,
+    the same bytes the `temperature` field of `GET /api/v1/metrics` carries
+    there. A `0` from such an endpoint is therefore not distinguishable
+    from a genuine reading; see the last note under
+    [`GET /api/v1/metrics`](#get-apiv1metrics).
 - Any other sub-path (`/api/v1/metrics/cpu/overall`, a typo, ...) is not a
   route and returns `404`.
 - Authentication, gzip, `Cache-Control: no-store` and the shared in-flight

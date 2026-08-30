@@ -288,7 +288,7 @@ the request.
   does, it sets `Content-Encoding: gzip`, drops the now-stale `Content-Length`, and appends
   (`Header.Add`, not `Set`) `Vary: Accept-Encoding` so it doesn't clobber the `Vary` values
   `withNoStore` already set. The underlying `gzip.Writer`s come from a `sync.Pool` rather
-  than being allocated per request, since all five `/api/v1/...` endpoints are polled every
+  than being allocated per request, since the `/api/v1/...` endpoints are polled every
   few seconds. A client that doesn't negotiate gzip gets an unmodified identity response,
   so `withGzip` stays backwards compatible for naive `/api/v1` consumers — see
   [`API.md`](API.md#compression) for the wire-level contract.

@@ -186,26 +186,39 @@ func TestMetricsSubResources_MatchFullSnapshot(t *testing.T) {
 	}
 }
 
-// TestMetricsSubResources_NoDataServesNull pins the behavior of a
-// sub-resource whose field holds nothing: before the first collection tick,
-// or for network with network monitoring switched off. The full snapshot
-// either omits such a field (omitempty) or reports null for it; a
-// sub-resource has no key to omit, so it serves the field's own encoding —
-// null — with a 200. Deliberately not a 404: the endpoint exists and is
-// answering, and a 404 would be indistinguishable from a misspelled path.
-func TestMetricsSubResources_NoDataServesNull(t *testing.T) {
+// TestMetricsSubResources_NoData pins what a sub-resource serves when its
+// field holds nothing — before the first collection tick, or for network
+// with network monitoring switched off. Never a 404: the endpoint exists and
+// is answering, and a 404 would be indistinguishable from a misspelled path.
+// What it does serve follows the field's type, since the body is the field's
+// own encoding: a nil slice is null (the full snapshot either omits such a
+// key via omitempty or reports null for it, but a sub-resource has no key to
+// omit), while a struct degrades to its zero value, exactly as it does
+// inside the full snapshot. docs/API.md documents both halves, so both are
+// pinned here.
+func TestMetricsSubResources_NoData(t *testing.T) {
+	tests := []struct {
+		path string
+		want string
+	}{
+		{path: "/api/v1/metrics/network", want: "null"},
+		{path: "/api/v1/metrics/disks", want: "null"},
+		{path: "/api/v1/metrics/temperature", want: `{"zone":"","celsius":0}`},
+		{path: "/api/v1/metrics/memory", want: `{"total_bytes":0,"available_bytes":0,"used_percent":0}`},
+	}
+
 	s, fm := newTestServer(Config{})
 	fm.snapshot = collector.Snapshot{}
 
-	for _, path := range []string{"/api/v1/metrics/network", "/api/v1/metrics/disks"} {
-		t.Run(path, func(t *testing.T) {
+	for _, tt := range tests {
+		t.Run(tt.path, func(t *testing.T) {
 			rec := httptest.NewRecorder()
-			s.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+			s.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, tt.path, nil))
 			if rec.Code != http.StatusOK {
-				t.Fatalf("GET %s = %d, want 200", path, rec.Code)
+				t.Fatalf("GET %s = %d, want 200", tt.path, rec.Code)
 			}
-			if got := strings.TrimSpace(rec.Body.String()); got != "null" {
-				t.Fatalf("GET %s body = %s, want null", path, got)
+			if got := strings.TrimSpace(rec.Body.String()); got != tt.want {
+				t.Fatalf("GET %s body = %s, want %s", tt.path, got, tt.want)
 			}
 		})
 	}
