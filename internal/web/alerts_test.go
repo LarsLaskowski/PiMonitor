@@ -131,6 +131,48 @@ func TestAppJS_RenderAlertsSkipsOKStates(t *testing.T) {
 	}
 }
 
+// TestAppJS_AlertsAccessibleToAssistiveTech guards two a11y defects caught in
+// review: (1) a clickable card's accessible name comes entirely from its
+// button's aria-label, which otherwise silently swallows the badge span's
+// own text, so the alert level must be folded into that label; (2) the
+// banner is a live region that must be unhidden before its text changes —
+// mutating textContent while the element is still display:none is not
+// announced by screen readers.
+func TestAppJS_AlertsAccessibleToAssistiveTech(t *testing.T) {
+	data, err := assetsFS.ReadFile("assets/app.js")
+	if err != nil {
+		t.Fatalf("read app.js: %v", err)
+	}
+	js := string(data)
+
+	if !strings.Contains(js, "updateBadgeAccessibleLabel(") {
+		t.Error("app.js: expected renderAlerts to update each badge's card button aria-label, not just the badge span's own (otherwise invisible to assistive tech) text")
+	}
+	if !strings.Contains(js, "closest('button[aria-label]')") {
+		t.Error(`app.js: expected updateBadgeAccessibleLabel to find the badge's ancestor button via closest('button[aria-label]')`)
+	}
+
+	start := strings.Index(js, "function renderAlertBanner(")
+	if start == -1 {
+		t.Fatal("app.js: expected a function renderAlertBanner")
+	}
+	end := strings.Index(js[start:], "\n  }\n")
+	if end == -1 {
+		t.Fatal("app.js: could not find end of function renderAlertBanner")
+	}
+	body := js[start : start+end]
+	// LastIndex: both statements also appear (in the opposite order) on the
+	// empty-banner early-return branch above the one that matters here.
+	classIdx := strings.LastIndex(body, "banner.className = 'alert-banner metric-'")
+	textIdx := strings.LastIndex(body, "textEl.textContent =")
+	if classIdx == -1 || textIdx == -1 {
+		t.Fatal("app.js: expected renderAlertBanner to both unhide the banner and set its text on the non-empty path")
+	}
+	if classIdx > textIdx {
+		t.Error("app.js: renderAlertBanner must remove the 'hidden' class before setting textContent, or the live region's content change is not announced while still display:none")
+	}
+}
+
 // TestStyleCSS_AlertStylesReuseWarnCritVariables guards the issue's stated
 // reuse point: the alert banner and per-card badges must reuse the existing
 // --warn/--crit custom properties rather than introducing new colors.

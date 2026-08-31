@@ -356,9 +356,25 @@
         el.textContent = '';
         el.className = 'alert-badge hidden';
       }
+      updateBadgeAccessibleLabel(el, level);
     });
 
     renderAlertBanner(metricLevels);
+  }
+
+  // A clickable card's accessible name comes entirely from its button's
+  // aria-label (the badge span's own text isn't otherwise exposed to
+  // assistive tech), so fold the alert level into that label. The base
+  // label is cached on first call so repeated renders don't keep
+  // re-appending to their own previous suffix.
+  function updateBadgeAccessibleLabel(badgeEl, level) {
+    const btn = badgeEl.closest('button[aria-label]');
+    if (!btn) return;
+    if (btn.dataset.baseLabel === undefined) {
+      btn.dataset.baseLabel = btn.getAttribute('aria-label');
+    }
+    const base = btn.dataset.baseLabel;
+    btn.setAttribute('aria-label', level ? base + ' — alert: ' + level : base);
   }
 
   function renderAlertBanner(metricLevels) {
@@ -372,10 +388,12 @@
     }
     metrics.sort((a, b) => levelRank(metricLevels[b]) - levelRank(metricLevels[a]));
     const worst = metricLevels[metrics[0]];
+    // Unhide before updating the text: a live region's content changing
+    // while it is still display:none is not announced by screen readers.
+    banner.className = 'alert-banner metric-' + worst;
     textEl.textContent = metrics
       .map(m => (ALERT_METRIC_LABELS[m] || m) + ' ' + metricLevels[m])
       .join(', ');
-    banner.className = 'alert-banner metric-' + worst;
   }
 
   function renderUpdatesTable() {
