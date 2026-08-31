@@ -161,8 +161,9 @@ func TestAppJS_AlertsAccessibleToAssistiveTech(t *testing.T) {
 		t.Fatal("app.js: could not find end of function renderAlertBanner")
 	}
 	body := js[start : start+end]
-	// LastIndex: both statements also appear (in the opposite order) on the
-	// empty-banner early-return branch above the one that matters here.
+	// LastIndex on textIdx: the textContent assignment also appears (in the
+	// same relative order) on the empty-banner early-return branch above, so
+	// take the last occurrence to land on the non-empty path checked here.
 	classIdx := strings.LastIndex(body, "banner.className = 'alert-banner metric-'")
 	textIdx := strings.LastIndex(body, "textEl.textContent =")
 	if classIdx == -1 || textIdx == -1 {
