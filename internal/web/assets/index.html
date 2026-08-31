@@ -17,6 +17,11 @@
   <button type="button" class="theme-toggle" id="theme-toggle" aria-label="Toggle theme"></button>
 </header>
 
+<div class="alert-banner hidden" id="alert-banner" role="alert" aria-live="polite">
+  <span class="alert-banner-icon" aria-hidden="true">⚠️</span>
+  <span id="alert-banner-text"></span>
+</div>
+
 <main>
   <!-- Column 1: identity & maintenance -->
   <div class="column">
@@ -45,7 +50,7 @@
   <!-- Column 2: load & thermals -->
   <div class="column">
     <section class="card accent-cpu card-clickable" id="card-cpu" data-metric="cpu">
-      <h2><button type="button" class="card-header-btn" aria-label="Open CPU usage detail"><span class="card-icon">⚡</span> CPU Usage</button></h2>
+      <h2><button type="button" class="card-header-btn" aria-label="Open CPU usage detail"><span class="card-icon">⚡</span> CPU Usage<span class="alert-badge hidden" id="badge-cpu"></span></button></h2>
       <div class="metric-value" id="cpu-overall">&ndash;</div>
       <div class="metric-sub" id="cpu-info"></div>
       <div class="metric-sub" id="cpu-per-core"></div>
@@ -74,7 +79,7 @@
     </section>
 
     <section class="card accent-temperature card-clickable" id="card-temperature" data-metric="temperature">
-      <h2><button type="button" class="card-header-btn" aria-label="Open temperature detail"><span class="card-icon">🌡️</span> Temperature</button></h2>
+      <h2><button type="button" class="card-header-btn" aria-label="Open temperature detail"><span class="card-icon">🌡️</span> Temperature<span class="alert-badge hidden" id="badge-temperature"></span></button></h2>
       <div class="metric-value" id="temp-value">&ndash;</div>
       <div class="metric-sub" id="temp-gpu"></div>
       <canvas class="sparkline" id="temp-sparkline"></canvas>
@@ -84,7 +89,7 @@
   <!-- Column 3: memory, storage & network -->
   <div class="column">
     <section class="card accent-memory card-clickable" id="card-memory" data-metric="memory">
-      <h2><button type="button" class="card-header-btn" aria-label="Open Memory &amp; Swap detail"><span class="card-icon">🧠</span> Memory &amp; Swap</button></h2>
+      <h2><button type="button" class="card-header-btn" aria-label="Open Memory &amp; Swap detail"><span class="card-icon">🧠</span> Memory &amp; Swap<span class="alert-badge hidden" id="badge-memory"></span></button></h2>
       <div class="bar-row">
         <div class="bar-label">
           <span class="bar-name">RAM</span>
@@ -102,7 +107,7 @@
     </section>
 
     <section class="card accent-disks" id="card-disks">
-      <h2><span class="card-icon">💽</span> Filesystems</h2>
+      <h2><span class="card-icon">💽</span> Filesystems<span class="alert-badge hidden" id="badge-disks"></span></h2>
       <div id="disks-list"></div>
     </section>
 
