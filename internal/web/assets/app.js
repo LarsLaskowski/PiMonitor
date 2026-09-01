@@ -251,9 +251,13 @@
         fmtBytes(d.used_bytes) + ' / ' + fmtBytes(d.total_bytes))
     );
 
-    // Network
+    // Network. Hidden state combines three independent things: the layout
+    // preference (issue #10), the server capability flag, and whether this
+    // snapshot actually has data — the server flag alone never lets a
+    // disabled network card appear regardless of the stored layout.
     const networkCard = document.getElementById('card-network');
-    if (config.network_enabled && snap.network?.length) {
+    const networkPref = layout.find(e => e.id === 'network')?.visible !== false;
+    if (networkPref && config.network_enabled && snap.network?.length) {
       networkCard.classList.remove('hidden');
       renderList('network-list', snap.network, n => {
         const row = document.createElement('div');
@@ -453,6 +457,185 @@
     dialog.addEventListener('click', e => {
       if (e.target === dialog) dialog.close();
     });
+  }
+
+  // Dashboard layout customization (issue #10): show/hide and reorder
+  // cards, persisted in localStorage — no server-side state. `domId` is the
+  // card's existing element id; `id` is the stable identifier stored in
+  // localStorage, independent of any future DOM id changes.
+  const CARD_DEFS = [
+    { id: 'system', domId: 'card-system', label: 'System' },
+    { id: 'updates', domId: 'card-updates', label: 'Updates' },
+    { id: 'uptime', domId: 'card-uptime', label: 'Uptime' },
+    { id: 'cpu', domId: 'card-cpu', label: 'CPU Usage' },
+    { id: 'load', domId: 'card-load', label: 'Load Average' },
+    { id: 'temperature', domId: 'card-temperature', label: 'Temperature' },
+    { id: 'memory', domId: 'card-memory', label: 'Memory & Swap' },
+    { id: 'disks', domId: 'card-disks', label: 'Filesystems' },
+    { id: 'network', domId: 'card-network', label: 'Network' },
+  ];
+  const DEFAULT_CARD_ORDER = CARD_DEFS.map(c => c.id);
+  const LAYOUT_KEY = 'pimonitor-layout';
+
+  function storedLayout() {
+    try {
+      const raw = localStorage.getItem(LAYOUT_KEY);
+      const parsed = raw ? JSON.parse(raw) : null;
+      return Array.isArray(parsed) ? parsed : null;
+    } catch (e) {
+      // Private/blocked storage, or corrupt JSON: fall back to the default.
+      return null;
+    }
+  }
+
+  function persistLayout(l) {
+    try {
+      localStorage.setItem(LAYOUT_KEY, JSON.stringify(l));
+    } catch (e) {
+      console.warn('failed to persist layout', e);
+    }
+  }
+
+  // Reconciles a stored layout against the known card ids: unknown entries
+  // (a card removed in a later release) are dropped and any known card
+  // missing from the stored layout (one added in a later release) is
+  // appended visible, so a stale localStorage value never silently hides or
+  // loses a card.
+  function normalizeLayout(stored) {
+    const known = new Set(DEFAULT_CARD_ORDER);
+    const seen = new Set();
+    const result = [];
+    (stored || []).forEach(entry => {
+      if (!entry || !known.has(entry.id) || seen.has(entry.id)) return;
+      seen.add(entry.id);
+      result.push({ id: entry.id, visible: entry.visible !== false });
+    });
+    DEFAULT_CARD_ORDER.forEach(id => {
+      if (!seen.has(id)) result.push({ id, visible: true });
+    });
+    return result;
+  }
+
+  let layout = normalizeLayout(storedLayout());
+
+  // Reorders the card elements to match `layout` and applies each card's
+  // visibility preference — except "network", whose hidden state also
+  // depends on the server capability flag and current data, so it is
+  // decided solely in renderMetrics (issue #10's "metrics disabled on the
+  // server never appear, regardless of stored layout" acceptance criterion).
+  function applyLayout() {
+    const main = document.querySelector('main');
+    if (!main) return;
+    layout.forEach(entry => {
+      const def = CARD_DEFS.find(c => c.id === entry.id);
+      const el = def && document.getElementById(def.domId);
+      if (!el) return;
+      main.appendChild(el);
+      if (def.id !== 'network') {
+        el.classList.toggle('hidden', !entry.visible);
+      }
+    });
+  }
+
+  function setCardVisible(id, visible) {
+    const entry = layout.find(e => e.id === id);
+    if (!entry) return;
+    entry.visible = visible;
+    persistLayout(layout);
+    applyLayout();
+  }
+
+  function moveCard(id, delta) {
+    const idx = layout.findIndex(e => e.id === id);
+    const target = idx + delta;
+    if (idx === -1 || target < 0 || target >= layout.length) return;
+    const [entry] = layout.splice(idx, 1);
+    layout.splice(target, 0, entry);
+    persistLayout(layout);
+    applyLayout();
+    buildLayoutList();
+    // Keep keyboard focus on the card the user just moved, on whichever of
+    // its two move buttons is still enabled after the rebuild.
+    const li = document.querySelector('.layout-item[data-card-id="' + id + '"]');
+    const buttons = li ? li.querySelectorAll('.layout-move') : [];
+    const preferred = delta < 0 ? buttons[0] : buttons[1];
+    const focusTarget = preferred && !preferred.disabled ? preferred : li?.querySelector('input[type="checkbox"]');
+    focusTarget?.focus();
+  }
+
+  function resetLayout() {
+    layout = normalizeLayout(null);
+    persistLayout(layout);
+    applyLayout();
+    buildLayoutList();
+  }
+
+  // Builds the modal's card list from scratch on every open/change — the
+  // list is small (one entry per card) so a full rebuild is simpler than
+  // patching individual rows, and it keeps the up/down disabled state at
+  // the list's ends correct without extra bookkeeping.
+  function buildLayoutList() {
+    const list = document.getElementById('layout-list');
+    if (!list) return;
+    list.innerHTML = '';
+    layout.forEach((entry, idx) => {
+      const def = CARD_DEFS.find(c => c.id === entry.id);
+      if (!def) return;
+      const li = document.createElement('li');
+      li.className = 'layout-item';
+      li.dataset.cardId = def.id;
+
+      const label = document.createElement('label');
+      label.className = 'layout-item-label';
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      // A card the server has no data for (currently only network, via
+      // network_enabled) can still be reordered, but showing it would never
+      // have any effect, so its checkbox is disabled rather than silently
+      // ignored.
+      const capabilityDisabled = def.id === 'network' && !config.network_enabled;
+      checkbox.checked = entry.visible;
+      checkbox.disabled = capabilityDisabled;
+      checkbox.addEventListener('change', () => setCardVisible(def.id, checkbox.checked));
+      const text = document.createElement('span');
+      text.textContent = def.label + (capabilityDisabled ? ' (disabled on server)' : '');
+      label.append(checkbox, text);
+
+      const controls = document.createElement('div');
+      controls.className = 'layout-item-controls';
+      const upBtn = document.createElement('button');
+      upBtn.type = 'button';
+      upBtn.className = 'layout-move';
+      upBtn.textContent = '↑';
+      upBtn.setAttribute('aria-label', 'Move ' + def.label + ' up');
+      upBtn.disabled = idx === 0;
+      upBtn.addEventListener('click', () => moveCard(def.id, -1));
+      const downBtn = document.createElement('button');
+      downBtn.type = 'button';
+      downBtn.className = 'layout-move';
+      downBtn.textContent = '↓';
+      downBtn.setAttribute('aria-label', 'Move ' + def.label + ' down');
+      downBtn.disabled = idx === layout.length - 1;
+      downBtn.addEventListener('click', () => moveCard(def.id, 1));
+      controls.append(upBtn, downBtn);
+
+      li.append(label, controls);
+      list.appendChild(li);
+    });
+  }
+
+  function openLayoutModal() {
+    buildLayoutList();
+    openModal(document.getElementById('layout-modal'));
+  }
+
+  function wireLayoutModal() {
+    const dialog = document.getElementById('layout-modal');
+    document.getElementById('layout-toggle').addEventListener('click', openLayoutModal);
+    document.getElementById('layout-modal-close').addEventListener('click', () => dialog.close());
+    document.getElementById('layout-reset').addEventListener('click', resetLayout);
+    wireBackdropDismiss(dialog);
+    wireModalFocusReturn(dialog);
   }
 
   function openUpdatesModal() {
@@ -964,7 +1147,9 @@
     wireUpdatesModal();
     wireDetailModal();
     wireAPIKeyModal();
+    wireLayoutModal();
     wireVisibilityPolling();
+    applyLayout();
     await reloadAll();
   }
 
