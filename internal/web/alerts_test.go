@@ -98,11 +98,15 @@ func TestAppJS_PollsAlerts(t *testing.T) {
 }
 
 // TestAppJS_RenderAlertsSkipsOKStates guards the "clearing the condition
-// removes it" acceptance criterion from issue #11: renderAlerts must skip
-// "ok" states when computing badge/banner levels, so a metric that returns
-// to ok simply has nothing recorded for it and its badge/banner disappears
-// on the very next render rather than needing separate clear-out logic that
-// could fall out of sync.
+// removes it" acceptance criterion from issue #11: computeAlertLevels (the
+// level-derivation helper renderAlerts calls) must skip "ok" states when
+// computing badge/banner levels, so a metric that returns to ok simply has
+// nothing recorded for it and its badge/banner disappears on the very next
+// render rather than needing separate clear-out logic that could fall out
+// of sync. The derivation lives in its own function, split out of
+// renderAlerts to keep cognitive complexity down (see
+// TestAppJS_AlertsAccessibleToAssistiveTech's sibling for the split's other
+// half).
 func TestAppJS_RenderAlertsSkipsOKStates(t *testing.T) {
 	data, err := assetsFS.ReadFile("assets/app.js")
 	if err != nil {
@@ -110,21 +114,25 @@ func TestAppJS_RenderAlertsSkipsOKStates(t *testing.T) {
 	}
 	js := string(data)
 
-	start := strings.Index(js, "function renderAlerts(")
+	if !strings.Contains(js, "renderAlerts(report) {") || !strings.Contains(js, "computeAlertLevels(report)") {
+		t.Fatal("app.js: expected renderAlerts to delegate level computation to computeAlertLevels")
+	}
+
+	start := strings.Index(js, "function computeAlertLevels(")
 	if start == -1 {
-		t.Fatal("app.js: expected a function renderAlerts")
+		t.Fatal("app.js: expected a function computeAlertLevels")
 	}
 	end := strings.Index(js[start:], "\n  }\n")
 	if end == -1 {
-		t.Fatal("app.js: could not find end of function renderAlerts")
+		t.Fatal("app.js: could not find end of function computeAlertLevels")
 	}
 	body := js[start : start+end]
 
 	if !strings.Contains(body, "st.level === 'ok'") {
-		t.Error("app.js: expected renderAlerts to skip states at level 'ok' rather than badging them")
+		t.Error("app.js: expected computeAlertLevels to skip states at level 'ok' rather than badging them")
 	}
 	if !strings.Contains(body, "report?.enabled") && !strings.Contains(body, "report.enabled") {
-		t.Error("app.js: expected renderAlerts to check report.enabled (alerting disabled server-side means no badges/banner)")
+		t.Error("app.js: expected computeAlertLevels to check report.enabled (alerting disabled server-side means no badges/banner)")
 	}
 	if !strings.Contains(js, "renderAlertBanner(") {
 		t.Error("app.js: expected a renderAlertBanner helper called from renderAlerts")

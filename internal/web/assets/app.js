@@ -320,29 +320,34 @@
     disk: 'Disk',
   };
 
+  // Worst level per badge id and per metric name, derived from the current
+  // (already debounced) states only — cleared states are simply absent from
+  // `metricLevels` once their level returns to "ok". Split out of
+  // renderAlerts to keep each function's cognitive complexity low.
+  function computeAlertLevels(report) {
+    const badgeLevels = {};
+    const metricLevels = {};
+    if (!report?.enabled) return { badgeLevels, metricLevels };
+    for (const st of report.states || []) {
+      if (st.level === 'ok') continue;
+      if (levelRank(st.level) > levelRank(metricLevels[st.metric] || 'ok')) {
+        metricLevels[st.metric] = st.level;
+      }
+      for (const id of ALERT_BADGE_IDS[st.metric] || []) {
+        if (levelRank(st.level) > levelRank(badgeLevels[id] || 'ok')) {
+          badgeLevels[id] = st.level;
+        }
+      }
+    }
+    return { badgeLevels, metricLevels };
+  }
+
   // Renders the current GET /api/v1/alerts report: a badge on each affected
   // card's header plus a header banner summarizing the worst active level.
   // Called on every alerts poll, so a cleared condition removes its
   // badge/banner on the very next poll after the server reports it ok.
   function renderAlerts(report) {
-    // Worst level per badge id and per metric name, derived from the
-    // current (already debounced) states only — cleared states are simply
-    // absent from `metricLevels` once their level returns to "ok".
-    const badgeLevels = {};
-    const metricLevels = {};
-    if (report?.enabled) {
-      for (const st of report.states || []) {
-        if (st.level === 'ok') continue;
-        if (levelRank(st.level) > levelRank(metricLevels[st.metric] || 'ok')) {
-          metricLevels[st.metric] = st.level;
-        }
-        for (const id of ALERT_BADGE_IDS[st.metric] || []) {
-          if (levelRank(st.level) > levelRank(badgeLevels[id] || 'ok')) {
-            badgeLevels[id] = st.level;
-          }
-        }
-      }
-    }
+    const { badgeLevels, metricLevels } = computeAlertLevels(report);
 
     const badgeIds = new Set(Object.values(ALERT_BADGE_IDS).flat());
     badgeIds.forEach(id => {
