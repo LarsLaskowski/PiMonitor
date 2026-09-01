@@ -422,15 +422,21 @@ bug that produced issue #19 (see the test's own doc comment). Any new dashboard 
 touching `app.js` is bound by this same rule, enforced automatically rather than by review
 alone.
 
-The dashboard polls `/api/v1/metrics`, `/api/v1/metrics/history`, and `/api/v1/config` on
-the interval `/api/v1/config` reports, and colors metric cards using the same warn/crit
-cutoffs the server-side alert engine evaluates against (`>=`) — that coloring is
-threshold-based, not alert-state-based, and the two should not be conflated: the alert
-engine's own output (`GET /api/v1/alerts`) has no dashboard representation at all yet;
-surfacing it in the UI is tracked separately (issue #11). When `api_key` is configured,
-the dashboard prompts for the key once per browser and persists it in `localStorage`,
-sending it as `X-Api-Key` on every subsequent request (see [`SECURITY.md`](../SECURITY.md)
-for why this is an accepted trade-off rather than a gap).
+The dashboard polls `/api/v1/metrics`, `/api/v1/metrics/history`, `/api/v1/config`, and
+`/api/v1/alerts` on the interval `/api/v1/config` reports, and colors metric cards using
+the same warn/crit cutoffs the server-side alert engine evaluates against (`>=`) — that
+coloring is threshold-based, not alert-state-based, and the two should not be conflated:
+a card's color follows the raw value on every poll, while the alert engine's own output
+(`GET /api/v1/alerts`) is debounced (`alerts.for_seconds`), so a value can be colored
+`crit` before the corresponding alert badge lights up. The alert states are surfaced as a
+header banner summarizing the worst active level plus a badge on each affected card
+(issue #11); `renderAlerts` recomputes both from scratch on every poll — a metric absent
+from `states` (e.g. an unmounted filesystem, or alerting disabled server-side) or back at
+`ok` simply has nothing recorded for it, so its badge/banner disappears on the very next
+render rather than needing separate clear-out logic. When `api_key` is configured, the
+dashboard prompts for the key once per browser and persists it in `localStorage`, sending
+it as `X-Api-Key` on every subsequent request (see [`SECURITY.md`](../SECURITY.md) for why
+this is an accepted trade-off rather than a gap).
 
 History is polled incrementally (issue #112): after an initial full-window fetch the
 dashboard passes the timestamp of its newest point back as `?since=` — verbatim, since
@@ -444,14 +450,14 @@ unparseable timestamp; any refusal — and any failed request — falls back to 
 the full window, and a full window is re-fetched periodically regardless, since no delta
 can reveal a history that was replaced rather than appended to.
 
-Polling is paused while the tab is hidden (a `visibilitychange` listener clears both
-timers) and resumed with an immediate refresh when it becomes visible again — a
-backgrounded or wall-mounted-display tab would otherwise keep requesting
-`/api/v1/metrics` and `/api/v1/metrics/history` forever, since browsers only throttle
-background timers to roughly once a minute rather than stopping them (issue #111). Each
-poll function also guards against overlapping requests with its own in-flight flag, so a
-slow response (a loaded Pi, flaky Wi-Fi) doesn't let requests pile up on top of each
-other.
+Polling is paused while the tab is hidden (a `visibilitychange` listener clears the
+metrics, history, and alerts timers) and resumed with an immediate refresh when it
+becomes visible again — a backgrounded or wall-mounted-display tab would otherwise keep
+requesting `/api/v1/metrics`, `/api/v1/metrics/history`, and `/api/v1/alerts` forever,
+since browsers only throttle background timers to roughly once a minute rather than
+stopping them (issue #111). Each poll function also guards against overlapping requests
+with its own in-flight flag, so a slow response (a loaded Pi, flaky Wi-Fi) doesn't let
+requests pile up on top of each other.
 
 ## Configuration (`internal/config`)
 

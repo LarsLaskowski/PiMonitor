@@ -119,6 +119,15 @@
     return 'metric-ok';
   }
 
+  // Severity ordering for alert.Level values ("ok" < "warn" < "crit"), so
+  // the worst of several states for the same card/banner can be picked with
+  // a plain comparison.
+  function levelRank(level) {
+    if (level === 'crit') return 2;
+    if (level === 'warn') return 1;
+    return 0;
+  }
+
   function setText(id, text) {
     const el = document.getElementById(id);
     if (el) el.textContent = text;
@@ -288,6 +297,108 @@
     if (document.getElementById('updates-modal').open) {
       renderUpdatesTable();
     }
+  }
+
+  // Maps each alert.Report metric name to the badge element(s) it lights up.
+  // "memory" and "swap" share the Memory & Swap card's badge; every "disk"
+  // state (one per mountpoint) rolls up into the Filesystems card's badge,
+  // matching how the issue asks for a per-card badge rather than a
+  // per-mountpoint one.
+  const ALERT_BADGE_IDS = {
+    cpu: ['badge-cpu'],
+    temperature: ['badge-temperature'],
+    memory: ['badge-memory'],
+    swap: ['badge-memory'],
+    disk: ['badge-disks'],
+  };
+
+  const ALERT_METRIC_LABELS = {
+    cpu: 'CPU',
+    temperature: 'Temperature',
+    memory: 'Memory',
+    swap: 'Swap',
+    disk: 'Disk',
+  };
+
+  // Worst level per badge id and per metric name, derived from the current
+  // (already debounced) states only — cleared states are simply absent from
+  // `metricLevels` once their level returns to "ok". Split out of
+  // renderAlerts to keep each function's cognitive complexity low.
+  function computeAlertLevels(report) {
+    const badgeLevels = {};
+    const metricLevels = {};
+    if (!report?.enabled) return { badgeLevels, metricLevels };
+    for (const st of report.states || []) {
+      if (st.level === 'ok') continue;
+      if (levelRank(st.level) > levelRank(metricLevels[st.metric] || 'ok')) {
+        metricLevels[st.metric] = st.level;
+      }
+      for (const id of ALERT_BADGE_IDS[st.metric] || []) {
+        if (levelRank(st.level) > levelRank(badgeLevels[id] || 'ok')) {
+          badgeLevels[id] = st.level;
+        }
+      }
+    }
+    return { badgeLevels, metricLevels };
+  }
+
+  // Renders the current GET /api/v1/alerts report: a badge on each affected
+  // card's header plus a header banner summarizing the worst active level.
+  // Called on every alerts poll, so a cleared condition removes its
+  // badge/banner on the very next poll after the server reports it ok.
+  function renderAlerts(report) {
+    const { badgeLevels, metricLevels } = computeAlertLevels(report);
+
+    const badgeIds = new Set(Object.values(ALERT_BADGE_IDS).flat());
+    badgeIds.forEach(id => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      const level = badgeLevels[id];
+      if (level) {
+        el.textContent = level;
+        el.className = 'alert-badge metric-' + level;
+      } else {
+        el.textContent = '';
+        el.className = 'alert-badge hidden';
+      }
+      updateBadgeAccessibleLabel(el, level);
+    });
+
+    renderAlertBanner(metricLevels);
+  }
+
+  // A clickable card's accessible name comes entirely from its button's
+  // aria-label (the badge span's own text isn't otherwise exposed to
+  // assistive tech), so fold the alert level into that label. The base
+  // label is cached on first call so repeated renders don't keep
+  // re-appending to their own previous suffix.
+  function updateBadgeAccessibleLabel(badgeEl, level) {
+    const btn = badgeEl.closest('button[aria-label]');
+    if (!btn) return;
+    if (btn.dataset.baseLabel === undefined) {
+      btn.dataset.baseLabel = btn.getAttribute('aria-label');
+    }
+    const base = btn.dataset.baseLabel;
+    btn.setAttribute('aria-label', level ? base + ' — alert: ' + level : base);
+  }
+
+  function renderAlertBanner(metricLevels) {
+    const banner = document.getElementById('alert-banner');
+    const textEl = document.getElementById('alert-banner-text');
+    const metrics = Object.keys(metricLevels);
+    if (!metrics.length) {
+      banner.className = 'alert-banner hidden';
+      textEl.textContent = '';
+      return;
+    }
+    metrics.sort((a, b) => levelRank(metricLevels[b]) - levelRank(metricLevels[a]));
+    const worst = metricLevels[metrics[0]];
+    // Unhide before updating the text: a live region's content changing
+    // while it is still display:none is not announced by screen readers.
+    banner.className = 'alert-banner metric-' + worst;
+    textEl.textContent = metrics
+      .map(m => (ALERT_METRIC_LABELS[m] || m) + ' ' + metricLevels[m])
+      .join(', ');
   }
 
   function renderUpdatesTable() {
@@ -721,6 +832,7 @@
   // already-struggling server, with no guarantee responses arrive in order.
   let metricsInFlight = false;
   let historyInFlight = false;
+  let alertsInFlight = false;
 
   async function pollMetrics() {
     if (metricsInFlight) return;
@@ -740,6 +852,25 @@
       }
     } finally {
       metricsInFlight = false;
+    }
+  }
+
+  async function pollAlerts() {
+    if (alertsInFlight) return;
+    alertsInFlight = true;
+    try {
+      const report = await fetchJSON('/api/v1/alerts');
+      renderAlerts(report);
+    } catch (e) {
+      console.error('failed to fetch alerts', e);
+      // Leave the existing badges/banner as they are on a transient
+      // failure — a fetch error is not the same as the server reporting
+      // the condition cleared, so don't guess.
+      if (e.status === 401) {
+        openAPIKeyModal();
+      }
+    } finally {
+      alertsInFlight = false;
     }
   }
 
@@ -776,13 +907,18 @@
 
   let metricsTimer = null;
   let historyTimer = null;
+  let alertsTimer = null;
 
   function startPolling() {
     if (metricsTimer) clearInterval(metricsTimer);
     if (historyTimer) clearInterval(historyTimer);
+    if (alertsTimer) clearInterval(alertsTimer);
     const intervalMs = Math.max(1, config.poll_interval_seconds) * 1000;
     metricsTimer = setInterval(pollMetrics, intervalMs);
     historyTimer = setInterval(pollHistory, Math.max(intervalMs, 60000));
+    // Same cadence as pollMetrics: alert states should track the dashboard
+    // as promptly as the metrics that drive them.
+    alertsTimer = setInterval(pollAlerts, intervalMs);
   }
 
   // Polling is suspended while the tab is hidden: nobody is looking at the
@@ -793,6 +929,7 @@
   function stopPolling() {
     if (metricsTimer) { clearInterval(metricsTimer); metricsTimer = null; }
     if (historyTimer) { clearInterval(historyTimer); historyTimer = null; }
+    if (alertsTimer) { clearInterval(alertsTimer); alertsTimer = null; }
   }
 
   function wireVisibilityPolling() {
@@ -805,6 +942,7 @@
       // card while waiting for the first interval to elapse.
       pollMetrics();
       pollHistory();
+      pollAlerts();
       startPolling();
     });
   }
@@ -817,6 +955,7 @@
     renderVersion();
     await pollMetrics();
     await pollHistory();
+    await pollAlerts();
     startPolling();
   }
 
