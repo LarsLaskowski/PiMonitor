@@ -227,9 +227,7 @@
     setText('cpu-info', lastCPUCount + (lastCPUCount === 1 ? ' core' : ' cores') + (cpuModel ? ' · ' + cpuModel : ''));
 
     // Load average gauges
-    renderGauge('gauge-load1', 'load1-value', snap.load_average.load1, t.cpu_warn_percent, t.cpu_crit_percent);
-    renderGauge('gauge-load5', 'load5-value', snap.load_average.load5, t.cpu_warn_percent, t.cpu_crit_percent);
-    renderGauge('gauge-load15', 'load15-value', snap.load_average.load15, t.cpu_warn_percent, t.cpu_crit_percent);
+    redrawGauges(snap);
 
     // Temperature
     const tempEl = document.getElementById('temp-value');
@@ -531,6 +529,20 @@
     }
   }
 
+  // The load-average gauges draw onto a <canvas> sized from its rendered
+  // CSS box (see gauge.js); a card hidden via `display: none` reports a
+  // zero-size box, so a gauge drawn while its card was hidden bakes in a
+  // stale, wrong-sized bitmap that then stretches once the card is shown
+  // again. Split out of renderMetrics (which calls it too) so a layout
+  // change that reveals a card can redraw the gauges at their now-correct
+  // size immediately, without re-rendering the rest of the page.
+  function redrawGauges(snap) {
+    const t = config.thresholds;
+    renderGauge('gauge-load1', 'load1-value', snap.load_average.load1, t.cpu_warn_percent, t.cpu_crit_percent);
+    renderGauge('gauge-load5', 'load5-value', snap.load_average.load5, t.cpu_warn_percent, t.cpu_crit_percent);
+    renderGauge('gauge-load15', 'load15-value', snap.load_average.load15, t.cpu_warn_percent, t.cpu_crit_percent);
+  }
+
   // Reorders the card elements to match `layout` and applies each card's
   // visibility preference — except "network", whose hidden state also
   // depends on the server capability flag and current data, so it is
@@ -560,8 +572,13 @@
     // "network" isn't toggled by applyLayout (see its comment above) — its
     // hidden class is only ever set in applyNetworkVisibility, so re-run it
     // here to reflect the preference change immediately instead of waiting
-    // for the next poll.
-    if (latestSnapshot) applyNetworkVisibility(latestSnapshot);
+    // for the next poll. A card just revealed by applyLayout may also have
+    // gone from `display: none` to visible, so its gauges (if any) need a
+    // redraw at their now-correct size (see redrawGauges's comment above).
+    if (latestSnapshot) {
+      applyNetworkVisibility(latestSnapshot);
+      redrawGauges(latestSnapshot);
+    }
   }
 
   function moveCard(id, delta) {
@@ -594,7 +611,10 @@
     persistLayout(layout);
     applyLayout();
     buildLayoutList();
-    if (latestSnapshot) applyNetworkVisibility(latestSnapshot);
+    if (latestSnapshot) {
+      applyNetworkVisibility(latestSnapshot);
+      redrawGauges(latestSnapshot);
+    }
   }
 
   // Builds the modal's card list from scratch on every open/change — the

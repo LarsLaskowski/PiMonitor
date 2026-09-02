@@ -474,7 +474,11 @@ the one exception to the generic toggle: its `hidden` state is decided in
 next poll) from three things ANDed together — the stored layout preference, the `network_enabled`
 capability flag from `/api/v1/config`, and whether the current snapshot actually carries
 network data — so a metric disabled server-side never appears regardless of what a
-client has stored, matching the issue's acceptance criteria.
+client has stored, matching the issue's acceptance criteria. `setCardVisible`/
+`resetLayout` also re-run `redrawGauges` alongside `applyNetworkVisibility`: a card's
+`<canvas>` reports a zero-size box while hidden via `display: none`, so a load-average
+gauge drawn during that window bakes in a stale, fallback-sized bitmap that visibly
+stretches once the card is shown again — redrawing immediately on reveal avoids that.
 
 ## Configuration (`internal/config`)
 

@@ -204,7 +204,10 @@ func TestAppJS_ApplyLayoutReordersAndHidesCards(t *testing.T) {
 // have no visible effect until the next poll. This calls the narrower
 // applyNetworkVisibility rather than the full renderMetrics so a layout
 // change doesn't also re-stamp "Last updated" and mask a stale
-// "Connection error" state after a failed poll.
+// "Connection error" state after a failed poll. The same guard applies to
+// redrawGauges: a card revealed by applyLayout was rendered at zero size
+// while hidden (see redrawGauges's comment in app.js), so its gauges need
+// a redraw too, not just on the next poll.
 func TestAppJS_ToggleAndResetRerenderNetworkImmediately(t *testing.T) {
 	data, err := assetsFS.ReadFile("assets/app.js")
 	if err != nil {
@@ -228,8 +231,14 @@ func TestAppJS_ToggleAndResetRerenderNetworkImmediately(t *testing.T) {
 			t.Fatalf("app.js: could not find end of function %s", fn)
 		}
 		body := js[start : start+end]
-		if !strings.Contains(body, "if (latestSnapshot) applyNetworkVisibility(latestSnapshot);") {
+		if !strings.Contains(body, "if (latestSnapshot) {") {
+			t.Errorf("app.js: expected %s to guard its immediate re-render calls with if (latestSnapshot)", fn)
+		}
+		if !strings.Contains(body, "applyNetworkVisibility(latestSnapshot);") {
 			t.Errorf("app.js: expected %s to call applyNetworkVisibility(latestSnapshot) when a snapshot is held, so the network card's visibility updates immediately", fn)
+		}
+		if !strings.Contains(body, "redrawGauges(latestSnapshot);") {
+			t.Errorf("app.js: expected %s to call redrawGauges(latestSnapshot) when a snapshot is held, so a revealed card's gauges redraw at the correct size immediately", fn)
 		}
 	}
 }
@@ -302,8 +311,41 @@ func TestAppJS_NetworkVisibilityRespectsLayoutAndCapability(t *testing.T) {
 	if renderEnd == -1 {
 		t.Fatal("app.js: could not find end of function renderMetrics")
 	}
-	if !strings.Contains(js[renderStart:renderStart+renderEnd], "applyNetworkVisibility(snap)") {
+	renderBody := js[renderStart : renderStart+renderEnd]
+	if !strings.Contains(renderBody, "applyNetworkVisibility(snap)") {
 		t.Error("app.js: expected renderMetrics to delegate to applyNetworkVisibility(snap) instead of duplicating the network visibility check")
+	}
+	if !strings.Contains(renderBody, "redrawGauges(snap)") {
+		t.Error("app.js: expected renderMetrics to delegate to redrawGauges(snap) instead of drawing the load gauges inline")
+	}
+}
+
+// TestAppJS_RedrawGaugesDrawsAllThreeLoadGauges guards redrawGauges (split
+// out of renderMetrics so a layout change revealing a hidden card can
+// redraw its gauges at the correct size without a full renderMetrics — see
+// TestAppJS_ToggleAndResetRerenderNetworkImmediately): it must draw all
+// three load-average gauges, not just one or two.
+func TestAppJS_RedrawGaugesDrawsAllThreeLoadGauges(t *testing.T) {
+	data, err := assetsFS.ReadFile("assets/app.js")
+	if err != nil {
+		t.Fatalf("read app.js: %v", err)
+	}
+	js := string(data)
+
+	start := strings.Index(js, "function redrawGauges(")
+	if start == -1 {
+		t.Fatal("app.js: expected a function redrawGauges")
+	}
+	end := strings.Index(js[start:], "\n  }\n")
+	if end == -1 {
+		t.Fatal("app.js: could not find end of function redrawGauges")
+	}
+	body := js[start : start+end]
+
+	for _, canvasID := range []string{"gauge-load1", "gauge-load5", "gauge-load15"} {
+		if !strings.Contains(body, "renderGauge('"+canvasID+"'") {
+			t.Errorf("app.js: expected redrawGauges to call renderGauge for %q", canvasID)
+		}
 	}
 }
 
