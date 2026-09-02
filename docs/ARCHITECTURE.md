@@ -459,6 +459,21 @@ stopping them (issue #111). Each poll function also guards against overlapping r
 with its own in-flight flag, so a slow response (a loaded Pi, flaky Wi-Fi) doesn't let
 requests pile up on top of each other.
 
+The dashboard layout is configurable (issue #10): `main` lays every card out as a flat
+list of siblings distributed by CSS multi-column (`column-count`, matching the previous
+3/2/1 breakpoints) rather than three explicit column `<div>`s, so `app.js` can show,
+hide, and reorder cards purely by manipulating plain DOM siblings — `applyLayout`
+reorders via `appendChild` and toggles each card's `hidden` class from a `CARD_DEFS`-
+derived preference list stored under `pimonitor-layout` in `localStorage`; there is no
+server-side state. `normalizeLayout` reconciles a stored layout against the current set
+of known cards on every load, so a stale value from an older release (a card since
+removed, or one added since) never silently loses or hides a card. The "Network" card is
+the one exception to the generic toggle: its `hidden` state is decided in `renderMetrics`
+from three things ANDed together — the stored layout preference, the `network_enabled`
+capability flag from `/api/v1/config`, and whether the current snapshot actually carries
+network data — so a metric disabled server-side never appears regardless of what a
+client has stored, matching the issue's acceptance criteria.
+
 ## Configuration (`internal/config`)
 
 `config.Load` resolves `Config` in strictly increasing precedence: **built-in defaults**
