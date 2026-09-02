@@ -579,6 +579,12 @@
       applyNetworkVisibility(latestSnapshot);
       redrawGauges(latestSnapshot);
     }
+    // A card revealed by applyLayout may hold a sparkline (see
+    // redrawSparklines's comment below) that also needs redrawing at its
+    // now-correct size, not just on the next history poll.
+    if (latestHistory) {
+      redrawSparklines(latestHistory);
+    }
   }
 
   function moveCard(id, delta) {
@@ -614,6 +620,9 @@
     if (latestSnapshot) {
       applyNetworkVisibility(latestSnapshot);
       redrawGauges(latestSnapshot);
+    }
+    if (latestHistory) {
+      redrawSparklines(latestHistory);
     }
   }
 
@@ -1045,12 +1054,26 @@
     return out;
   }
 
+  // The sparklines draw onto a <canvas> sized from its rendered CSS box (see
+  // chart.js's drawSparkline), the same as the load-average gauges (see
+  // redrawGauges's comment above) — a card hidden via `display: none`
+  // reports a zero-size box, so a sparkline drawn while its card was hidden
+  // bakes in a stale, wrong-sized bitmap that then stretches once the card
+  // is shown again. Split out of renderHistory (which calls it too) so a
+  // layout change that reveals a card can redraw its sparkline at the
+  // now-correct size immediately, without waiting for the next history poll
+  // (at least 60s away — 60s at the default poll interval — since
+  // pollHistory runs on its own, slower timer).
+  function redrawSparklines(hist) {
+    if (hist.cpu_percent) drawSparkline(document.getElementById('cpu-sparkline'), hist.cpu_percent, { min: 0, max: 100 });
+    if (hist.temperature) drawSparkline(document.getElementById('temp-sparkline'), hist.temperature);
+  }
+
   function renderHistory(hist) {
     latestHistory = hist;
     const { newestPoint } = historyBounds(hist);
     historySince = newestPoint ? newestPoint.t : null;
-    if (hist.cpu_percent) drawSparkline(document.getElementById('cpu-sparkline'), hist.cpu_percent, { min: 0, max: 100 });
-    if (hist.temperature) drawSparkline(document.getElementById('temp-sparkline'), hist.temperature);
+    redrawSparklines(hist);
     // Keep the open detail modal in sync with freshly polled history (and
     // repaint it after a theme change, which re-calls renderHistory).
     renderDetailChart();
