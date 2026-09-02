@@ -256,34 +256,8 @@
         fmtBytes(d.used_bytes) + ' / ' + fmtBytes(d.total_bytes))
     );
 
-    // Network. Hidden state combines three independent things: the layout
-    // preference (issue #10), the server capability flag, and whether this
-    // snapshot actually has data — the server flag alone never lets a
-    // disabled network card appear regardless of the stored layout.
-    const networkCard = document.getElementById('card-network');
-    const networkPref = layout.find(e => e.id === 'network')?.visible !== false;
-    if (networkPref && config.network_enabled && snap.network?.length) {
-      networkCard.classList.remove('hidden');
-      renderList('network-list', snap.network, n => {
-        const row = document.createElement('div');
-        row.className = 'bar-row';
-        const label = document.createElement('div');
-        label.className = 'bar-label';
-        const name = document.createElement('span');
-        name.className = 'bar-name';
-        name.textContent = n.name;
-        const rates = document.createElement('span');
-        rates.className = 'bar-pct';
-        rates.textContent =
-          '↓ ' + fmtBytesPerSec(n.rx_bytes_per_sec) +
-          ' ↑ ' + fmtBytesPerSec(n.tx_bytes_per_sec);
-        label.append(name, rates);
-        row.appendChild(label);
-        return row;
-      });
-    } else {
-      networkCard.classList.add('hidden');
-    }
+    // Network
+    applyNetworkVisibility(snap);
 
     // System
     setText('sys-kernel', snap.system.kernel_version || 'unknown');
@@ -523,11 +497,46 @@
 
   let layout = normalizeLayout(storedLayout());
 
+  // Network card visibility combines three independent things: the layout
+  // preference (issue #10), the server capability flag, and whether this
+  // snapshot actually has data — the server flag alone never lets a
+  // disabled network card appear regardless of the stored layout. Split out
+  // of renderMetrics (which calls it too) so a layout preference change can
+  // re-apply just this, without re-rendering the rest of the page and its
+  // "Last updated" timestamp along with it.
+  function applyNetworkVisibility(snap) {
+    const networkCard = document.getElementById('card-network');
+    const networkPref = layout.find(e => e.id === 'network')?.visible !== false;
+    if (networkPref && config.network_enabled && snap.network?.length) {
+      networkCard.classList.remove('hidden');
+      renderList('network-list', snap.network, n => {
+        const row = document.createElement('div');
+        row.className = 'bar-row';
+        const label = document.createElement('div');
+        label.className = 'bar-label';
+        const name = document.createElement('span');
+        name.className = 'bar-name';
+        name.textContent = n.name;
+        const rates = document.createElement('span');
+        rates.className = 'bar-pct';
+        rates.textContent =
+          '↓ ' + fmtBytesPerSec(n.rx_bytes_per_sec) +
+          ' ↑ ' + fmtBytesPerSec(n.tx_bytes_per_sec);
+        label.append(name, rates);
+        row.appendChild(label);
+        return row;
+      });
+    } else {
+      networkCard.classList.add('hidden');
+    }
+  }
+
   // Reorders the card elements to match `layout` and applies each card's
   // visibility preference — except "network", whose hidden state also
   // depends on the server capability flag and current data, so it is
-  // decided solely in renderMetrics (issue #10's "metrics disabled on the
-  // server never appear, regardless of stored layout" acceptance criterion).
+  // decided solely in applyNetworkVisibility (issue #10's "metrics disabled
+  // on the server never appear, regardless of stored layout" acceptance
+  // criterion).
   function applyLayout() {
     const main = document.querySelector('main');
     if (!main) return;
@@ -549,10 +558,10 @@
     persistLayout(layout);
     applyLayout();
     // "network" isn't toggled by applyLayout (see its comment above) — its
-    // hidden class is only ever set in renderMetrics, so re-run it here to
-    // reflect the preference change immediately instead of waiting for the
-    // next poll.
-    if (latestSnapshot) renderMetrics(latestSnapshot);
+    // hidden class is only ever set in applyNetworkVisibility, so re-run it
+    // here to reflect the preference change immediately instead of waiting
+    // for the next poll.
+    if (latestSnapshot) applyNetworkVisibility(latestSnapshot);
   }
 
   function moveCard(id, delta) {
@@ -585,7 +594,7 @@
     persistLayout(layout);
     applyLayout();
     buildLayoutList();
-    if (latestSnapshot) renderMetrics(latestSnapshot);
+    if (latestSnapshot) applyNetworkVisibility(latestSnapshot);
   }
 
   // Builds the modal's card list from scratch on every open/change — the

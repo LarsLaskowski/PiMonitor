@@ -17,7 +17,19 @@ func TestIndexHTML_ModalsAreNativeDialogs(t *testing.T) {
 	}
 	html := string(data)
 
-	for _, id := range []string{"updates-modal", "apikey-modal", "detail-modal", "layout-modal"} {
+	// Derive the modal ids from index.html itself — any id ending in
+	// "-modal" (not "-modal-title" or "-modal-close", which the trailing
+	// quote in the pattern excludes) — rather than a hardcoded list. A
+	// `role="dialog"` div is already caught below regardless of id; what
+	// this adds is catching a future modal declared as a plain
+	// `<div class="modal" id="x-modal">` with no role at all, which a
+	// hardcoded list wouldn't cover.
+	modalIDs := regexp.MustCompile(`id="([\w-]+-modal)"`).FindAllStringSubmatch(html, -1)
+	if len(modalIDs) == 0 {
+		t.Fatal(`index.html: found no id="...-modal" elements to check`)
+	}
+	for _, m := range modalIDs {
+		id := m[1]
 		want := `<dialog class="modal" id="` + id + `"`
 		if !strings.Contains(html, want) {
 			t.Errorf("index.html: expected %q to be declared as %q", id, want)

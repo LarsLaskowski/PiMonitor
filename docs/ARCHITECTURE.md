@@ -468,8 +468,10 @@ derived preference list stored under `pimonitor-layout` in `localStorage`; there
 server-side state. `normalizeLayout` reconciles a stored layout against the current set
 of known cards on every load, so a stale value from an older release (a card since
 removed, or one added since) never silently loses or hides a card. The "Network" card is
-the one exception to the generic toggle: its `hidden` state is decided in `renderMetrics`
-from three things ANDed together — the stored layout preference, the `network_enabled`
+the one exception to the generic toggle: its `hidden` state is decided in
+`applyNetworkVisibility` (called from `renderMetrics` on every poll, and directly from
+`setCardVisible`/`resetLayout` so a layout change takes effect without waiting for the
+next poll) from three things ANDed together — the stored layout preference, the `network_enabled`
 capability flag from `/api/v1/config`, and whether the current snapshot actually carries
 network data — so a metric disabled server-side never appears regardless of what a
 client has stored, matching the issue's acceptance criteria.
