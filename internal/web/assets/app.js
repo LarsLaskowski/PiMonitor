@@ -39,6 +39,11 @@
 
   function persistAPIKey(key) {
     try {
+      // Clear-text localStorage is a deliberate, documented trade-off, not an
+      // oversight - see SECURITY.md for why (an attacker with browser-profile
+      // access already has the key, and without TLS it's equally exposed on
+      // the wire).
+      // codeql[js/clear-text-storage-of-sensitive-data]
       localStorage.setItem(API_KEY_STORAGE, key);
     } catch (e) {
       // Private browsing or blocked storage: the key still works for this
