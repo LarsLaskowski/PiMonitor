@@ -580,7 +580,7 @@
       redrawGauges(latestSnapshot);
     }
     // A card revealed by applyLayout may hold a sparkline (see
-    // redrawSparklines's comment above) that also needs redrawing at its
+    // redrawSparklines's comment below) that also needs redrawing at its
     // now-correct size, not just on the next history poll.
     if (latestHistory) {
       redrawSparklines(latestHistory);
@@ -1062,7 +1062,8 @@
   // is shown again. Split out of renderHistory (which calls it too) so a
   // layout change that reveals a card can redraw its sparkline at the
   // now-correct size immediately, without waiting for the next history poll
-  // (up to 60s away, since pollHistory runs on its own, slower timer).
+  // (at least 60s away — 60s at the default poll interval — since
+  // pollHistory runs on its own, slower timer).
   function redrawSparklines(hist) {
     if (hist.cpu_percent) drawSparkline(document.getElementById('cpu-sparkline'), hist.cpu_percent, { min: 0, max: 100 });
     if (hist.temperature) drawSparkline(document.getElementById('temp-sparkline'), hist.temperature);

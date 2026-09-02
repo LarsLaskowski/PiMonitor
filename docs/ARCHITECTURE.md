@@ -483,7 +483,8 @@ CPU and temperature sparkline canvases have the same zero-size-while-hidden defe
 `setCardVisible`/`resetLayout` also re-run `redrawSparklines` (split out of
 `renderHistory`, which calls it too) on the held history when a card is revealed — without
 it, a stretched sparkline could otherwise persist until the next history poll, which runs
-on its own, slower timer (up to 60s) than the metrics poll the gauge fix rides on.
+on its own, slower timer (at least 60s — 60s at the default poll interval) than the
+metrics poll the gauge fix rides on.
 
 ## Configuration (`internal/config`)
 

@@ -400,10 +400,10 @@ func TestAppJS_RedrawSparklinesDrawsBothSparklines(t *testing.T) {
 // via display: none, so a sparkline drawn during that window bakes in a
 // stale, wrong-sized bitmap that stretches once the card is shown again.
 // Unlike the gauge case, the only other redraw path (renderHistory, driven
-// by pollHistory) runs on its own timer of up to 60s, so setCardVisible and
-// resetLayout must each re-run redrawSparklines on the held history
-// immediately, or a stretched sparkline could persist for up to a minute
-// after being revealed.
+// by pollHistory) runs on its own timer of at least 60s (60s at the default
+// poll interval), so setCardVisible and resetLayout must each re-run
+// redrawSparklines on the held history immediately, or a stretched
+// sparkline could persist for a minute or more after being revealed.
 func TestAppJS_ToggleAndResetRedrawSparklinesImmediately(t *testing.T) {
 	data, err := assetsFS.ReadFile("assets/app.js")
 	if err != nil {
