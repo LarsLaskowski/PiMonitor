@@ -349,6 +349,93 @@ func TestAppJS_RedrawGaugesDrawsAllThreeLoadGauges(t *testing.T) {
 	}
 }
 
+// TestAppJS_RedrawSparklinesDrawsBothSparklines guards redrawSparklines
+// (split out of renderHistory so a layout change revealing a hidden card
+// can redraw its sparkline at the correct size without waiting for the next
+// history poll — see TestAppJS_ToggleAndResetRedrawSparklinesImmediately):
+// it must draw both the CPU and temperature sparklines, and renderHistory
+// must delegate to it rather than duplicating the draw calls.
+func TestAppJS_RedrawSparklinesDrawsBothSparklines(t *testing.T) {
+	data, err := assetsFS.ReadFile("assets/app.js")
+	if err != nil {
+		t.Fatalf("read app.js: %v", err)
+	}
+	js := string(data)
+
+	start := strings.Index(js, "function redrawSparklines(")
+	if start == -1 {
+		t.Fatal("app.js: expected a function redrawSparklines")
+	}
+	end := strings.Index(js[start:], "\n  }\n")
+	if end == -1 {
+		t.Fatal("app.js: could not find end of function redrawSparklines")
+	}
+	body := js[start : start+end]
+
+	for _, canvasID := range []string{"cpu-sparkline", "temp-sparkline"} {
+		if !strings.Contains(body, "document.getElementById('"+canvasID+"')") {
+			t.Errorf("app.js: expected redrawSparklines to draw the %q canvas", canvasID)
+		}
+	}
+
+	renderStart := strings.Index(js, "function renderHistory(")
+	if renderStart == -1 {
+		t.Fatal("app.js: expected a function renderHistory")
+	}
+	renderEnd := strings.Index(js[renderStart:], "\n  }\n")
+	if renderEnd == -1 {
+		t.Fatal("app.js: could not find end of function renderHistory")
+	}
+	renderBody := js[renderStart : renderStart+renderEnd]
+	if !strings.Contains(renderBody, "redrawSparklines(hist)") {
+		t.Error("app.js: expected renderHistory to delegate to redrawSparklines(hist) instead of drawing the sparklines inline")
+	}
+}
+
+// TestAppJS_ToggleAndResetRedrawSparklinesImmediately guards the same
+// stale-bitmap-on-reveal defect as TestAppJS_ToggleAndResetRerenderNetworkImmediately
+// covers for the gauges, for the CPU/temperature sparkline canvases:
+// chart.js's drawSparkline sizes its canvas bitmap from
+// canvas.clientWidth/clientHeight, which report 0 while a card is hidden
+// via display: none, so a sparkline drawn during that window bakes in a
+// stale, wrong-sized bitmap that stretches once the card is shown again.
+// Unlike the gauge case, the only other redraw path (renderHistory, driven
+// by pollHistory) runs on its own timer of up to 60s, so setCardVisible and
+// resetLayout must each re-run redrawSparklines on the held history
+// immediately, or a stretched sparkline could persist for up to a minute
+// after being revealed.
+func TestAppJS_ToggleAndResetRedrawSparklinesImmediately(t *testing.T) {
+	data, err := assetsFS.ReadFile("assets/app.js")
+	if err != nil {
+		t.Fatalf("read app.js: %v", err)
+	}
+	js := string(data)
+
+	for _, fn := range []string{"setCardVisible", "resetLayout"} {
+		var start int
+		switch fn {
+		case "setCardVisible":
+			start = strings.Index(js, "function setCardVisible(")
+		case "resetLayout":
+			start = strings.Index(js, "function resetLayout(")
+		}
+		if start == -1 {
+			t.Fatalf("app.js: expected a function %s", fn)
+		}
+		end := strings.Index(js[start:], "\n  }\n")
+		if end == -1 {
+			t.Fatalf("app.js: could not find end of function %s", fn)
+		}
+		body := js[start : start+end]
+		if !strings.Contains(body, "if (latestHistory) {") {
+			t.Errorf("app.js: expected %s to guard its immediate sparkline redraw with if (latestHistory)", fn)
+		}
+		if !strings.Contains(body, "redrawSparklines(latestHistory);") {
+			t.Errorf("app.js: expected %s to call redrawSparklines(latestHistory) when history is held, so a revealed card's sparkline redraws at the correct size immediately", fn)
+		}
+	}
+}
+
 // TestAppJS_LayoutModalWiredAndAccessible guards the modal's wiring
 // (matching the other <dialog>-based modals: close button, backdrop
 // dismiss, focus return) and that each move button has a descriptive

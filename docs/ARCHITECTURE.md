@@ -478,7 +478,12 @@ client has stored, matching the issue's acceptance criteria. `setCardVisible`/
 `resetLayout` also re-run `redrawGauges` alongside `applyNetworkVisibility`: a card's
 `<canvas>` reports a zero-size box while hidden via `display: none`, so a load-average
 gauge drawn during that window bakes in a stale, fallback-sized bitmap that visibly
-stretches once the card is shown again — redrawing immediately on reveal avoids that.
+stretches once the card is shown again — redrawing immediately on reveal avoids that. The
+CPU and temperature sparkline canvases have the same zero-size-while-hidden defect, so
+`setCardVisible`/`resetLayout` also re-run `redrawSparklines` (split out of
+`renderHistory`, which calls it too) on the held history when a card is revealed — without
+it, a stretched sparkline could otherwise persist until the next history poll, which runs
+on its own, slower timer (up to 60s) than the metrics poll the gauge fix rides on.
 
 ## Configuration (`internal/config`)
 
