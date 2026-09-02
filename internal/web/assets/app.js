@@ -227,9 +227,7 @@
     setText('cpu-info', lastCPUCount + (lastCPUCount === 1 ? ' core' : ' cores') + (cpuModel ? ' · ' + cpuModel : ''));
 
     // Load average gauges
-    renderGauge('gauge-load1', 'load1-value', snap.load_average.load1, t.cpu_warn_percent, t.cpu_crit_percent);
-    renderGauge('gauge-load5', 'load5-value', snap.load_average.load5, t.cpu_warn_percent, t.cpu_crit_percent);
-    renderGauge('gauge-load15', 'load15-value', snap.load_average.load15, t.cpu_warn_percent, t.cpu_crit_percent);
+    redrawGauges(snap);
 
     // Temperature
     const tempEl = document.getElementById('temp-value');
@@ -256,34 +254,8 @@
         fmtBytes(d.used_bytes) + ' / ' + fmtBytes(d.total_bytes))
     );
 
-    // Network. Hidden state combines three independent things: the layout
-    // preference (issue #10), the server capability flag, and whether this
-    // snapshot actually has data — the server flag alone never lets a
-    // disabled network card appear regardless of the stored layout.
-    const networkCard = document.getElementById('card-network');
-    const networkPref = layout.find(e => e.id === 'network')?.visible !== false;
-    if (networkPref && config.network_enabled && snap.network?.length) {
-      networkCard.classList.remove('hidden');
-      renderList('network-list', snap.network, n => {
-        const row = document.createElement('div');
-        row.className = 'bar-row';
-        const label = document.createElement('div');
-        label.className = 'bar-label';
-        const name = document.createElement('span');
-        name.className = 'bar-name';
-        name.textContent = n.name;
-        const rates = document.createElement('span');
-        rates.className = 'bar-pct';
-        rates.textContent =
-          '↓ ' + fmtBytesPerSec(n.rx_bytes_per_sec) +
-          ' ↑ ' + fmtBytesPerSec(n.tx_bytes_per_sec);
-        label.append(name, rates);
-        row.appendChild(label);
-        return row;
-      });
-    } else {
-      networkCard.classList.add('hidden');
-    }
+    // Network
+    applyNetworkVisibility(snap);
 
     // System
     setText('sys-kernel', snap.system.kernel_version || 'unknown');
@@ -523,11 +495,60 @@
 
   let layout = normalizeLayout(storedLayout());
 
+  // Network card visibility combines three independent things: the layout
+  // preference (issue #10), the server capability flag, and whether this
+  // snapshot actually has data — the server flag alone never lets a
+  // disabled network card appear regardless of the stored layout. Split out
+  // of renderMetrics (which calls it too) so a layout preference change can
+  // re-apply just this, without re-rendering the rest of the page and its
+  // "Last updated" timestamp along with it.
+  function applyNetworkVisibility(snap) {
+    const networkCard = document.getElementById('card-network');
+    const networkPref = layout.find(e => e.id === 'network')?.visible !== false;
+    if (networkPref && config.network_enabled && snap.network?.length) {
+      networkCard.classList.remove('hidden');
+      renderList('network-list', snap.network, n => {
+        const row = document.createElement('div');
+        row.className = 'bar-row';
+        const label = document.createElement('div');
+        label.className = 'bar-label';
+        const name = document.createElement('span');
+        name.className = 'bar-name';
+        name.textContent = n.name;
+        const rates = document.createElement('span');
+        rates.className = 'bar-pct';
+        rates.textContent =
+          '↓ ' + fmtBytesPerSec(n.rx_bytes_per_sec) +
+          ' ↑ ' + fmtBytesPerSec(n.tx_bytes_per_sec);
+        label.append(name, rates);
+        row.appendChild(label);
+        return row;
+      });
+    } else {
+      networkCard.classList.add('hidden');
+    }
+  }
+
+  // The load-average gauges draw onto a <canvas> sized from its rendered
+  // CSS box (see gauge.js); a card hidden via `display: none` reports a
+  // zero-size box, so a gauge drawn while its card was hidden bakes in a
+  // stale, wrong-sized bitmap that then stretches once the card is shown
+  // again. Split out of renderMetrics (which calls it too) so a layout
+  // change that reveals a card can redraw the gauges at their now-correct
+  // size immediately, without re-rendering the rest of the page.
+  function redrawGauges(snap) {
+    const t = config.thresholds;
+    renderGauge('gauge-load1', 'load1-value', snap.load_average.load1, t.cpu_warn_percent, t.cpu_crit_percent);
+    renderGauge('gauge-load5', 'load5-value', snap.load_average.load5, t.cpu_warn_percent, t.cpu_crit_percent);
+    renderGauge('gauge-load15', 'load15-value', snap.load_average.load15, t.cpu_warn_percent, t.cpu_crit_percent);
+  }
+
   // Reorders the card elements to match `layout` and applies each card's
   // visibility preference — except "network", whose hidden state also
   // depends on the server capability flag and current data, so it is
-  // decided solely in renderMetrics (issue #10's "metrics disabled on the
-  // server never appear, regardless of stored layout" acceptance criterion).
+  // decided solely in applyNetworkVisibility (issue #10's "metrics disabled
+  // on the server never appear, regardless of stored layout" acceptance
+  // criterion).
   function applyLayout() {
     const main = document.querySelector('main');
     if (!main) return;
@@ -548,6 +569,16 @@
     entry.visible = visible;
     persistLayout(layout);
     applyLayout();
+    // "network" isn't toggled by applyLayout (see its comment above) — its
+    // hidden class is only ever set in applyNetworkVisibility, so re-run it
+    // here to reflect the preference change immediately instead of waiting
+    // for the next poll. A card just revealed by applyLayout may also have
+    // gone from `display: none` to visible, so its gauges (if any) need a
+    // redraw at their now-correct size (see redrawGauges's comment above).
+    if (latestSnapshot) {
+      applyNetworkVisibility(latestSnapshot);
+      redrawGauges(latestSnapshot);
+    }
   }
 
   function moveCard(id, delta) {
@@ -560,11 +591,18 @@
     applyLayout();
     buildLayoutList();
     // Keep keyboard focus on the card the user just moved, on whichever of
-    // its two move buttons is still enabled after the rebuild.
+    // its two move buttons is still enabled after the rebuild. The card's
+    // checkbox is a last resort, not a guaranteed fallback: it is disabled
+    // for "network" when the network_enabled capability is off, so fall
+    // back further to the always-focusable "Reset to default" button
+    // rather than leaving focus stranded on a disabled element.
     const li = document.querySelector('.layout-item[data-card-id="' + id + '"]');
     const buttons = li ? li.querySelectorAll('.layout-move') : [];
     const preferred = delta < 0 ? buttons[0] : buttons[1];
-    const focusTarget = preferred && !preferred.disabled ? preferred : li?.querySelector('input[type="checkbox"]');
+    const checkbox = li?.querySelector('input[type="checkbox"]');
+    const focusTarget = (preferred && !preferred.disabled && preferred) ||
+      (checkbox && !checkbox.disabled && checkbox) ||
+      document.getElementById('layout-reset');
     focusTarget?.focus();
   }
 
@@ -573,6 +611,10 @@
     persistLayout(layout);
     applyLayout();
     buildLayoutList();
+    if (latestSnapshot) {
+      applyNetworkVisibility(latestSnapshot);
+      redrawGauges(latestSnapshot);
+    }
   }
 
   // Builds the modal's card list from scratch on every open/change — the

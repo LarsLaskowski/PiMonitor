@@ -151,8 +151,8 @@ func TestAppJS_NormalizeLayoutReconcilesStoredLayout(t *testing.T) {
 // TestAppJS_ApplyLayoutReordersAndHidesCards guards the reorder/hide
 // mechanism itself: applyLayout must move each card to its stored position
 // via appendChild and toggle its "hidden" class from the stored visibility
-// — except "network", whose visibility is decided in renderMetrics (see
-// TestAppJS_NetworkVisibilityRespectsLayoutAndCapability).
+// — except "network", whose visibility is decided in applyNetworkVisibility
+// (see TestAppJS_NetworkVisibilityRespectsLayoutAndCapability).
 func TestAppJS_ApplyLayoutReordersAndHidesCards(t *testing.T) {
 	data, err := assetsFS.ReadFile("assets/app.js")
 	if err != nil {
@@ -174,7 +174,7 @@ func TestAppJS_ApplyLayoutReordersAndHidesCards(t *testing.T) {
 		t.Error("app.js: expected applyLayout to reorder cards via main.appendChild(el)")
 	}
 	if !strings.Contains(body, "def.id !== 'network'") {
-		t.Error("app.js: expected applyLayout to skip toggling the 'hidden' class for the network card, which renderMetrics decides")
+		t.Error("app.js: expected applyLayout to skip toggling the 'hidden' class for the network card, which applyNetworkVisibility decides")
 	}
 	if !strings.Contains(body, "el.classList.toggle('hidden', !entry.visible)") {
 		t.Error("app.js: expected applyLayout to toggle each card's 'hidden' class from its stored visibility")
@@ -186,16 +186,99 @@ func TestAppJS_ApplyLayoutReordersAndHidesCards(t *testing.T) {
 			t.Fatalf("app.js: expected an async function %s", wireSite)
 		}
 		fnBody := js[fnStart:]
-		if !strings.Contains(fnBody[:strings.Index(fnBody, "\n  }\n")], "applyLayout()") {
+		body := fnBody[:strings.Index(fnBody, "\n  }\n")]
+		if !strings.Contains(body, "applyLayout()") {
 			t.Errorf("app.js: expected %s to call applyLayout() so the stored layout applies on load", wireSite)
 		}
+		if !strings.Contains(body, "wireLayoutModal()") {
+			t.Errorf("app.js: expected %s to call wireLayoutModal() so the layout modal's gear button is wired up", wireSite)
+		}
+	}
+}
+
+// TestAppJS_ToggleAndResetRerenderNetworkImmediately guards a follow-up from
+// the #152 review (issue #153): applyLayout never toggles the network
+// card's "hidden" class (see TestAppJS_ApplyLayoutReordersAndHidesCards),
+// so setCardVisible and resetLayout must each re-run applyNetworkVisibility
+// on the held snapshot, or unchecking "Network" in the layout modal would
+// have no visible effect until the next poll. This calls the narrower
+// applyNetworkVisibility rather than the full renderMetrics so a layout
+// change doesn't also re-stamp "Last updated" and mask a stale
+// "Connection error" state after a failed poll. The same guard applies to
+// redrawGauges: a card revealed by applyLayout was rendered at zero size
+// while hidden (see redrawGauges's comment in app.js), so its gauges need
+// a redraw too, not just on the next poll.
+func TestAppJS_ToggleAndResetRerenderNetworkImmediately(t *testing.T) {
+	data, err := assetsFS.ReadFile("assets/app.js")
+	if err != nil {
+		t.Fatalf("read app.js: %v", err)
+	}
+	js := string(data)
+
+	for _, fn := range []string{"setCardVisible", "resetLayout"} {
+		var start int
+		switch fn {
+		case "setCardVisible":
+			start = strings.Index(js, "function setCardVisible(")
+		case "resetLayout":
+			start = strings.Index(js, "function resetLayout(")
+		}
+		if start == -1 {
+			t.Fatalf("app.js: expected a function %s", fn)
+		}
+		end := strings.Index(js[start:], "\n  }\n")
+		if end == -1 {
+			t.Fatalf("app.js: could not find end of function %s", fn)
+		}
+		body := js[start : start+end]
+		if !strings.Contains(body, "if (latestSnapshot) {") {
+			t.Errorf("app.js: expected %s to guard its immediate re-render calls with if (latestSnapshot)", fn)
+		}
+		if !strings.Contains(body, "applyNetworkVisibility(latestSnapshot);") {
+			t.Errorf("app.js: expected %s to call applyNetworkVisibility(latestSnapshot) when a snapshot is held, so the network card's visibility updates immediately", fn)
+		}
+		if !strings.Contains(body, "redrawGauges(latestSnapshot);") {
+			t.Errorf("app.js: expected %s to call redrawGauges(latestSnapshot) when a snapshot is held, so a revealed card's gauges redraw at the correct size immediately", fn)
+		}
+	}
+}
+
+// TestAppJS_MoveCardFocusFallsBackToResetButton guards another #153
+// follow-up: moveCard's keyboard-focus restore must not land on a disabled
+// checkbox. That happens when the moved card is "network" with the
+// network_enabled capability off (its checkbox is disabled) and the move
+// landed it at a list end (its remaining move button is also disabled) —
+// focus must fall back to the always-focusable "Reset to default" button.
+func TestAppJS_MoveCardFocusFallsBackToResetButton(t *testing.T) {
+	data, err := assetsFS.ReadFile("assets/app.js")
+	if err != nil {
+		t.Fatalf("read app.js: %v", err)
+	}
+	js := string(data)
+
+	start := strings.Index(js, "function moveCard(")
+	if start == -1 {
+		t.Fatal("app.js: expected a function moveCard")
+	}
+	end := strings.Index(js[start:], "\n  }\n")
+	if end == -1 {
+		t.Fatal("app.js: could not find end of function moveCard")
+	}
+	body := js[start : start+end]
+
+	if !strings.Contains(body, "checkbox && !checkbox.disabled && checkbox") {
+		t.Error("app.js: expected moveCard's focus target to skip the checkbox when it is disabled")
+	}
+	if !strings.Contains(body, "document.getElementById('layout-reset')") {
+		t.Error("app.js: expected moveCard's focus target to fall back to the #layout-reset button when neither a move button nor the checkbox is focusable")
 	}
 }
 
 // TestAppJS_NetworkVisibilityRespectsLayoutAndCapability guards the issue's
 // second acceptance criterion: a metric disabled on the server
 // (network_enabled: false) must never appear, regardless of the stored
-// layout's visibility preference for it.
+// layout's visibility preference for it. Also guards that renderMetrics
+// delegates to applyNetworkVisibility rather than duplicating the check.
 func TestAppJS_NetworkVisibilityRespectsLayoutAndCapability(t *testing.T) {
 	data, err := assetsFS.ReadFile("assets/app.js")
 	if err != nil {
@@ -203,13 +286,13 @@ func TestAppJS_NetworkVisibilityRespectsLayoutAndCapability(t *testing.T) {
 	}
 	js := string(data)
 
-	start := strings.Index(js, "// Network. Hidden state combines")
+	start := strings.Index(js, "function applyNetworkVisibility(")
 	if start == -1 {
-		t.Fatal("app.js: expected renderMetrics's network block")
+		t.Fatal("app.js: expected a function applyNetworkVisibility")
 	}
-	end := strings.Index(js[start:], "\n    } else {\n      networkCard.classList.add('hidden');\n    }\n")
+	end := strings.Index(js[start:], "\n  }\n")
 	if end == -1 {
-		t.Fatal("app.js: could not find end of the network visibility block")
+		t.Fatal("app.js: could not find end of function applyNetworkVisibility")
 	}
 	block := js[start : start+end]
 
@@ -218,6 +301,51 @@ func TestAppJS_NetworkVisibilityRespectsLayoutAndCapability(t *testing.T) {
 	}
 	if !strings.Contains(block, "networkPref && config.network_enabled && snap.network?.length") {
 		t.Error("app.js: expected the network card to require the layout preference AND the server capability flag AND data before showing")
+	}
+
+	renderStart := strings.Index(js, "function renderMetrics(")
+	if renderStart == -1 {
+		t.Fatal("app.js: expected a function renderMetrics")
+	}
+	renderEnd := strings.Index(js[renderStart:], "\n  }\n")
+	if renderEnd == -1 {
+		t.Fatal("app.js: could not find end of function renderMetrics")
+	}
+	renderBody := js[renderStart : renderStart+renderEnd]
+	if !strings.Contains(renderBody, "applyNetworkVisibility(snap)") {
+		t.Error("app.js: expected renderMetrics to delegate to applyNetworkVisibility(snap) instead of duplicating the network visibility check")
+	}
+	if !strings.Contains(renderBody, "redrawGauges(snap)") {
+		t.Error("app.js: expected renderMetrics to delegate to redrawGauges(snap) instead of drawing the load gauges inline")
+	}
+}
+
+// TestAppJS_RedrawGaugesDrawsAllThreeLoadGauges guards redrawGauges (split
+// out of renderMetrics so a layout change revealing a hidden card can
+// redraw its gauges at the correct size without a full renderMetrics — see
+// TestAppJS_ToggleAndResetRerenderNetworkImmediately): it must draw all
+// three load-average gauges, not just one or two.
+func TestAppJS_RedrawGaugesDrawsAllThreeLoadGauges(t *testing.T) {
+	data, err := assetsFS.ReadFile("assets/app.js")
+	if err != nil {
+		t.Fatalf("read app.js: %v", err)
+	}
+	js := string(data)
+
+	start := strings.Index(js, "function redrawGauges(")
+	if start == -1 {
+		t.Fatal("app.js: expected a function redrawGauges")
+	}
+	end := strings.Index(js[start:], "\n  }\n")
+	if end == -1 {
+		t.Fatal("app.js: could not find end of function redrawGauges")
+	}
+	body := js[start : start+end]
+
+	for _, canvasID := range []string{"gauge-load1", "gauge-load5", "gauge-load15"} {
+		if !strings.Contains(body, "renderGauge('"+canvasID+"'") {
+			t.Errorf("app.js: expected redrawGauges to call renderGauge for %q", canvasID)
+		}
 	}
 }
 

@@ -127,8 +127,9 @@ header .subtitle {
 
 /* A flat, CSS-multi-column layout rather than three explicit column <div>s:
    cards can then be shown/hidden/reordered (issue #10) by moving/toggling
-   them as plain siblings, and the browser still balances them into the same
-   top-to-bottom-per-column arrangement the old explicit columns produced. */
+   them as plain siblings, with the browser balancing them across columns
+   by rendered height. The 3/2/1-column breakpoints below match the old
+   explicit columns. */
 main {
   column-count: 3;
   column-gap: 1rem;
@@ -389,9 +390,10 @@ main {
   filter: brightness(1.08);
 }
 
-/* Native <dialog> elements (updates list, API key prompt, metric detail).
-   showModal() handles the top-layer promotion, ::backdrop, native focus
-   trapping and centering; we only need to style the box and its overlay.
+/* Native <dialog> elements (updates list, API key prompt, metric detail,
+   layout customization). showModal() handles the top-layer promotion,
+   ::backdrop, native focus trapping and centering; we only need to style
+   the box and its overlay.
    Scoped to [open] so the UA's default `dialog:not([open]) { display: none }`
    still applies and the dialog stays hidden (and out of layout) until shown. */
 dialog.modal[open] {
