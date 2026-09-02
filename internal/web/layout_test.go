@@ -186,9 +186,79 @@ func TestAppJS_ApplyLayoutReordersAndHidesCards(t *testing.T) {
 			t.Fatalf("app.js: expected an async function %s", wireSite)
 		}
 		fnBody := js[fnStart:]
-		if !strings.Contains(fnBody[:strings.Index(fnBody, "\n  }\n")], "applyLayout()") {
+		body := fnBody[:strings.Index(fnBody, "\n  }\n")]
+		if !strings.Contains(body, "applyLayout()") {
 			t.Errorf("app.js: expected %s to call applyLayout() so the stored layout applies on load", wireSite)
 		}
+		if !strings.Contains(body, "wireLayoutModal()") {
+			t.Errorf("app.js: expected %s to call wireLayoutModal() so the layout modal's gear button is wired up", wireSite)
+		}
+	}
+}
+
+// TestAppJS_ToggleAndResetRerenderNetworkImmediately guards a follow-up from
+// the #152 review (issue #153): applyLayout never toggles the network
+// card's "hidden" class (see TestAppJS_ApplyLayoutReordersAndHidesCards),
+// so setCardVisible and resetLayout must each re-run renderMetrics on the
+// held snapshot, or unchecking "Network" in the layout modal would have no
+// visible effect until the next poll.
+func TestAppJS_ToggleAndResetRerenderNetworkImmediately(t *testing.T) {
+	data, err := assetsFS.ReadFile("assets/app.js")
+	if err != nil {
+		t.Fatalf("read app.js: %v", err)
+	}
+	js := string(data)
+
+	for _, fn := range []string{"setCardVisible", "resetLayout"} {
+		var start int
+		switch fn {
+		case "setCardVisible":
+			start = strings.Index(js, "function setCardVisible(")
+		case "resetLayout":
+			start = strings.Index(js, "function resetLayout(")
+		}
+		if start == -1 {
+			t.Fatalf("app.js: expected a function %s", fn)
+		}
+		end := strings.Index(js[start:], "\n  }\n")
+		if end == -1 {
+			t.Fatalf("app.js: could not find end of function %s", fn)
+		}
+		body := js[start : start+end]
+		if !strings.Contains(body, "if (latestSnapshot) renderMetrics(latestSnapshot);") {
+			t.Errorf("app.js: expected %s to call renderMetrics(latestSnapshot) when a snapshot is held, so the network card's visibility updates immediately", fn)
+		}
+	}
+}
+
+// TestAppJS_MoveCardFocusFallsBackToResetButton guards another #153
+// follow-up: moveCard's keyboard-focus restore must not land on a disabled
+// checkbox. That happens when the moved card is "network" with the
+// network_enabled capability off (its checkbox is disabled) and the move
+// landed it at a list end (its remaining move button is also disabled) —
+// focus must fall back to the always-focusable "Reset to default" button.
+func TestAppJS_MoveCardFocusFallsBackToResetButton(t *testing.T) {
+	data, err := assetsFS.ReadFile("assets/app.js")
+	if err != nil {
+		t.Fatalf("read app.js: %v", err)
+	}
+	js := string(data)
+
+	start := strings.Index(js, "function moveCard(")
+	if start == -1 {
+		t.Fatal("app.js: expected a function moveCard")
+	}
+	end := strings.Index(js[start:], "\n  }\n")
+	if end == -1 {
+		t.Fatal("app.js: could not find end of function moveCard")
+	}
+	body := js[start : start+end]
+
+	if !strings.Contains(body, "checkbox && !checkbox.disabled && checkbox") {
+		t.Error("app.js: expected moveCard's focus target to skip the checkbox when it is disabled")
+	}
+	if !strings.Contains(body, "document.getElementById('layout-reset')") {
+		t.Error("app.js: expected moveCard's focus target to fall back to the #layout-reset button when neither a move button nor the checkbox is focusable")
 	}
 }
 

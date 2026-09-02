@@ -548,6 +548,11 @@
     entry.visible = visible;
     persistLayout(layout);
     applyLayout();
+    // "network" isn't toggled by applyLayout (see its comment above) — its
+    // hidden class is only ever set in renderMetrics, so re-run it here to
+    // reflect the preference change immediately instead of waiting for the
+    // next poll.
+    if (latestSnapshot) renderMetrics(latestSnapshot);
   }
 
   function moveCard(id, delta) {
@@ -560,11 +565,18 @@
     applyLayout();
     buildLayoutList();
     // Keep keyboard focus on the card the user just moved, on whichever of
-    // its two move buttons is still enabled after the rebuild.
+    // its two move buttons is still enabled after the rebuild. The card's
+    // checkbox is a last resort, not a guaranteed fallback: it is disabled
+    // for "network" when the network_enabled capability is off, so fall
+    // back further to the always-focusable "Reset to default" button
+    // rather than leaving focus stranded on a disabled element.
     const li = document.querySelector('.layout-item[data-card-id="' + id + '"]');
     const buttons = li ? li.querySelectorAll('.layout-move') : [];
     const preferred = delta < 0 ? buttons[0] : buttons[1];
-    const focusTarget = preferred && !preferred.disabled ? preferred : li?.querySelector('input[type="checkbox"]');
+    const checkbox = li?.querySelector('input[type="checkbox"]');
+    const focusTarget = (preferred && !preferred.disabled && preferred) ||
+      (checkbox && !checkbox.disabled && checkbox) ||
+      document.getElementById('layout-reset');
     focusTarget?.focus();
   }
 
@@ -573,6 +585,7 @@
     persistLayout(layout);
     applyLayout();
     buildLayoutList();
+    if (latestSnapshot) renderMetrics(latestSnapshot);
   }
 
   // Builds the modal's card list from scratch on every open/change — the

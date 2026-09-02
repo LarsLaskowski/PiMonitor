@@ -39,6 +39,8 @@ automation systems like openHAB). Runs as a systemd service.
   metric sampling
 - **Light/dark theme toggle** - follows the OS setting by default, with a
   manual override remembered in the browser
+- **Configurable dashboard layout** - show/hide and reorder metric cards
+  from a settings modal, remembered in the browser
 - A versioned REST API (`/api/v1/...`) for third-party consumers, with
   optional API-key authentication and gzip-compressed responses, including
   per-metric endpoints (`/api/v1/metrics/temperature`, `/memory`, ...) for

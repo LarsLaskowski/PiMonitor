@@ -7,10 +7,9 @@ import (
 )
 
 // TestIndexHTML_ModalsAreNativeDialogs guards the modal-backdrop-div to
-// native <dialog> migration: the three modals must be <dialog> elements
-// (which get focus trapping, ::backdrop and Escape-to-dismiss from the
-// browser for free), not a `role="dialog"` div inside a `.modal-backdrop`
-// wrapper.
+// native <dialog> migration: every modal must be a <dialog> element (which
+// get focus trapping, ::backdrop and Escape-to-dismiss from the browser for
+// free), not a `role="dialog"` div inside a `.modal-backdrop` wrapper.
 func TestIndexHTML_ModalsAreNativeDialogs(t *testing.T) {
 	data, err := assetsFS.ReadFile("assets/index.html")
 	if err != nil {
@@ -18,7 +17,7 @@ func TestIndexHTML_ModalsAreNativeDialogs(t *testing.T) {
 	}
 	html := string(data)
 
-	for _, id := range []string{"updates-modal", "apikey-modal", "detail-modal"} {
+	for _, id := range []string{"updates-modal", "apikey-modal", "detail-modal", "layout-modal"} {
 		want := `<dialog class="modal" id="` + id + `"`
 		if !strings.Contains(html, want) {
 			t.Errorf("index.html: expected %q to be declared as %q", id, want)
