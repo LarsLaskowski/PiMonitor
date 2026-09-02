@@ -64,8 +64,14 @@ func (s *Server) withAPIKey(next http.Handler) http.Handler {
 		}
 		// Hash both keys so the comparison runs in constant time over a
 		// fixed length, leaking neither key bytes nor the configured
-		// key's length through response timing.
+		// key's length through response timing. This is a live compare, not
+		// storage-at-rest, so SHA-256 is the right tool here: a slow,
+		// storage-oriented hash (bcrypt/argon2) would add ~100ms of CPU per
+		// request on the Pi for no security benefit against this threat
+		// model, and would itself be a DoS vector.
+		// codeql[go/weak-sensitive-data-hashing]
 		provided := sha256.Sum256([]byte(providedAPIKey(r)))
+		// codeql[go/weak-sensitive-data-hashing]
 		expected := sha256.Sum256([]byte(s.cfg.APIKey))
 		if subtle.ConstantTimeCompare(provided[:], expected[:]) == 1 {
 			next.ServeHTTP(w, r)
