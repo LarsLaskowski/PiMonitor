@@ -31,7 +31,7 @@
   function storedAPIKey() {
     try {
       return localStorage.getItem(API_KEY_STORAGE) || '';
-    } catch (e) {
+    } catch {
       // Private browsing or blocked storage: fall back to the in-memory key.
       return '';
     }
@@ -55,7 +55,7 @@
     try {
       const v = localStorage.getItem(THEME_KEY);
       return v === 'light' || v === 'dark' ? v : null;
-    } catch (e) {
+    } catch {
       // Private browsing or blocked storage: behave as if nothing was
       // stored, falling back to the OS prefers-color-scheme setting.
       return null;
@@ -482,7 +482,7 @@
       const raw = localStorage.getItem(LAYOUT_KEY);
       const parsed = raw ? JSON.parse(raw) : null;
       return Array.isArray(parsed) ? parsed : null;
-    } catch (e) {
+    } catch {
       // Private/blocked storage, or corrupt JSON: fall back to the default.
       return null;
     }
