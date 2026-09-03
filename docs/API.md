@@ -644,14 +644,17 @@ Thing http:url:pimonitor "PiMonitor" [
 ```
 
 The HTTP binding fetches `baseURL` once per refresh cycle, and each Channel's
-`stateTransformation` runs its JSONPath against whatever that Channel's
+`stateTransformation` runs its JSONPath against whatever that Channel's own
 request actually returns — `baseURL` alone, or `baseURL` plus that Channel's
 `stateExtension` if it sets one. A `stateTransformation` must match that
 body: the example above has no `stateExtension`, so its JSONPath is written
-against the full snapshot at `baseURL`. Pairing a `stateExtension` with a
-JSONPath meant for the full snapshot (as an earlier version of this example
-did) polls a URL that doesn't exist and gets a `404`, leaving the Item
-`UNDEF`.
+against the full snapshot at `baseURL`. An earlier version of this example
+got that wrong two ways at once: its `stateExtension="temperature/celsius"`
+polled `.../api/v1/metrics/temperature/celsius`, which isn't a route and
+returns `404`, so the Channel never gets a value and the Item stays
+`NULL`/`UNDEF`; and even a valid `stateExtension` would still have broken
+the JSONPath, since it was written for the full-snapshot body, not the
+narrower one a sub-resource returns.
 
 Polling the full snapshot like this pays off once a Thing has several
 Channels, since they all share one request. For a Thing with only one or two
