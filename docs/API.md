@@ -638,8 +638,30 @@ Thing http:url:pimonitor "PiMonitor" [
 ] {
     Channels:
         Type number : temperature "CPU Temperature" [
-            stateExtension="temperature/celsius",
             stateTransformation="JSONPATH:$.temperature.celsius"
         ]
 }
 ```
+
+The HTTP binding fetches `baseURL` once per refresh cycle, and each Channel's
+`stateTransformation` runs its JSONPath against whatever that Channel's own
+request actually returns — `baseURL` alone, or `baseURL` plus that Channel's
+`stateExtension` if it sets one. A `stateTransformation` must match that
+body: the example above has no `stateExtension`, so its JSONPath is written
+against the full snapshot at `baseURL`. An earlier version of this example
+got that wrong two ways at once: its `stateExtension="temperature/celsius"`
+polled `.../api/v1/metrics/temperature/celsius`, which isn't a route and
+returns `404`, so the Channel never gets a value and the Item stays
+`NULL`/`UNDEF`; and even a valid `stateExtension` would still have broken
+the JSONPath, since it was written for the full-snapshot body, not the
+narrower one a sub-resource returns.
+
+Polling the full snapshot like this pays off once a Thing has several
+Channels, since they all share one request. For a Thing with only one or two
+Channels, set that Channel's `stateExtension` to a
+[per-metric sub-resource](#get-apiv1metricsmetric) instead (e.g.
+`stateExtension="temperature"`) and write its `stateTransformation` against
+that narrower body (`JSONPATH:$.celsius`) — one request per Channel, but
+each one smaller. See
+[`docs/integrations/openhab.md`](integrations/openhab.md) for a full,
+multi-channel example and troubleshooting.
