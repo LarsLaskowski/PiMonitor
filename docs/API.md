@@ -643,16 +643,22 @@ Thing http:url:pimonitor "PiMonitor" [
 }
 ```
 
-The HTTP binding fetches `baseURL` once per refresh cycle and every Channel's
-`stateTransformation` runs its JSONPath against that same response body, so
-`baseURL` must **not** be combined with a per-channel `stateExtension` — that
-would append the extension to `baseURL` and request a URL that doesn't exist.
+The HTTP binding fetches `baseURL` once per refresh cycle, and each Channel's
+`stateTransformation` runs its JSONPath against whatever that Channel's
+request actually returns — `baseURL` alone, or `baseURL` plus that Channel's
+`stateExtension` if it sets one. A `stateTransformation` must match that
+body: the example above has no `stateExtension`, so its JSONPath is written
+against the full snapshot at `baseURL`. Pairing a `stateExtension` with a
+JSONPath meant for the full snapshot (as an earlier version of this example
+did) polls a URL that doesn't exist and gets a `404`, leaving the Item
+`UNDEF`.
+
 Polling the full snapshot like this pays off once a Thing has several
 Channels, since they all share one request. For a Thing with only one or two
-Channels, point `baseURL` at a
-[per-metric sub-resource](#get-apiv1metricsmetric) instead and drop the field
-prefix from the JSONPath, e.g.
-`baseURL="http://raspberrypi.local:8080/api/v1/metrics/temperature"` with
-`stateTransformation="JSONPATH:$.celsius"`. See
+Channels, set that Channel's `stateExtension` to a
+[per-metric sub-resource](#get-apiv1metricsmetric) instead (e.g.
+`stateExtension="temperature"`) and write its `stateTransformation` against
+that narrower body (`JSONPATH:$.celsius`) — one request per Channel, but
+each one smaller. See
 [`docs/integrations/openhab.md`](integrations/openhab.md) for a full,
 multi-channel example and troubleshooting.

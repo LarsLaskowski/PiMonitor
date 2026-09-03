@@ -41,12 +41,13 @@ The field paths below map 1:1 onto the response documented in
 [`docs/API.md`](../API.md#get-apiv1metrics).
 
 This full-snapshot approach is the right default for a Thing like the one
-below with many Channels. For a Thing with only one or two Channels, point
-`baseURL` at a
+below with many Channels. For a Thing with only one or two Channels, set
+that Channel's `stateExtension` to a
 [per-metric sub-resource](../API.md#get-apiv1metricsmetric) instead (e.g.
-`.../api/v1/metrics/temperature`) and write the `stateTransformation`
-against that narrower body (`JSONPATH:$.celsius`) — fewer bytes per poll,
-at the cost of one HTTP request per Channel instead of one per Thing.
+`stateExtension="temperature"`) and write its `stateTransformation` against
+that narrower body (`JSONPATH:$.celsius`) — fewer bytes per poll, at the
+cost of one HTTP request per metric you bind this way instead of one for
+the whole Thing.
 
 ## Things
 
