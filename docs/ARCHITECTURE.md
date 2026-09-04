@@ -496,9 +496,14 @@ the process list (`/proc/<pid>/cmdline` is world-readable), whereas `PIMONITOR_A
 can be delivered by systemd's `EnvironmentFile=` from a root-only file, and the config
 file itself is kept at mode `640 root:pimonitor` by `install.sh`. An unset *or empty*
 `PIMONITOR_API_KEY` changes nothing, mirroring the empty-flag default, so exporting it
-blank cannot accidentally turn off an `api_key` set in the file. `Load` delegates to an
-unexported `load(args, lookupEnv)` so the precedence rules are testable without mutating
-the process environment. YAML decoding uses `KnownFields(true)`, so an unrecognized key
+blank cannot accidentally turn off an `api_key` set in the file. Once `PIMONITOR_API_KEY`
+has been read (or found present-but-empty), `Load` removes it from the process
+environment via `os.Unsetenv` so nothing later in the process can read it back out —
+though on Linux this does not scrub `/proc/<pid>/environ`, which reflects the raw
+environment block captured at `execve()` regardless of later `setenv`/`unsetenv` calls;
+see `SECURITY.md`. `Load` delegates to an unexported `load(args, lookupEnv, unsetEnv)` so
+the precedence and unset rules are testable without mutating the process environment. YAML
+decoding uses `KnownFields(true)`, so an unrecognized key
 (e.g. a typo like `api_kay`) fails config loading outright at startup instead of silently
 falling back to a default that could be security-relevant (e.g. no authentication because
 the intended `api_key` was never actually applied).

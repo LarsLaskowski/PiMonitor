@@ -311,8 +311,13 @@ func envFunc(env map[string]string) func(string) (string, bool) {
 	}
 }
 
+// noopUnsetEnv stands in for load()'s unsetEnv parameter in tests that use
+// envFunc's fake lookupEnv rather than the real process environment, since
+// there is nothing real for it to unset.
+func noopUnsetEnv(string) {}
+
 func TestLoad_APIKeyFromEnv(t *testing.T) {
-	result, err := load(nil, envFunc(map[string]string{APIKeyEnvVar: "env-secret"}))
+	result, err := load(nil, envFunc(map[string]string{APIKeyEnvVar: "env-secret"}), noopUnsetEnv)
 	if err != nil {
 		t.Fatalf("load: %v", err)
 	}
@@ -326,7 +331,7 @@ func TestLoad_APIKeyEnvOverridesConfigFile(t *testing.T) {
 	path := filepath.Join(dir, "config.yaml")
 	writeFile(t, path, "api_key: \"file-secret\"\n")
 
-	result, err := load([]string{"-config", path}, envFunc(map[string]string{APIKeyEnvVar: "env-secret"}))
+	result, err := load([]string{"-config", path}, envFunc(map[string]string{APIKeyEnvVar: "env-secret"}), noopUnsetEnv)
 	if err != nil {
 		t.Fatalf("load: %v", err)
 	}
@@ -336,7 +341,7 @@ func TestLoad_APIKeyEnvOverridesConfigFile(t *testing.T) {
 }
 
 func TestLoad_APIKeyFlagOverridesEnv(t *testing.T) {
-	result, err := load([]string{"-api-key", "flag-secret"}, envFunc(map[string]string{APIKeyEnvVar: "env-secret"}))
+	result, err := load([]string{"-api-key", "flag-secret"}, envFunc(map[string]string{APIKeyEnvVar: "env-secret"}), noopUnsetEnv)
 	if err != nil {
 		t.Fatalf("load: %v", err)
 	}
@@ -352,12 +357,37 @@ func TestLoad_APIKeyEmptyEnvKeepsConfigFileValue(t *testing.T) {
 
 	// An exported-but-empty PIMONITOR_API_KEY must not silently disable the
 	// authentication configured in the file.
-	result, err := load([]string{"-config", path}, envFunc(map[string]string{APIKeyEnvVar: ""}))
+	result, err := load([]string{"-config", path}, envFunc(map[string]string{APIKeyEnvVar: ""}), noopUnsetEnv)
 	if err != nil {
 		t.Fatalf("load: %v", err)
 	}
 	if result.Config.APIKey != "file-secret" {
 		t.Fatalf("APIKey = %q, want file-secret", result.Config.APIKey)
+	}
+}
+
+func TestLoad_UnsetsAPIKeyEnvVar(t *testing.T) {
+	tests := []struct {
+		name      string
+		env       map[string]string
+		wantUnset bool
+	}{
+		{"absent from env: not unset (nothing to unset)", map[string]string{}, false},
+		{"present but empty: unset even though APIKey is untouched", map[string]string{APIKeyEnvVar: ""}, true},
+		{"present and non-empty: unset after being read into cfg", map[string]string{APIKeyEnvVar: "env-secret"}, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var unset []string
+			_, err := load(nil, envFunc(tt.env), func(key string) { unset = append(unset, key) })
+			if err != nil {
+				t.Fatalf("load: %v", err)
+			}
+			gotUnset := len(unset) == 1 && unset[0] == APIKeyEnvVar
+			if gotUnset != tt.wantUnset {
+				t.Fatalf("unsetEnv calls = %v, want unset=%v", unset, tt.wantUnset)
+			}
+		})
 	}
 }
 
@@ -372,6 +402,34 @@ func TestLoad_ReadsAPIKeyEnvVar(t *testing.T) {
 	}
 	if result.Config.APIKey != "env-secret" {
 		t.Fatalf("APIKey = %q, want env-secret", result.Config.APIKey)
+	}
+}
+
+// TestLoad_UnsetsAPIKeyEnvVarInRealEnvironment covers the wiring of the
+// exported Load to the real os.Unsetenv, which the load() tests above
+// deliberately bypass (see noopUnsetEnv). It must not call t.Parallel(): the
+// testing package's t.Setenv panics if used by a parallel (sub)test, since
+// t.Setenv captures and restores the pre-test value on Cleanup, which is not
+// safe to interleave with other tests touching the same process-wide
+// environment.
+//
+// t.Setenv's own Cleanup runs after this test's body, restoring
+// PIMONITOR_API_KEY to its pre-test state (unset) via os.Unsetenv again;
+// that happens regardless of whether Load already unset it, so the two
+// unsets don't conflict.
+func TestLoad_UnsetsAPIKeyEnvVarInRealEnvironment(t *testing.T) {
+	t.Setenv(APIKeyEnvVar, "env-secret")
+
+	result, err := Load(nil)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if result.Config.APIKey != "env-secret" {
+		t.Fatalf("APIKey = %q, want env-secret", result.Config.APIKey)
+	}
+
+	if v, ok := os.LookupEnv(APIKeyEnvVar); ok {
+		t.Fatalf("expected %s to be unset from the process environment after Load, still found %q", APIKeyEnvVar, v)
 	}
 }
 

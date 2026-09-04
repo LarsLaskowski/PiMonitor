@@ -422,14 +422,27 @@ const APIKeyEnvVar = "PIMONITOR_API_KEY"
 
 // Load resolves configuration from defaults, an optional YAML file
 // (-config), the PIMONITOR_API_KEY environment variable, and flag
-// overrides, in that order of increasing precedence.
+// overrides, in that order of increasing precedence. As a side effect, once
+// PIMONITOR_API_KEY has been read, Load removes it from the process
+// environment (see the unsetEnv call in load, below, for what that does and
+// does not guarantee) — a second Load call in the same process will not see
+// it again.
 func Load(args []string) (Result, error) {
-	return load(args, os.LookupEnv)
+	return load(args, os.LookupEnv, unsetenv)
+}
+
+// unsetenv removes key from the process's environment via os.Unsetenv,
+// discarding the returned error: os.Unsetenv's doc comment declares no
+// failure mode, and on Unix (syscall.Unsetenv) it unconditionally returns
+// nil, so there is nothing for the fixed APIKeyEnvVar constant this is
+// called with to fail on.
+func unsetenv(key string) {
+	_ = os.Unsetenv(key)
 }
 
 // load is Load with the environment injected, so tests can exercise the
 // precedence rules without mutating the process environment.
-func load(args []string, lookupEnv func(string) (string, bool)) (Result, error) {
+func load(args []string, lookupEnv func(string) (string, bool), unsetEnv func(string)) (Result, error) {
 	cfg := Default()
 
 	fs := flag.NewFlagSet("pimonitor", flag.ContinueOnError)
@@ -455,8 +468,28 @@ func load(args []string, lookupEnv func(string) (string, bool)) (Result, error) 
 	// variable changes nothing, mirroring how the empty flag default is
 	// treated, so exporting PIMONITOR_API_KEY="" cannot accidentally disable
 	// an api_key configured in the file.
-	if v, ok := lookupEnv(APIKeyEnvVar); ok && v != "" {
-		cfg.APIKey = v
+	if v, ok := lookupEnv(APIKeyEnvVar); ok {
+		if v != "" {
+			cfg.APIKey = v
+		}
+		// Remove the key from the process's own environment once it has
+		// been read into cfg, so nothing later in this process (a future
+		// code path, a library, a panic handler) can read it back out via
+		// os.Getenv/os.Environ, and so it can never be copied into a child
+		// process that (unlike internal/collector's apt/vcgencmd calls,
+		// which already build an explicit, minimal cmd.Env) inherits the
+		// full environment.
+		//
+		// This is weaker than it sounds: on Linux, os.Unsetenv only updates
+		// the Go runtime's in-process copy of the environment (so
+		// os.LookupEnv stops finding it here on out) — it does not rewrite
+		// /proc/self/environ, which the kernel populates once, from the
+		// process's initial exec() argv/envp block, and never regenerates
+		// from later setenv/unsetenv calls. A local user able to read this
+		// process's /proc/<pid>/environ (i.e. root, or the pimonitor
+		// service user itself) can still recover the key for the life of
+		// the process regardless of this call. See SECURITY.md.
+		unsetEnv(APIKeyEnvVar)
 	}
 
 	if *listenAddr != "" {
