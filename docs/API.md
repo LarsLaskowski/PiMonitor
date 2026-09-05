@@ -153,6 +153,9 @@ extract the fields you need (e.g. via JSONPath in openHAB's HTTP binding).
       "used_percent": 25.8
     }
   ],
+  "disk_io": [
+    { "device": "mmcblk0", "read_bytes_per_sec": 20480, "write_bytes_per_sec": 8192 }
+  ],
   "network": [
     { "name": "eth0", "rx_bytes_per_sec": 1240.5, "tx_bytes_per_sec": 302.1 }
   ],
@@ -200,6 +203,19 @@ Notes:
   actually visible at that path when a mountpoint is overmounted), and
   network filesystems (NFS, CIFS/SMB, SSHFS, ...) are excluded — only
   local storage is reported.
+- `disk_io` is a delta-based reading (sectors × 512 bytes from
+  `/proc/diskstats`, see `Documentation/admin-guide/iostats.rst` in the
+  kernel source) between two collection ticks, so it reads as an empty array
+  on the first tick after process start, before a prior sample exists to
+  diff against. Loop and RAM devices are excluded, and so are partitions of
+  the usual `sd*`/`hd*`/`vd*`/`xvd*`/`mmcblk*`/`nvme*` naming schemes (e.g.
+  `sda1`, `mmcblk0p1`): the kernel already folds a partition's sectors into
+  its parent device's own counters, so reporting both would double-count
+  the same I/O. Entries are sorted by device name. Unlike `disks`,
+  `disk_io` reports per block device, not per mountpoint, so its entries do
+  not correspond 1:1 with `disks` — and should not be summed for a host
+  total, since not every double-counting case (e.g. LVM/LUKS-mapped
+  devices layered over a whole disk) is filtered out.
 - `network` entries are sorted by interface name.
 - `cpu_frequency` is one entry per CPU core with a readable sysfs `cpufreq`
   directory (`scaling_cur_freq`, `scaling_governor`), sorted by `core`
@@ -261,7 +277,8 @@ Notes:
 - These are additive to `v1`: `GET /api/v1/metrics` is unchanged, and
   keeps returning every field, including the ones with no endpoint of
   their own (`timestamp`, `uptime_seconds`, `load_average`, `cpu_count`,
-  `cpu_frequency`, `swap`, `gpu_temperature`, `throttled`, `system`).
+  `cpu_frequency`, `swap`, `gpu_temperature`, `throttled`, `system`,
+  `disk_io`).
   Poll the full snapshot if you need several metrics at once — six narrow
   requests cost more than one full one.
 - A field that carries no data is never a `404` — the endpoint exists and
@@ -308,6 +325,12 @@ only and starts empty after every restart.
   "disk_used_percent": {
     "/": [{ "t": "2026-07-12T18:00:00Z", "v": 25.8 }]
   },
+  "disk_io_read_bytes_per_sec": {
+    "mmcblk0": [{ "t": "2026-07-12T18:00:00Z", "v": 20480 }]
+  },
+  "disk_io_write_bytes_per_sec": {
+    "mmcblk0": [{ "t": "2026-07-12T18:00:00Z", "v": 8192 }]
+  },
   "network_rx_bytes_per_sec": {
     "eth0": [{ "t": "2026-07-12T18:00:00Z", "v": 1240.5 }]
   },
@@ -317,9 +340,10 @@ only and starts empty after every restart.
 }
 ```
 
-`disk_used_percent`, `network_rx_bytes_per_sec`, and
-`network_tx_bytes_per_sec` are keyed by mountpoint/interface name and are
-omitted entirely if empty (e.g. network history when monitoring is
+`disk_used_percent`, `disk_io_read_bytes_per_sec`,
+`disk_io_write_bytes_per_sec`, `network_rx_bytes_per_sec`, and
+`network_tx_bytes_per_sec` are keyed by mountpoint/device/interface name and
+are omitted entirely if empty (e.g. network history when monitoring is
 disabled).
 
 #### Incremental polling: `?since=`
@@ -343,6 +367,7 @@ GET /api/v1/metrics/history?since=2026-07-12T18:31:00Z
   have and gets it back every time.
 - The response has the **same shape** as the full-window response. Scalar
   series are present but may be empty; `disk_used_percent`,
+  `disk_io_read_bytes_per_sec`, `disk_io_write_bytes_per_sec`,
   `network_rx_bytes_per_sec` and `network_tx_bytes_per_sec` are filtered per
   device, and a device with no newer points is omitted entirely — as is the
   whole map once every device is omitted.

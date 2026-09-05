@@ -33,6 +33,12 @@ func fixtureHistory(base time.Time) History {
 			"/":     pts(0, 5*time.Second),
 			"/boot": pts(0),
 		},
+		DiskIOReadBytesPerSec: map[string][]HistoryPoint{
+			"mmcblk0": pts(0, 5*time.Second),
+		},
+		DiskIOWriteBytesPerSec: map[string][]HistoryPoint{
+			"mmcblk0": pts(0),
+		},
 		NetworkRxBytesPerSec: map[string][]HistoryPoint{
 			"eth0": pts(0, 5*time.Second, 10*time.Second),
 		},
@@ -87,6 +93,8 @@ func historiesEqual(t *testing.T, got, want History) {
 	pointsEqual(t, "MemoryUsedPercent", got.MemoryUsedPercent, want.MemoryUsedPercent)
 	pointsEqual(t, "SwapUsedPercent", got.SwapUsedPercent, want.SwapUsedPercent)
 	mapsEqual(t, "DiskUsedPercent", got.DiskUsedPercent, want.DiskUsedPercent)
+	mapsEqual(t, "DiskIOReadBytesPerSec", got.DiskIOReadBytesPerSec, want.DiskIOReadBytesPerSec)
+	mapsEqual(t, "DiskIOWriteBytesPerSec", got.DiskIOWriteBytesPerSec, want.DiskIOWriteBytesPerSec)
 	mapsEqual(t, "NetworkRxBytesPerSec", got.NetworkRxBytesPerSec, want.NetworkRxBytesPerSec)
 	mapsEqual(t, "NetworkTxBytesPerSec", got.NetworkTxBytesPerSec, want.NetworkTxBytesPerSec)
 }

@@ -63,7 +63,7 @@ by the same shutdown context, so a stuck flush cannot hang the process indefinit
 ## Metric collection (`internal/collector`)
 
 `Collector` (`collector.go`) owns one sub-collector struct per metric family — `cpu`,
-`cpuFreq`, `loadAvg`, `memory`, `disk`, `network`, `temp`, `throttled`, `sysInfo`,
+`cpuFreq`, `loadAvg`, `memory`, `disk`, `diskIO`, `network`, `temp`, `throttled`, `sysInfo`,
 `updates`, `uptime` — each in its own file (`cpu.go`, `memory.go`, ...) with a `Collect()`
 method that reads `/proc`/`/sys` (or shells out to `vcgencmd`/`apt` where no `/proc`/`/sys`
 source exists) and returns a typed value plus an error. Every one of these parsers is
@@ -74,7 +74,7 @@ see [`TESTS.md`](TESTS.md).
 on their own interval:
 
 - **Fast tick** (`fastTick`, default every `poll_interval_seconds` = 5s): CPU usage/load
-  average/temperature/throttling/memory/swap/disk/network. Every sub-collector's error is
+  average/temperature/throttling/memory/swap/disk/disk I/O/network. Every sub-collector's error is
   logged and does *not* abort the tick — a failure in one metric (e.g. no thermal zone on
   non-Pi hardware) leaves that field at its zero value for this snapshot rather than
   blocking the others.
@@ -86,14 +86,14 @@ on their own interval:
 **Snapshot + history, guarded by one `sync.RWMutex`.** `Collector.latest` holds the most
 recent value of every metric (`Snapshot()` returns a copy under `RLock`); each scalar
 metric additionally feeds a `RingBuffer[HistoryPoint]` (`History()` returns a copy of
-every buffer's contents). Per-device metrics (disk, network) use a
-`map[string]*RingBuffer[HistoryPoint]` keyed by mountpoint/interface name, created lazily
-the first time a given device is seen. `RingBuffer[T]` (`ringbuffer.go`) is a fixed-
+every buffer's contents). Per-device metrics (disk, disk I/O, network) use a
+`map[string]*RingBuffer[HistoryPoint]` keyed by mountpoint/device/interface name, created
+lazily the first time a given device is seen. `RingBuffer[T]` (`ringbuffer.go`) is a fixed-
 capacity circular buffer with its own internal lock — safe to read concurrently with the
 collector's own tick, independent of the collector's outer `sync.RWMutex`.
 
 Entries are also removed: `evictStaleSeries`, called from `fastTick` for `diskHist`,
-`rxHist`, and `txHist`, deletes a device's series once its *newest* sample is older than
+`diskIOReadHist`, `diskIOWriteHist`, `rxHist`, and `txHist`, deletes a device's series once its *newest* sample is older than
 the retained history window (`FastInterval * HistoryCapacity`) — without this, a churning
 `veth*` interface from container start/stop or a USB drive that gets unplugged would keep
 its full ring buffer (and keep showing up in `GET /api/v1/metrics/history`) forever. This
