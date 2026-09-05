@@ -207,13 +207,15 @@ Notes:
   `/proc/diskstats`, see `Documentation/admin-guide/iostats.rst` in the
   kernel source) between two collection ticks, so it reads as an empty array
   on the first tick after process start, before a prior sample exists to
-  diff against. Loop and RAM devices are excluded, and so are partitions
-  (e.g. `sda1`, `mmcblk0p1`): the kernel already folds a partition's
-  sectors into its parent device's own counters, so reporting both would
-  double-count the same I/O — only the whole/physical device (`sda`,
-  `mmcblk0`) is reported. Entries are sorted by device name. Unlike
-  `disks`, `disk_io` reports per block device, not per mountpoint, so its
-  entries do not correspond 1:1 with `disks`.
+  diff against. Loop and RAM devices are excluded, and so are partitions of
+  the usual `sd*`/`hd*`/`vd*`/`xvd*`/`mmcblk*`/`nvme*` naming schemes (e.g.
+  `sda1`, `mmcblk0p1`): the kernel already folds a partition's sectors into
+  its parent device's own counters, so reporting both would double-count
+  the same I/O. Entries are sorted by device name. Unlike `disks`,
+  `disk_io` reports per block device, not per mountpoint, so its entries do
+  not correspond 1:1 with `disks` — and should not be summed for a host
+  total, since not every double-counting case (e.g. LVM/LUKS-mapped
+  devices layered over a whole disk) is filtered out.
 - `network` entries are sorted by interface name.
 - `cpu_frequency` is one entry per CPU core with a readable sysfs `cpufreq`
   directory (`scaling_cur_freq`, `scaling_governor`), sorted by `core`
