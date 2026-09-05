@@ -57,6 +57,8 @@ const (
 	seriesDiskUsedPercent
 	seriesNetworkRxBytesPerSec
 	seriesNetworkTxBytesPerSec
+	seriesDiskIOReadBytesPerSec
+	seriesDiskIOWriteBytesPerSec
 )
 
 // historySeries is one time series flattened out of a History for
@@ -94,6 +96,8 @@ func historySeriesList(h History) []historySeries {
 	appendMap(seriesDiskUsedPercent, h.DiskUsedPercent)
 	appendMap(seriesNetworkRxBytesPerSec, h.NetworkRxBytesPerSec)
 	appendMap(seriesNetworkTxBytesPerSec, h.NetworkTxBytesPerSec)
+	appendMap(seriesDiskIOReadBytesPerSec, h.DiskIOReadBytesPerSec)
+	appendMap(seriesDiskIOWriteBytesPerSec, h.DiskIOWriteBytesPerSec)
 	return list
 }
 
@@ -129,6 +133,10 @@ func seriesToHistory(list []historySeries) History {
 			mapEntry(&h.NetworkRxBytesPerSec, s)
 		case seriesNetworkTxBytesPerSec:
 			mapEntry(&h.NetworkTxBytesPerSec, s)
+		case seriesDiskIOReadBytesPerSec:
+			mapEntry(&h.DiskIOReadBytesPerSec, s)
+		case seriesDiskIOWriteBytesPerSec:
+			mapEntry(&h.DiskIOWriteBytesPerSec, s)
 		}
 	}
 	return h
@@ -400,6 +408,8 @@ func (c *Collector) importHistory(h History, now time.Time) {
 		}
 	}
 	importMap(c.diskHist, h.DiskUsedPercent)
+	importMap(c.diskIOReadHist, h.DiskIOReadBytesPerSec)
+	importMap(c.diskIOWriteHist, h.DiskIOWriteBytesPerSec)
 	importMap(c.rxHist, h.NetworkRxBytesPerSec)
 	importMap(c.txHist, h.NetworkTxBytesPerSec)
 }

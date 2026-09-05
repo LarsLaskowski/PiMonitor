@@ -19,6 +19,8 @@ automation systems like openHAB). Runs as a systemd service.
 - **Memory & swap** usage
 - **Filesystem usage** - per mounted filesystem, pseudo filesystems
   (tmpfs, proc, overlay, ...) excluded by default
+- **Disk I/O throughput** (REST API) - per block device read/write
+  bytes-per-second
 - **Network throughput** per interface (optional, can be disabled)
 - **System identity** - kernel version, OS distribution, Raspberry Pi
   model

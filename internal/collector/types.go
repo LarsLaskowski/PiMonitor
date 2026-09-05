@@ -87,6 +87,14 @@ type NetworkInterface struct {
 	TxBytesPerSec float64 `json:"tx_bytes_per_sec"`
 }
 
+// DiskIO is the read/write throughput of a single block device, computed
+// from a delta between two /proc/diskstats samples (sectors × 512 bytes).
+type DiskIO struct {
+	Device           string  `json:"device"`
+	ReadBytesPerSec  float64 `json:"read_bytes_per_sec"`
+	WriteBytesPerSec float64 `json:"write_bytes_per_sec"`
+}
+
 // SystemInfo holds identity information that rarely changes at runtime.
 type SystemInfo struct {
 	KernelVersion string `json:"kernel_version"`
@@ -140,6 +148,7 @@ type Snapshot struct {
 	Memory           Memory             `json:"memory"`
 	Swap             Swap               `json:"swap"`
 	Disks            []Disk             `json:"disks"`
+	DiskIO           []DiskIO           `json:"disk_io"`
 	Network          []NetworkInterface `json:"network,omitempty"`
 	System           SystemInfo         `json:"system"`
 	Updates          Updates            `json:"updates"`

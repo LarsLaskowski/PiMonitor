@@ -81,6 +81,40 @@ func TestCollector_Disks_NeverMarshalsAsNull(t *testing.T) {
 	assertDisksMarshalsAsEmptyArray(t, c.Snapshot())
 }
 
+// TestCollector_DiskIO_NeverMarshalsAsNull mirrors
+// TestCollector_Disks_NeverMarshalsAsNull: Snapshot.DiskIO must stay a
+// non-nil (possibly empty) slice both before the first tick and on the
+// first tick itself, which never has a prior /proc/diskstats sample to
+// diff against.
+func TestCollector_DiskIO_NeverMarshalsAsNull(t *testing.T) {
+	c := newTestCollector()
+
+	assertDiskIOMarshalsAsEmptyArray := func(t *testing.T, snap Snapshot) {
+		t.Helper()
+		if snap.DiskIO == nil {
+			t.Fatal("expected Snapshot.DiskIO to be non-nil")
+		}
+		b, err := json.Marshal(snap)
+		if err != nil {
+			t.Fatalf("json.Marshal: %v", err)
+		}
+		var raw map[string]json.RawMessage
+		if err := json.Unmarshal(b, &raw); err != nil {
+			t.Fatalf("json.Unmarshal: %v", err)
+		}
+		if got := string(raw["disk_io"]); got == "null" {
+			t.Fatalf(`expected "disk_io" to marshal as [], got %s`, got)
+		}
+	}
+
+	// Before the first fast tick completes.
+	assertDiskIOMarshalsAsEmptyArray(t, c.Snapshot())
+
+	// After the first tick, which has no prior sample to diff against.
+	c.fastTick(context.Background())
+	assertDiskIOMarshalsAsEmptyArray(t, c.Snapshot())
+}
+
 // TestCollector_FastTick_DiskCollectionErrorYieldsEmptyNotNilDisks covers
 // the failed-collection path directly: DiskCollector.Collect returns
 // (nil, err) when /proc/mounts can't be read, and fastTick must still
@@ -101,6 +135,25 @@ func TestCollector_FastTick_DiskCollectionErrorYieldsEmptyNotNilDisks(t *testing
 	}
 	if len(snap.Disks) != 0 {
 		t.Fatalf("expected 0 disks after a failed collection, got %d", len(snap.Disks))
+	}
+}
+
+// TestCollector_FastTick_DiskIOCollectionErrorYieldsEmptyNotNilDiskIO mirrors
+// the disk-capacity case above for the DiskIOCollector: a failed
+// /proc/diskstats read returns (nil, err), and fastTick must still
+// normalize that nil into a non-nil empty slice.
+func TestCollector_FastTick_DiskIOCollectionErrorYieldsEmptyNotNilDiskIO(t *testing.T) {
+	c := newTestCollector()
+	c.diskIO = &DiskIOCollector{path: "/nonexistent/proc/diskstats", now: time.Now}
+
+	c.fastTick(context.Background())
+
+	snap := c.Snapshot()
+	if snap.DiskIO == nil {
+		t.Fatal("expected Snapshot.DiskIO to be non-nil even when disk io collection fails")
+	}
+	if len(snap.DiskIO) != 0 {
+		t.Fatalf("expected 0 disk io devices after a failed collection, got %d", len(snap.DiskIO))
 	}
 }
 
@@ -381,7 +434,7 @@ func TestCollector_FastTick_EvictsStaleDeviceSeries(t *testing.T) {
 	// actually report, seeded with a sample far outside the history window.
 	const goneDevice = "pimonitor-test-gone"
 	stale := HistoryPoint{Timestamp: time.Now().Add(-time.Hour), Value: 1}
-	for _, m := range []map[string]*RingBuffer[HistoryPoint]{c.diskHist, c.rxHist, c.txHist} {
+	for _, m := range []map[string]*RingBuffer[HistoryPoint]{c.diskHist, c.diskIOReadHist, c.diskIOWriteHist, c.rxHist, c.txHist} {
 		rb := NewRingBuffer[HistoryPoint](c.cfg.HistoryCapacity)
 		rb.Add(stale)
 		m[goneDevice] = rb
@@ -392,6 +445,12 @@ func TestCollector_FastTick_EvictsStaleDeviceSeries(t *testing.T) {
 	hist := c.History()
 	if _, ok := hist.DiskUsedPercent[goneDevice]; ok {
 		t.Fatal("expected fastTick to evict the stale disk series")
+	}
+	if _, ok := hist.DiskIOReadBytesPerSec[goneDevice]; ok {
+		t.Fatal("expected fastTick to evict the stale disk io read series")
+	}
+	if _, ok := hist.DiskIOWriteBytesPerSec[goneDevice]; ok {
+		t.Fatal("expected fastTick to evict the stale disk io write series")
 	}
 	if _, ok := hist.NetworkRxBytesPerSec[goneDevice]; ok {
 		t.Fatal("expected fastTick to evict the stale rx series")
@@ -415,7 +474,7 @@ func TestCollector_FastTick_KeepsRecentlyMissingDeviceSeries(t *testing.T) {
 
 	const flakyDevice = "pimonitor-test-flaky"
 	recent := HistoryPoint{Timestamp: time.Now(), Value: 1}
-	for _, m := range []map[string]*RingBuffer[HistoryPoint]{c.diskHist, c.rxHist, c.txHist} {
+	for _, m := range []map[string]*RingBuffer[HistoryPoint]{c.diskHist, c.diskIOReadHist, c.diskIOWriteHist, c.rxHist, c.txHist} {
 		rb := NewRingBuffer[HistoryPoint](c.cfg.HistoryCapacity)
 		rb.Add(recent)
 		m[flakyDevice] = rb
@@ -426,6 +485,12 @@ func TestCollector_FastTick_KeepsRecentlyMissingDeviceSeries(t *testing.T) {
 	hist := c.History()
 	if _, ok := hist.DiskUsedPercent[flakyDevice]; !ok {
 		t.Fatal("expected fastTick to keep a disk series missing for only one tick")
+	}
+	if _, ok := hist.DiskIOReadBytesPerSec[flakyDevice]; !ok {
+		t.Fatal("expected fastTick to keep a disk io read series missing for only one tick")
+	}
+	if _, ok := hist.DiskIOWriteBytesPerSec[flakyDevice]; !ok {
+		t.Fatal("expected fastTick to keep a disk io write series missing for only one tick")
 	}
 	if _, ok := hist.NetworkRxBytesPerSec[flakyDevice]; !ok {
 		t.Fatal("expected fastTick to keep an rx series missing for only one tick")
@@ -513,6 +578,12 @@ func historySinceFixture(base time.Time) History {
 			"/":     pts(0, 5*time.Second, 10*time.Second),
 			"/boot": pts(0),
 		},
+		DiskIOReadBytesPerSec: map[string][]HistoryPoint{
+			"mmcblk0": pts(0, 5*time.Second, 10*time.Second),
+		},
+		DiskIOWriteBytesPerSec: map[string][]HistoryPoint{
+			"mmcblk0": pts(0, 5*time.Second, 10*time.Second),
+		},
 		NetworkRxBytesPerSec: map[string][]HistoryPoint{
 			"eth0": pts(0, 5*time.Second, 10*time.Second),
 		},
@@ -581,6 +652,9 @@ func TestHistorySince_FiltersDevicesIndependently(t *testing.T) {
 	if len(got.NetworkRxBytesPerSec["eth0"]) != 2 || len(got.NetworkTxBytesPerSec["eth0"]) != 2 {
 		t.Fatalf("network series not filtered: rx=%+v tx=%+v", got.NetworkRxBytesPerSec, got.NetworkTxBytesPerSec)
 	}
+	if len(got.DiskIOReadBytesPerSec["mmcblk0"]) != 2 || len(got.DiskIOWriteBytesPerSec["mmcblk0"]) != 2 {
+		t.Fatalf("disk io series not filtered: read=%+v write=%+v", got.DiskIOReadBytesPerSec, got.DiskIOWriteBytesPerSec)
+	}
 }
 
 func TestHistorySince_NewerThanEverySampleIsEmpty(t *testing.T) {
@@ -593,7 +667,8 @@ func TestHistorySince_NewerThanEverySampleIsEmpty(t *testing.T) {
 	if got.CPUPercent == nil {
 		t.Fatal("expected an empty (but non-nil) series so it encodes as [] rather than null")
 	}
-	if got.DiskUsedPercent != nil || got.NetworkRxBytesPerSec != nil || got.NetworkTxBytesPerSec != nil {
+	if got.DiskUsedPercent != nil || got.NetworkRxBytesPerSec != nil || got.NetworkTxBytesPerSec != nil ||
+		got.DiskIOReadBytesPerSec != nil || got.DiskIOWriteBytesPerSec != nil {
 		t.Fatalf("expected all device maps to be omitted: %+v", got)
 	}
 }

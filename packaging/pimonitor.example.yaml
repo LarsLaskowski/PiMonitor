@@ -16,7 +16,7 @@ log_level: "info"
 access_log_enabled: true
 
 # How often live metrics (CPU, load average, temperature, memory/swap,
-# disk, network) are sampled.
+# disk, disk I/O, network) are sampled.
 poll_interval_seconds: 5
 
 # How often available apt updates are checked. This only reads the

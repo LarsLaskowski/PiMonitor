@@ -14,7 +14,7 @@ import (
 // Config controls the collector's polling behavior and history retention.
 type Config struct {
 	// FastInterval is how often CPU, load average, temperature,
-	// memory/swap, disk, and network metrics are sampled.
+	// memory/swap, disk, disk I/O, and network metrics are sampled.
 	FastInterval time.Duration
 	// SlowInterval is how often available apt updates are checked. This
 	// can be much less frequent than FastInterval since the underlying
@@ -62,16 +62,18 @@ type Config struct {
 // History is the collected time series for every metric, keyed by
 // mountpoint/interface name where the metric is per-device.
 type History struct {
-	CPUPercent           []HistoryPoint            `json:"cpu_percent"`
-	Load1                []HistoryPoint            `json:"load1"`
-	Load5                []HistoryPoint            `json:"load5"`
-	Load15               []HistoryPoint            `json:"load15"`
-	Temperature          []HistoryPoint            `json:"temperature"`
-	MemoryUsedPercent    []HistoryPoint            `json:"memory_used_percent"`
-	SwapUsedPercent      []HistoryPoint            `json:"swap_used_percent"`
-	DiskUsedPercent      map[string][]HistoryPoint `json:"disk_used_percent,omitempty"`
-	NetworkRxBytesPerSec map[string][]HistoryPoint `json:"network_rx_bytes_per_sec,omitempty"`
-	NetworkTxBytesPerSec map[string][]HistoryPoint `json:"network_tx_bytes_per_sec,omitempty"`
+	CPUPercent             []HistoryPoint            `json:"cpu_percent"`
+	Load1                  []HistoryPoint            `json:"load1"`
+	Load5                  []HistoryPoint            `json:"load5"`
+	Load15                 []HistoryPoint            `json:"load15"`
+	Temperature            []HistoryPoint            `json:"temperature"`
+	MemoryUsedPercent      []HistoryPoint            `json:"memory_used_percent"`
+	SwapUsedPercent        []HistoryPoint            `json:"swap_used_percent"`
+	DiskUsedPercent        map[string][]HistoryPoint `json:"disk_used_percent,omitempty"`
+	DiskIOReadBytesPerSec  map[string][]HistoryPoint `json:"disk_io_read_bytes_per_sec,omitempty"`
+	DiskIOWriteBytesPerSec map[string][]HistoryPoint `json:"disk_io_write_bytes_per_sec,omitempty"`
+	NetworkRxBytesPerSec   map[string][]HistoryPoint `json:"network_rx_bytes_per_sec,omitempty"`
+	NetworkTxBytesPerSec   map[string][]HistoryPoint `json:"network_tx_bytes_per_sec,omitempty"`
 }
 
 // Since returns h reduced to the points strictly newer than t, for callers
@@ -113,6 +115,8 @@ func (h History) Since(t time.Time) History {
 		return dst
 	}
 	out.DiskUsedPercent = filterDevices(h.DiskUsedPercent)
+	out.DiskIOReadBytesPerSec = filterDevices(h.DiskIOReadBytesPerSec)
+	out.DiskIOWriteBytesPerSec = filterDevices(h.DiskIOWriteBytesPerSec)
 	out.NetworkRxBytesPerSec = filterDevices(h.NetworkRxBytesPerSec)
 	out.NetworkTxBytesPerSec = filterDevices(h.NetworkTxBytesPerSec)
 	return out
@@ -156,6 +160,7 @@ type Collector struct {
 	loadAvg   *LoadAvgCollector
 	memory    *MemoryCollector
 	disk      *DiskCollector
+	diskIO    *DiskIOCollector
 	network   *NetworkCollector
 	temp      *TemperatureCollector
 	throttled *ThrottledCollector
@@ -186,17 +191,19 @@ type Collector struct {
 	// actually changed since a cached, already-serialised response was built,
 	// so a client polling faster than the collector ticks doesn't force a
 	// fresh deep-copy-and-encode of the whole window on every request.
-	historyGen uint64
-	cpuHist    *RingBuffer[HistoryPoint]
-	l1Hist     *RingBuffer[HistoryPoint]
-	l5Hist     *RingBuffer[HistoryPoint]
-	l15Hist    *RingBuffer[HistoryPoint]
-	tempHist   *RingBuffer[HistoryPoint]
-	memHist    *RingBuffer[HistoryPoint]
-	swapHist   *RingBuffer[HistoryPoint]
-	diskHist   map[string]*RingBuffer[HistoryPoint]
-	rxHist     map[string]*RingBuffer[HistoryPoint]
-	txHist     map[string]*RingBuffer[HistoryPoint]
+	historyGen      uint64
+	cpuHist         *RingBuffer[HistoryPoint]
+	l1Hist          *RingBuffer[HistoryPoint]
+	l5Hist          *RingBuffer[HistoryPoint]
+	l15Hist         *RingBuffer[HistoryPoint]
+	tempHist        *RingBuffer[HistoryPoint]
+	memHist         *RingBuffer[HistoryPoint]
+	swapHist        *RingBuffer[HistoryPoint]
+	diskHist        map[string]*RingBuffer[HistoryPoint]
+	diskIOReadHist  map[string]*RingBuffer[HistoryPoint]
+	diskIOWriteHist map[string]*RingBuffer[HistoryPoint]
+	rxHist          map[string]*RingBuffer[HistoryPoint]
+	txHist          map[string]*RingBuffer[HistoryPoint]
 
 	// persistWG tracks in-flight persistHistory writes so Run's ctx.Done()
 	// branch can wait for the final flush before returning.
@@ -228,33 +235,37 @@ func New(cfg Config, log *slog.Logger) *Collector {
 	vcg := newVcgencmdRunner(time.Now)
 	c := &Collector{
 		cfg: cfg,
-		// Disks starts as [] rather than nil so it marshals as [] (not
-		// null) before the first fast tick completes, matching docs/API.md.
-		latest:    Snapshot{Disks: []Disk{}},
-		alerts:    alerts,
-		notifier:  notifier,
-		cpu:       NewCPUCollector(),
-		cpuFreq:   NewCPUFreqCollector(),
-		loadAvg:   NewLoadAvgCollector(),
-		memory:    NewMemoryCollector(),
-		disk:      NewDiskCollector(),
-		network:   NewNetworkCollector(),
-		temp:      NewTemperatureCollector(vcg),
-		throttled: NewThrottledCollector(vcg),
-		sysInfo:   NewSysInfoCollector(),
-		updates:   NewUpdatesCollector(cfg.UpdatesStaleThreshold),
-		uptime:    NewUptimeCollector(),
-		log:       log,
-		cpuHist:   NewRingBuffer[HistoryPoint](cfg.HistoryCapacity),
-		l1Hist:    NewRingBuffer[HistoryPoint](cfg.HistoryCapacity),
-		l5Hist:    NewRingBuffer[HistoryPoint](cfg.HistoryCapacity),
-		l15Hist:   NewRingBuffer[HistoryPoint](cfg.HistoryCapacity),
-		tempHist:  NewRingBuffer[HistoryPoint](cfg.HistoryCapacity),
-		memHist:   NewRingBuffer[HistoryPoint](cfg.HistoryCapacity),
-		swapHist:  NewRingBuffer[HistoryPoint](cfg.HistoryCapacity),
-		diskHist:  make(map[string]*RingBuffer[HistoryPoint]),
-		rxHist:    make(map[string]*RingBuffer[HistoryPoint]),
-		txHist:    make(map[string]*RingBuffer[HistoryPoint]),
+		// Disks and DiskIO start as [] rather than nil so they marshal as
+		// [] (not null) before the first fast tick completes, matching
+		// docs/API.md.
+		latest:          Snapshot{Disks: []Disk{}, DiskIO: []DiskIO{}},
+		alerts:          alerts,
+		notifier:        notifier,
+		cpu:             NewCPUCollector(),
+		cpuFreq:         NewCPUFreqCollector(),
+		loadAvg:         NewLoadAvgCollector(),
+		memory:          NewMemoryCollector(),
+		disk:            NewDiskCollector(),
+		diskIO:          NewDiskIOCollector(),
+		network:         NewNetworkCollector(),
+		temp:            NewTemperatureCollector(vcg),
+		throttled:       NewThrottledCollector(vcg),
+		sysInfo:         NewSysInfoCollector(),
+		updates:         NewUpdatesCollector(cfg.UpdatesStaleThreshold),
+		uptime:          NewUptimeCollector(),
+		log:             log,
+		cpuHist:         NewRingBuffer[HistoryPoint](cfg.HistoryCapacity),
+		l1Hist:          NewRingBuffer[HistoryPoint](cfg.HistoryCapacity),
+		l5Hist:          NewRingBuffer[HistoryPoint](cfg.HistoryCapacity),
+		l15Hist:         NewRingBuffer[HistoryPoint](cfg.HistoryCapacity),
+		tempHist:        NewRingBuffer[HistoryPoint](cfg.HistoryCapacity),
+		memHist:         NewRingBuffer[HistoryPoint](cfg.HistoryCapacity),
+		swapHist:        NewRingBuffer[HistoryPoint](cfg.HistoryCapacity),
+		diskHist:        make(map[string]*RingBuffer[HistoryPoint]),
+		diskIOReadHist:  make(map[string]*RingBuffer[HistoryPoint]),
+		diskIOWriteHist: make(map[string]*RingBuffer[HistoryPoint]),
+		rxHist:          make(map[string]*RingBuffer[HistoryPoint]),
+		txHist:          make(map[string]*RingBuffer[HistoryPoint]),
 
 		persisting: make(chan struct{}, 1),
 		writeFile:  writeFileAtomic,
@@ -348,6 +359,18 @@ func (c *Collector) History() History {
 			h.DiskUsedPercent[k] = rb.Snapshot()
 		}
 	}
+	if len(c.diskIOReadHist) > 0 {
+		h.DiskIOReadBytesPerSec = make(map[string][]HistoryPoint, len(c.diskIOReadHist))
+		for k, rb := range c.diskIOReadHist {
+			h.DiskIOReadBytesPerSec[k] = rb.Snapshot()
+		}
+	}
+	if len(c.diskIOWriteHist) > 0 {
+		h.DiskIOWriteBytesPerSec = make(map[string][]HistoryPoint, len(c.diskIOWriteHist))
+		for k, rb := range c.diskIOWriteHist {
+			h.DiskIOWriteBytesPerSec[k] = rb.Snapshot()
+		}
+	}
 	if len(c.rxHist) > 0 {
 		h.NetworkRxBytesPerSec = make(map[string][]HistoryPoint, len(c.rxHist))
 		for k, rb := range c.rxHist {
@@ -410,6 +433,8 @@ type fastTickSamples struct {
 	memErr     error
 	disks      []Disk
 	diskErr    error
+	diskIO     []DiskIO
+	diskIOErr  error
 	netIfaces  []NetworkInterface
 	uptimeSecs float64
 }
@@ -452,6 +477,10 @@ func (c *Collector) collectFastTickSamples(ctx context.Context) fastTickSamples 
 	if s.diskErr != nil {
 		c.log.Warn("disk collection failed", "error", s.diskErr)
 	}
+	s.diskIO, s.diskIOErr = c.diskIO.Collect()
+	if s.diskIOErr != nil {
+		c.log.Warn("disk io collection failed", "error", s.diskIOErr)
+	}
 	if c.cfg.NetworkEnabled {
 		s.netIfaces, err = c.network.Collect()
 		if err != nil {
@@ -488,6 +517,14 @@ func (c *Collector) fastTick(ctx context.Context) {
 		s.disks = []Disk{}
 	}
 	c.latest.Disks = s.disks
+	if s.diskIO == nil {
+		// A failed collection (e.g. /proc/diskstats unreadable), or simply
+		// the first tick with no prior sample to diff against, leaves
+		// s.diskIO nil; keep Snapshot.DiskIO marshaling as [] rather than
+		// null, matching Disks above.
+		s.diskIO = []DiskIO{}
+	}
+	c.latest.DiskIO = s.diskIO
 	c.latest.Network = s.netIfaces
 
 	c.cpuHist.Add(HistoryPoint{Timestamp: s.now, Value: s.cpuUsage.OverallPercent})
@@ -498,7 +535,7 @@ func (c *Collector) fastTick(ctx context.Context) {
 	c.memHist.Add(HistoryPoint{Timestamp: s.now, Value: s.mem.UsedPercent})
 	c.swapHist.Add(HistoryPoint{Timestamp: s.now, Value: s.swap.UsedPercent})
 
-	c.recordDeviceHistory(s.now, s.disks, s.netIfaces)
+	c.recordDeviceHistory(s.now, s.disks, s.diskIO, s.netIfaces)
 	c.historyGen++
 
 	// Evaluate the freshly collected values against the alert thresholds.
@@ -533,15 +570,16 @@ func (c *Collector) fastTick(ctx context.Context) {
 }
 
 // recordDeviceHistory adds this tick's samples to the per-device history
-// maps (diskHist, rxHist, txHist) and evicts entries for devices that have
-// vanished (unplugged USB drive, torn-down veth interface, ...), or those
-// maps would otherwise grow without bound as devices churn. A device is
-// only evicted once its *newest* sample falls outside the retained history
-// window, not merely for being absent from this single tick:
-// DiskCollector.Collect already skips mountpoints that fail to stat, so a
-// device missing for one tick must keep its history rather than losing it
-// immediately. Called from fastTick while c.mu is already held.
-func (c *Collector) recordDeviceHistory(now time.Time, disks []Disk, netIfaces []NetworkInterface) {
+// maps (diskHist, diskIOReadHist, diskIOWriteHist, rxHist, txHist) and
+// evicts entries for devices that have vanished (unplugged USB drive,
+// torn-down veth interface, ...), or those maps would otherwise grow
+// without bound as devices churn. A device is only evicted once its
+// *newest* sample falls outside the retained history window, not merely
+// for being absent from this single tick: DiskCollector.Collect already
+// skips mountpoints that fail to stat, so a device missing for one tick
+// must keep its history rather than losing it immediately. Called from
+// fastTick while c.mu is already held.
+func (c *Collector) recordDeviceHistory(now time.Time, disks []Disk, diskIO []DiskIO, netIfaces []NetworkInterface) {
 	diskKeys := make(map[string]struct{}, len(disks))
 	for _, d := range disks {
 		rb, ok := c.diskHist[d.Mountpoint]
@@ -551,6 +589,23 @@ func (c *Collector) recordDeviceHistory(now time.Time, disks []Disk, netIfaces [
 		}
 		rb.Add(HistoryPoint{Timestamp: now, Value: d.UsedPercent})
 		diskKeys[d.Mountpoint] = struct{}{}
+	}
+	diskIOKeys := make(map[string]struct{}, len(diskIO))
+	for _, d := range diskIO {
+		readRB, ok := c.diskIOReadHist[d.Device]
+		if !ok {
+			readRB = NewRingBuffer[HistoryPoint](c.cfg.HistoryCapacity)
+			c.diskIOReadHist[d.Device] = readRB
+		}
+		readRB.Add(HistoryPoint{Timestamp: now, Value: d.ReadBytesPerSec})
+
+		writeRB, ok := c.diskIOWriteHist[d.Device]
+		if !ok {
+			writeRB = NewRingBuffer[HistoryPoint](c.cfg.HistoryCapacity)
+			c.diskIOWriteHist[d.Device] = writeRB
+		}
+		writeRB.Add(HistoryPoint{Timestamp: now, Value: d.WriteBytesPerSec})
+		diskIOKeys[d.Device] = struct{}{}
 	}
 	netKeys := make(map[string]struct{}, len(netIfaces))
 	for _, n := range netIfaces {
@@ -572,6 +627,8 @@ func (c *Collector) recordDeviceHistory(now time.Time, disks []Disk, netIfaces [
 
 	historyWindow := c.fastInterval * time.Duration(c.cfg.HistoryCapacity)
 	evictStaleSeries(c.diskHist, diskKeys, now, historyWindow)
+	evictStaleSeries(c.diskIOReadHist, diskIOKeys, now, historyWindow)
+	evictStaleSeries(c.diskIOWriteHist, diskIOKeys, now, historyWindow)
 	evictStaleSeries(c.rxHist, netKeys, now, historyWindow)
 	evictStaleSeries(c.txHist, netKeys, now, historyWindow)
 }
