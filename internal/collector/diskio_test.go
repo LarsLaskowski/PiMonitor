@@ -43,6 +43,30 @@ func TestParseDiskStats_IgnoresShortLines(t *testing.T) {
 	}
 }
 
+func TestParseDiskStats_MalformedField(t *testing.T) {
+	tests := []struct {
+		name string
+		line string
+	}{
+		{
+			name: "non-numeric sectors read",
+			line: "   8       0 sda 1000 50 abc 500 2000 100 40000 1000 0 800 1500\n",
+		},
+		{
+			name: "non-numeric sectors written",
+			line: "   8       0 sda 1000 50 20000 500 2000 100 abc 1000 0 800 1500\n",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := parseDiskStats(tt.line)
+			if err == nil {
+				t.Fatalf("expected error for %s, got nil", tt.name)
+			}
+		})
+	}
+}
+
 // TestDiskIOCollector_Collect covers the issue #14 acceptance criterion:
 // two /proc/diskstats fixtures a known interval apart yield the expected
 // read/write bytes-per-second (sectors × 512 bytes / elapsed seconds).
@@ -68,10 +92,10 @@ func TestDiskIOCollector_Collect(t *testing.T) {
 	if err != nil {
 		t.Fatalf("second Collect: %v", err)
 	}
-	// loop0 is excluded; sda, sda1 (its partition) and mmcblk0 remain,
-	// sorted by name.
-	if len(second) != 3 {
-		t.Fatalf("expected 3 devices (loop0 excluded), got %d: %+v", len(second), second)
+	// loop0 and sda1 (sda's partition) are excluded; sda and mmcblk0
+	// remain, sorted by name.
+	if len(second) != 2 {
+		t.Fatalf("expected 2 devices (loop0, sda1 excluded), got %d: %+v", len(second), second)
 	}
 
 	mmcblk0 := second[0]
@@ -128,6 +152,58 @@ func TestDiskIOCollector_Collect_ExcludesLoopAndRamDevices(t *testing.T) {
 	}
 	if len(devices) != 1 || devices[0].Device != "mmcblk0" {
 		t.Fatalf("expected only mmcblk0 (loop0/ram0 excluded), got %+v", devices)
+	}
+}
+
+// TestDiskIOCollector_Collect_ExcludesPartitions covers the review finding
+// that a partition's sectors are already folded into its parent device's
+// own counters by the kernel (part_stat_add), so reporting both would
+// double-count the same I/O: sda1 (SCSI/ATA-style), mmcblk0p1 (the
+// Pi's own SD-card partition naming) and nvme0n1p1 must all be excluded,
+// leaving only their whole-device parents.
+func TestDiskIOCollector_Collect_ExcludesPartitions(t *testing.T) {
+	dir := t.TempDir()
+	fixture1 := `   8       0 sda 1000 50 20000 500 2000 100 40000 1000 0 800 1500
+   8       1 sda1 900 40 18000 450 1900 90 36000 900 0 700 1350
+ 179       0 mmcblk0 5000 100 100000 2000 3000 200 60000 3000 0 2500 5000
+ 179       1 mmcblk0p1 100 10 2000 40 50 5 1000 60 0 50 100
+ 259       0 nvme0n1 2000 40 50000 900 1200 80 30000 1400 0 1300 2300
+ 259       1 nvme0n1p1 1800 30 45000 800 1100 70 27000 1300 0 1200 2100
+`
+	fixture2 := `   8       0 sda 1500 60 40000 700 2500 120 60000 1300 0 1000 2000
+   8       1 sda1 1350 50 35000 620 2350 105 54000 1150 0 900 1750
+ 179       0 mmcblk0 6000 120 140000 2400 3400 230 68000 3400 0 2900 5800
+ 179       1 mmcblk0p1 150 15 3000 60 80 10 1500 90 0 80 150
+ 259       0 nvme0n1 3000 60 90000 1400 1700 120 45000 2000 0 1900 3400
+ 259       1 nvme0n1p1 2700 50 81000 1300 1600 110 41000 1900 0 1800 3200
+`
+	path := writeTempFile(t, dir, "diskstats", fixture1)
+
+	fakeNow := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	c := &DiskIOCollector{path: path, now: func() time.Time { return fakeNow }}
+	if _, err := c.Collect(); err != nil {
+		t.Fatalf("first Collect: %v", err)
+	}
+
+	overwriteTempFile(t, path, fixture2)
+	fakeNow = fakeNow.Add(time.Second)
+
+	devices, err := c.Collect()
+	if err != nil {
+		t.Fatalf("second Collect: %v", err)
+	}
+	got := make([]string, len(devices))
+	for i, d := range devices {
+		got[i] = d.Device
+	}
+	want := []string{"mmcblk0", "nvme0n1", "sda"}
+	if len(got) != len(want) {
+		t.Fatalf("devices = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("devices = %v, want %v", got, want)
+		}
 	}
 }
 

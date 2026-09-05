@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -57,9 +58,13 @@ func parseDiskStats(data string) (map[string]diskStatCounters, error) {
 }
 
 // DiskIOCollector tracks previous /proc/diskstats samples to compute
-// per-device read/write throughput. Loop and ram devices are always
-// excluded, mirroring NetworkCollector excluding the loopback interface:
-// neither represents real storage activity worth reporting.
+// per-device read/write throughput. Loop/ram devices and partitions are
+// always excluded — loop/ram mirror NetworkCollector excluding the
+// loopback interface (neither represents real storage activity worth
+// reporting), and partitions are excluded because the kernel's
+// part_stat_add already folds every partition's sectors into its parent
+// device's own counters (see block/genhd.c), so reporting both would
+// double-count the same I/O under two names.
 type DiskIOCollector struct {
 	path string
 	now  func() time.Time
@@ -79,13 +84,24 @@ func NewDiskIOCollector() *DiskIOCollector {
 // real storage activity, so they don't clutter the reported device list.
 var diskIOExcludedPrefixes = []string{"loop", "ram"}
 
+// diskIOPartitionRE matches partition device names for the naming schemes
+// /proc/diskstats commonly reports on Linux: SCSI/(P)ATA/virtio-style
+// letter-suffixed disks (sda1, hda2, vda1, xvda1) and the numbered-parent
+// schemes that separate partition numbers with a "p" (mmcblk0p1, the SD
+// card's own partitions on a Pi; nvme0n1p1). There is no sysfs lookup here
+// (e.g. a "partition" attribute file) on purpose — collectors in this
+// package parse only their fixed /proc or /sys source, so this stays
+// unit-testable against a plain fixture string rather than requiring a
+// real filesystem layout — see docs/TESTS.md.
+var diskIOPartitionRE = regexp.MustCompile(`^(?:(?:sd|hd|vd|xvd)[a-z]+[0-9]+|(?:mmcblk[0-9]+|nvme[0-9]+n[0-9]+)p[0-9]+)$`)
+
 func isExcludedDiskIODevice(name string) bool {
 	for _, prefix := range diskIOExcludedPrefixes {
 		if strings.HasPrefix(name, prefix) {
 			return true
 		}
 	}
-	return false
+	return diskIOPartitionRE.MatchString(name)
 }
 
 // Collect returns current per-device read/write throughput. The first call
