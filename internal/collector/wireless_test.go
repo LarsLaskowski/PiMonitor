@@ -21,6 +21,25 @@ const wirelessEmptyFixture = `Inter-| sta-|   Quality        |   Discarded packe
  face | tus | link level noise |  nwid  crypt   frag  retry   misc | beacon | 22
 `
 
+// wirelessNullStatsFixture mirrors the kernel's "null stats" line for a
+// wireless interface that exists but has no current reading (e.g. not
+// associated to any network, or no stats update received yet): unlike a
+// real reading, none of the numeric columns carries the "updated" trailing
+// "." marker, and link/level both read as the literal zero placeholder.
+const wirelessNullStatsFixture = `Inter-| sta-|   Quality        |   Discarded packets               | Missed | WE
+ face | tus | link level noise |  nwid  crypt   frag  retry   misc | beacon | 22
+ wlan0: 0000    0     0     0        0      0      0      0      0        0
+`
+
+// wirelessMixedFixture combines an associated interface with a real
+// reading and an unassociated one reporting null stats, to verify only the
+// former survives parsing.
+const wirelessMixedFixture = `Inter-| sta-|   Quality        |   Discarded packets               | Missed | WE
+ face | tus | link level noise |  nwid  crypt   frag  retry   misc | beacon | 22
+ wlan0: 0000   70.  -40.  -256        0      0      0      0      0        0
+ wlan1: 0000    0     0     0        0      0      0      0      0        0
+`
+
 func writeWirelessFixture(t *testing.T, content string) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "wireless")
@@ -64,6 +83,34 @@ func TestParseWireless_NoInterfaces(t *testing.T) {
 	}
 	if len(got) != 0 {
 		t.Fatalf("expected no interfaces, got %d: %+v", len(got), got)
+	}
+}
+
+// TestParseWireless_SkipsNullStats guards against reporting the kernel's
+// "null stats" placeholder line as a genuine reading: signal_dbm 0 would
+// otherwise be published for an unassociated interface, which reads as the
+// strongest possible signal rather than "no signal".
+func TestParseWireless_SkipsNullStats(t *testing.T) {
+	got, err := parseWireless(wirelessNullStatsFixture)
+	if err != nil {
+		t.Fatalf("parseWireless: %v", err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("expected null-stats interface to be skipped, got %+v", got)
+	}
+}
+
+func TestParseWireless_MixedRealAndNullStats(t *testing.T) {
+	got, err := parseWireless(wirelessMixedFixture)
+	if err != nil {
+		t.Fatalf("parseWireless: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("expected only the associated interface, got %d: %+v", len(got), got)
+	}
+	want := Wireless{Interface: "wlan0", LinkQuality: 70, SignalDBm: -40}
+	if got[0] != want {
+		t.Fatalf("got %+v, want %+v", got[0], want)
 	}
 }
 

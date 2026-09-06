@@ -274,6 +274,42 @@ func TestCollector_FastTick_NetworkDisabled(t *testing.T) {
 	}
 }
 
+// TestCollector_FastTick_Wireless verifies fastTick wires WirelessCollector
+// results into Snapshot.Wireless, mirroring the network wiring test above.
+func TestCollector_FastTick_Wireless(t *testing.T) {
+	c := newTestCollector()
+	path := writeWirelessFixture(t, wirelessMultiFixture)
+	c.wireless = &WirelessCollector{path: path}
+
+	c.fastTick(context.Background())
+
+	snap := c.Snapshot()
+	if len(snap.Wireless) != 2 {
+		t.Fatalf("expected 2 wireless interfaces from fixture, got %d: %+v", len(snap.Wireless), snap.Wireless)
+	}
+	if snap.Wireless[0].Interface != "wlan0" || snap.Wireless[1].Interface != "wlan1" {
+		t.Fatalf("unexpected wireless interfaces: %+v", snap.Wireless)
+	}
+}
+
+// TestCollector_FastTick_Wireless_NoInterfaces verifies that a host with no
+// wireless interfaces reports Snapshot.Wireless as nil, so it marshals as
+// an omitted field rather than an empty array (unlike Disks/DiskIO, which
+// docs/API.md documents as always present, wireless has no such
+// commitment - see the "wireless" bullet under GET /api/v1/metrics).
+func TestCollector_FastTick_Wireless_NoInterfaces(t *testing.T) {
+	c := newTestCollector()
+	path := writeWirelessFixture(t, wirelessEmptyFixture)
+	c.wireless = &WirelessCollector{path: path}
+
+	c.fastTick(context.Background())
+
+	snap := c.Snapshot()
+	if snap.Wireless != nil {
+		t.Fatalf("expected nil Snapshot.Wireless with no wireless interfaces, got %+v", snap.Wireless)
+	}
+}
+
 func TestCollector_HistoryCapacityBounded(t *testing.T) {
 	c := New(Config{
 		FastInterval:    time.Second,

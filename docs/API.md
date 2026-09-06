@@ -221,12 +221,18 @@ Notes:
   devices layered over a whole disk) is filtered out.
 - `network` entries are sorted by interface name.
 - `wireless` reports link quality and signal level per wireless interface,
-  parsed from `/proc/net/wireless`, and is omitted entirely on a host with no
-  wireless interfaces (most kernels don't even create the file in that case).
+  parsed from `/proc/net/wireless`, and is omitted entirely when the host has
+  no wireless interface with a current reading (this includes a host with no
+  wireless hardware at all: the file is usually present regardless — created
+  by kernels built with wireless extensions support, which is the common
+  case — but then simply lists no interfaces, or lists one with no reading
+  yet, e.g. not currently associated to a network).
   `link_quality` is the raw driver-reported value from the file's `link`
   column - its maximum is driver-dependent (commonly, but not always, 70) so
   it is not normalized to a 0-100 percentage. `signal_dbm` is the received
-  signal strength in dBm; more negative means weaker signal.
+  signal strength in dBm on drivers that report an absolute value; some
+  drivers instead report a driver-relative signal quality number in this
+  same field. More negative (or lower) means weaker signal either way.
 - `cpu_frequency` is one entry per CPU core with a readable sysfs `cpufreq`
   directory (`scaling_cur_freq`, `scaling_governor`), sorted by `core`
   index. It is omitted entirely on systems without a cpufreq driver (e.g.
@@ -288,7 +294,7 @@ Notes:
   keeps returning every field, including the ones with no endpoint of
   their own (`timestamp`, `uptime_seconds`, `load_average`, `cpu_count`,
   `cpu_frequency`, `swap`, `gpu_temperature`, `throttled`, `system`,
-  `disk_io`).
+  `disk_io`, `wireless`).
   Poll the full snapshot if you need several metrics at once — six narrow
   requests cost more than one full one.
 - A field that carries no data is never a `404` — the endpoint exists and

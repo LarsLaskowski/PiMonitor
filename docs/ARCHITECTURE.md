@@ -63,8 +63,8 @@ by the same shutdown context, so a stuck flush cannot hang the process indefinit
 ## Metric collection (`internal/collector`)
 
 `Collector` (`collector.go`) owns one sub-collector struct per metric family — `cpu`,
-`cpuFreq`, `loadAvg`, `memory`, `disk`, `diskIO`, `network`, `temp`, `throttled`, `sysInfo`,
-`updates`, `uptime` — each in its own file (`cpu.go`, `memory.go`, ...) with a `Collect()`
+`cpuFreq`, `loadAvg`, `memory`, `disk`, `diskIO`, `network`, `wireless`, `temp`, `throttled`,
+`sysInfo`, `updates`, `uptime` — each in its own file (`cpu.go`, `memory.go`, ...) with a `Collect()`
 method that reads `/proc`/`/sys` (or shells out to `vcgencmd`/`apt` where no `/proc`/`/sys`
 source exists) and returns a typed value plus an error. Every one of these parsers is
 built to be unit-testable against fixture strings rather than real `/proc`/`/sys` access —
@@ -74,7 +74,7 @@ see [`TESTS.md`](TESTS.md).
 on their own interval:
 
 - **Fast tick** (`fastTick`, default every `poll_interval_seconds` = 5s): CPU usage/load
-  average/temperature/throttling/memory/swap/disk/disk I/O/network. Every sub-collector's error is
+  average/temperature/throttling/memory/swap/disk/disk I/O/network/wireless. Every sub-collector's error is
   logged and does *not* abort the tick — a failure in one metric (e.g. no thermal zone on
   non-Pi hardware) leaves that field at its zero value for this snapshot rather than
   blocking the others.
