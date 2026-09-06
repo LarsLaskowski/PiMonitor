@@ -87,6 +87,14 @@ type NetworkInterface struct {
 	TxBytesPerSec float64 `json:"tx_bytes_per_sec"`
 }
 
+// Wireless is the link quality and signal level of a single wireless
+// network interface, read from /proc/net/wireless.
+type Wireless struct {
+	Interface   string  `json:"interface"`
+	LinkQuality float64 `json:"link_quality"`
+	SignalDBm   float64 `json:"signal_dbm"`
+}
+
 // DiskIO is the read/write throughput of a single block device, computed
 // from a delta between two /proc/diskstats samples (sectors × 512 bytes).
 type DiskIO struct {
@@ -150,6 +158,7 @@ type Snapshot struct {
 	Disks            []Disk             `json:"disks"`
 	DiskIO           []DiskIO           `json:"disk_io"`
 	Network          []NetworkInterface `json:"network,omitempty"`
+	Wireless         []Wireless         `json:"wireless,omitempty"`
 	System           SystemInfo         `json:"system"`
 	Updates          Updates            `json:"updates"`
 }

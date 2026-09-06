@@ -159,6 +159,9 @@ extract the fields you need (e.g. via JSONPath in openHAB's HTTP binding).
   "network": [
     { "name": "eth0", "rx_bytes_per_sec": 1240.5, "tx_bytes_per_sec": 302.1 }
   ],
+  "wireless": [
+    { "interface": "wlan0", "link_quality": 70, "signal_dbm": -40 }
+  ],
   "system": {
     "kernel_version": "6.6.31+rpt-rpi-v8",
     "distribution": "Raspberry Pi OS Bookworm (Debian 12)",
@@ -217,6 +220,13 @@ Notes:
   total, since not every double-counting case (e.g. LVM/LUKS-mapped
   devices layered over a whole disk) is filtered out.
 - `network` entries are sorted by interface name.
+- `wireless` reports link quality and signal level per wireless interface,
+  parsed from `/proc/net/wireless`, and is omitted entirely on a host with no
+  wireless interfaces (most kernels don't even create the file in that case).
+  `link_quality` is the raw driver-reported value from the file's `link`
+  column - its maximum is driver-dependent (commonly, but not always, 70) so
+  it is not normalized to a 0-100 percentage. `signal_dbm` is the received
+  signal strength in dBm; more negative means weaker signal.
 - `cpu_frequency` is one entry per CPU core with a readable sysfs `cpufreq`
   directory (`scaling_cur_freq`, `scaling_governor`), sorted by `core`
   index. It is omitted entirely on systems without a cpufreq driver (e.g.
