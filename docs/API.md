@@ -159,6 +159,9 @@ extract the fields you need (e.g. via JSONPath in openHAB's HTTP binding).
   "network": [
     { "name": "eth0", "rx_bytes_per_sec": 1240.5, "tx_bytes_per_sec": 302.1 }
   ],
+  "wireless": [
+    { "interface": "wlan0", "link_quality": 70, "signal_dbm": -40 }
+  ],
   "system": {
     "kernel_version": "6.6.31+rpt-rpi-v8",
     "distribution": "Raspberry Pi OS Bookworm (Debian 12)",
@@ -217,6 +220,19 @@ Notes:
   total, since not every double-counting case (e.g. LVM/LUKS-mapped
   devices layered over a whole disk) is filtered out.
 - `network` entries are sorted by interface name.
+- `wireless` reports link quality and signal level per wireless interface,
+  parsed from `/proc/net/wireless`, and is omitted entirely when the host has
+  no wireless interface with a current reading (this includes a host with no
+  wireless hardware at all: the file is usually present regardless — created
+  by kernels built with wireless extensions support, which is the common
+  case — but then simply lists no interfaces, or lists one with no reading
+  yet, e.g. not currently associated to a network).
+  `link_quality` is the raw driver-reported value from the file's `link`
+  column - its maximum is driver-dependent (commonly, but not always, 70) so
+  it is not normalized to a 0-100 percentage. `signal_dbm` is the received
+  signal strength in dBm on drivers that report an absolute value; some
+  drivers instead report a driver-relative signal quality number in this
+  same field. More negative (or lower) means weaker signal either way.
 - `cpu_frequency` is one entry per CPU core with a readable sysfs `cpufreq`
   directory (`scaling_cur_freq`, `scaling_governor`), sorted by `core`
   index. It is omitted entirely on systems without a cpufreq driver (e.g.
@@ -232,7 +248,10 @@ Notes:
   Like `gpu_temperature`, the whole object is omitted when `vcgencmd` is
   unavailable (e.g. off-Pi), and `raw` carries the original hex bitmask.
 - `network` is omitted entirely when network monitoring is disabled
-  (`network_enabled: false`).
+  (`network_enabled: false`). This toggle covers `network` (interface
+  throughput) only — `wireless` (link quality/signal level) is unaffected by
+  it and has no config toggle of its own; see the `wireless` bullet above for
+  when it is omitted instead.
 - `updates.stale` is `true` when the underlying apt cache (refreshed by a
   separate root-privileged systemd timer, not by this process) is older
   than the configured staleness threshold — treat the update count as
@@ -278,7 +297,7 @@ Notes:
   keeps returning every field, including the ones with no endpoint of
   their own (`timestamp`, `uptime_seconds`, `load_average`, `cpu_count`,
   `cpu_frequency`, `swap`, `gpu_temperature`, `throttled`, `system`,
-  `disk_io`).
+  `disk_io`, `wireless`).
   Poll the full snapshot if you need several metrics at once — six narrow
   requests cost more than one full one.
 - A field that carries no data is never a `404` — the endpoint exists and

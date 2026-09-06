@@ -14,7 +14,8 @@ import (
 // Config controls the collector's polling behavior and history retention.
 type Config struct {
 	// FastInterval is how often CPU, load average, temperature,
-	// memory/swap, disk, disk I/O, and network metrics are sampled.
+	// memory/swap, disk, disk I/O, network, and wireless metrics are
+	// sampled.
 	FastInterval time.Duration
 	// SlowInterval is how often available apt updates are checked. This
 	// can be much less frequent than FastInterval since the underlying
@@ -162,6 +163,7 @@ type Collector struct {
 	disk      *DiskCollector
 	diskIO    *DiskIOCollector
 	network   *NetworkCollector
+	wireless  *WirelessCollector
 	temp      *TemperatureCollector
 	throttled *ThrottledCollector
 	sysInfo   *SysInfoCollector
@@ -248,6 +250,7 @@ func New(cfg Config, log *slog.Logger) *Collector {
 		disk:            NewDiskCollector(),
 		diskIO:          NewDiskIOCollector(),
 		network:         NewNetworkCollector(),
+		wireless:        NewWirelessCollector(),
 		temp:            NewTemperatureCollector(vcg),
 		throttled:       NewThrottledCollector(vcg),
 		sysInfo:         NewSysInfoCollector(),
@@ -436,6 +439,7 @@ type fastTickSamples struct {
 	diskIO     []DiskIO
 	diskIOErr  error
 	netIfaces  []NetworkInterface
+	wireless   []Wireless
 	uptimeSecs float64
 }
 
@@ -487,6 +491,10 @@ func (c *Collector) collectFastTickSamples(ctx context.Context) fastTickSamples 
 			c.log.Warn("network collection failed", "error", err)
 		}
 	}
+	s.wireless, err = c.wireless.Collect()
+	if err != nil {
+		c.log.Warn("wireless collection failed", "error", err)
+	}
 	s.uptimeSecs, err = c.uptime.Collect()
 	if err != nil {
 		c.log.Warn("uptime collection failed", "error", err)
@@ -526,6 +534,7 @@ func (c *Collector) fastTick(ctx context.Context) {
 	}
 	c.latest.DiskIO = s.diskIO
 	c.latest.Network = s.netIfaces
+	c.latest.Wireless = s.wireless
 
 	c.cpuHist.Add(HistoryPoint{Timestamp: s.now, Value: s.cpuUsage.OverallPercent})
 	c.l1Hist.Add(HistoryPoint{Timestamp: s.now, Value: s.load.Load1})
