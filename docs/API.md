@@ -248,7 +248,10 @@ Notes:
   Like `gpu_temperature`, the whole object is omitted when `vcgencmd` is
   unavailable (e.g. off-Pi), and `raw` carries the original hex bitmask.
 - `network` is omitted entirely when network monitoring is disabled
-  (`network_enabled: false`).
+  (`network_enabled: false`). This toggle covers `network` (interface
+  throughput) only — `wireless` (link quality/signal level) is unaffected by
+  it and has no config toggle of its own; see the `wireless` bullet above for
+  when it is omitted instead.
 - `updates.stale` is `true` when the underlying apt cache (refreshed by a
   separate root-privileged systemd timer, not by this process) is older
   than the configured staleness threshold — treat the update count as
