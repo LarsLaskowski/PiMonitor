@@ -294,9 +294,10 @@ func TestCollector_FastTick_Wireless(t *testing.T) {
 
 // TestCollector_FastTick_Wireless_NoInterfaces verifies that a host with no
 // wireless interfaces reports Snapshot.Wireless as nil, so it marshals as
-// an omitted field rather than an empty array (unlike Disks/DiskIO, which
-// docs/API.md documents as always present, wireless has no such
-// commitment - see the "wireless" bullet under GET /api/v1/metrics).
+// an omitted field rather than an empty array - unlike Disks/DiskIO,
+// fastTick deliberately does not normalize a nil wireless reading to
+// []Wireless{} (contrast the s.disks == nil / s.diskIO == nil handling
+// just above in fastTick).
 func TestCollector_FastTick_Wireless_NoInterfaces(t *testing.T) {
 	c := newTestCollector()
 	path := writeWirelessFixture(t, wirelessEmptyFixture)

@@ -17,9 +17,10 @@ const procNetWirelessPath = "/proc/net/wireless"
 // interface in the form
 // "iface: status link level noise nwid crypt frag retry misc beacon", where
 // link/level/noise carry a trailing "." (e.g. "70.", "-40.") when the kernel
-// marks that particular value as currently updated (see wireless_update in
-// the kernel's net/wireless/wext-proc.c); strconv.ParseFloat accepts that
-// trailing-dot form the same as a plain integer.
+// marks that particular value as currently updated (see
+// wireless_seq_printf_stats in the kernel's net/wireless/wext-proc.c);
+// strconv.ParseFloat accepts that trailing-dot form the same as a plain
+// integer.
 //
 // The kernel prints a line for every wireless netdev regardless of whether
 // it has a current reading — an interface that exists but isn't associated
