@@ -419,6 +419,35 @@ func TestCollector_Processes_PopulatedOnSlowTick(t *testing.T) {
 	}
 }
 
+// TestCollector_Processes_CollectedWhenUpdatesFail pins the reason slowTick
+// no longer returns early on an updates-collection failure: process
+// collection must still run on a tick where apt fails (a missing/broken
+// apt binary, a stale PATH, ...), not be silently skipped as a side effect
+// of an unrelated collector's error.
+func TestCollector_Processes_CollectedWhenUpdatesFail(t *testing.T) {
+	c := New(Config{
+		FastInterval:     time.Second,
+		SlowInterval:     time.Minute,
+		HistoryCapacity:  10,
+		ProcessesEnabled: true,
+		ProcessesTopN:    5,
+	}, nil)
+	// aptPath is package-private and injectable (see updates_test.go); point
+	// it at a path that can never exist so Collect fails immediately rather
+	// than depending on whether this host happens to have apt installed.
+	c.updates = &UpdatesCollector{aptPath: "/nonexistent/apt", now: time.Now}
+	dir := t.TempDir()
+	writeFakeProcess(t, dir, 100, "hog", 1000, 200, 51200)
+	c.processes = &ProcessCollector{root: dir, now: time.Now}
+
+	c.slowTick(context.Background())
+
+	procs := c.Processes()
+	if len(procs.ByMemory) != 1 || procs.ByMemory[0].PID != 100 {
+		t.Fatalf("Processes().ByMemory = %+v, want process collection to still run despite the updates failure", procs.ByMemory)
+	}
+}
+
 // TestCollector_Notifier_NotWiredWhenAlertsDisabled ensures a notifier built
 // from configured webhooks is never wired in while the alert engine is
 // disabled, since a disabled engine never produces events to deliver.

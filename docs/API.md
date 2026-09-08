@@ -546,8 +546,8 @@ aggregate load), so this is a deliberate opt-in, the same pattern as
     { "pid": 5678, "name": "pimonitor", "cpu_percent": 2.1, "rss_bytes": 18874368 }
   ],
   "by_memory": [
-    { "pid": 5678, "name": "pimonitor", "cpu_percent": 2.1, "rss_bytes": 18874368 },
-    { "pid": 1234, "name": "python3", "cpu_percent": 34.2, "rss_bytes": 52428800 }
+    { "pid": 1234, "name": "python3", "cpu_percent": 34.2, "rss_bytes": 52428800 },
+    { "pid": 5678, "name": "pimonitor", "cpu_percent": 2.1, "rss_bytes": 18874368 }
   ]
 }
 ```
