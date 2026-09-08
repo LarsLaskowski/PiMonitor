@@ -408,7 +408,7 @@ func TestCollector_Processes_PopulatedOnSlowTick(t *testing.T) {
 		ProcessesTopN:    5,
 	}, nil)
 	dir := t.TempDir()
-	writeFakeProcess(t, dir, 100, "hog", 1000, 200, 51200)
+	writeFakeProcess(t, dir, 100, "hog", 1000, 200, 51200, 1000)
 	c.processes = &ProcessCollector{root: dir, now: time.Now}
 
 	c.slowTick(context.Background())
@@ -437,7 +437,7 @@ func TestCollector_Processes_CollectedWhenUpdatesFail(t *testing.T) {
 	// than depending on whether this host happens to have apt installed.
 	c.updates = &UpdatesCollector{aptPath: "/nonexistent/apt", now: time.Now}
 	dir := t.TempDir()
-	writeFakeProcess(t, dir, 100, "hog", 1000, 200, 51200)
+	writeFakeProcess(t, dir, 100, "hog", 1000, 200, 51200, 1000)
 	c.processes = &ProcessCollector{root: dir, now: time.Now}
 
 	c.slowTick(context.Background())

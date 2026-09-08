@@ -31,21 +31,29 @@ func overwriteTempFile(t *testing.T, path, content string) {
 // status files) under root, for ProcessCollector tests that need a fixture
 // pid set without touching real /proc. utime/stime are the raw jiffie
 // counters /proc/<pid>/stat reports; rssKB is the value written on the
-// VmRSS line of /proc/<pid>/status.
-func writeFakeProcess(t *testing.T, root string, pid int, comm string, utime, stime, rssKB uint64) {
+// VmRSS line of /proc/<pid>/status; startTime is the raw starttime jiffie
+// counter (field 22), which ProcessCollector uses to tell a genuinely
+// continuing process apart from a different process that has reused the
+// same pid.
+func writeFakeProcess(t *testing.T, root string, pid int, comm string, utime, stime, rssKB, startTime uint64) {
 	t.Helper()
 	dir := filepath.Join(root, strconv.Itoa(pid))
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatalf("mkdir %s: %v", dir, err)
 	}
-	// Field layout mirrors a real /proc/<pid>/stat line: pid (comm) state
-	// ppid pgrp session tty_nr tpgid flags minflt cminflt majflt cmajflt
-	// utime stime ... — only utime/stime are ever read by the collector, so
-	// every other field is a fixed placeholder.
-	stat := fmt.Sprintf("%d (%s) S 1 1 1 0 -1 0 0 0 0 0 %d %d 0 0 20 0 1 0 0 0 0\n", pid, comm, utime, stime)
-	writeTempFile(t, dir, "stat", stat)
+	writeTempFile(t, dir, "stat", fakeProcPidStatLine(pid, comm, utime, stime, startTime))
 	status := fmt.Sprintf("Name:\t%s\nVmRSS:\t%d kB\n", comm, rssKB)
 	writeTempFile(t, dir, "status", status)
+}
+
+// fakeProcPidStatLine renders a synthetic /proc/<pid>/stat line with the
+// given utime/stime/starttime. Field layout mirrors a real line: pid (comm)
+// state ppid pgrp session tty_nr tpgid flags minflt cminflt majflt cmajflt
+// utime stime cutime cstime priority nice num_threads itrealvalue
+// starttime ... — every field ProcessCollector doesn't read is a fixed
+// placeholder.
+func fakeProcPidStatLine(pid int, comm string, utime, stime, startTime uint64) string {
+	return fmt.Sprintf("%d (%s) S 1 1 1 0 -1 0 0 0 0 0 %d %d 0 0 20 0 1 0 %d 0 0\n", pid, comm, utime, stime, startTime)
 }
 
 // writeFakeVcgencmd writes an executable shell script standing in for the

@@ -563,9 +563,19 @@ Notes:
 - `cpu_percent` is 0 for every process immediately after startup (there is
   no prior sample yet to compute a delta from); it becomes meaningful from
   the second slow tick onward. `rss_bytes` is accurate immediately.
+- `cpu_percent` is normalized against total CPU capacity, the same way
+  `cpu.overall_percent` in `GET /api/v1/metrics` is: a process pegging a
+  single core on a 4-core Pi is reported around 25%, not 100%, so the two
+  values are on a comparable 0-100 scale rather than following `top`'s
+  default per-core convention (which can exceed 100% on multi-core
+  hardware).
 - A process that exits between two slow ticks, or whose `/proc/<pid>` files
   are momentarily unreadable (e.g. a zombie), is silently excluded from
   that tick's rankings rather than causing an error.
+- A process ID reused by a different process between two slow ticks is
+  detected (via the process's start time) and reported at 0% CPU for that
+  tick — the same as a genuinely new process — rather than a bogus delta
+  computed against the previous, unrelated process's counters.
 - This is deliberately its own endpoint rather than a field of `GET
   /api/v1/metrics`, so the main snapshot's payload size doesn't grow with
   however many processes are running on the host.

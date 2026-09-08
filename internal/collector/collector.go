@@ -711,7 +711,10 @@ func (c *Collector) slowTick(ctx context.Context) {
 	if !c.cfg.ProcessesEnabled {
 		return
 	}
-	procs, err := c.processes.Collect(c.cfg.ProcessesTopN)
+	c.mu.RLock()
+	coreCount := c.latest.CPUCount
+	c.mu.RUnlock()
+	procs, err := c.processes.Collect(c.cfg.ProcessesTopN, coreCount)
 	if err != nil {
 		c.log.Warn("process collection failed", "error", err)
 		return

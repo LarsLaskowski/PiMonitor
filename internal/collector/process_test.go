@@ -2,7 +2,6 @@ package collector
 
 import (
 	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -20,6 +19,9 @@ func TestParseProcPidStat(t *testing.T) {
 	if stat.utime != 10 || stat.stime != 5 {
 		t.Fatalf("utime/stime = %d/%d, want 10/5", stat.utime, stat.stime)
 	}
+	if stat.startTimeTicks != 12345 {
+		t.Fatalf("startTimeTicks = %d, want 12345", stat.startTimeTicks)
+	}
 }
 
 // TestParseProcPidStat_NameWithSpacesAndParens covers a process name that
@@ -28,7 +30,7 @@ func TestParseProcPidStat(t *testing.T) {
 // naive whitespace split on the whole line would misparse. The name must
 // be extracted between the first "(" and the last ")".
 func TestParseProcPidStat_NameWithSpacesAndParens(t *testing.T) {
-	stat, err := parseProcPidStat("42 (my (weird) app.sh) S 1 42 42 0 -1 0 0 0 0 0 20 8 0 0 20 0 1 0 0 0 0\n")
+	stat, err := parseProcPidStat("42 (my (weird) app.sh) S 1 42 42 0 -1 0 0 0 0 0 20 8 0 0 20 0 1 0 999 0 0\n")
 	if err != nil {
 		t.Fatalf("parseProcPidStat: %v", err)
 	}
@@ -37,6 +39,9 @@ func TestParseProcPidStat_NameWithSpacesAndParens(t *testing.T) {
 	}
 	if stat.utime != 20 || stat.stime != 8 {
 		t.Fatalf("utime/stime = %d/%d, want 20/8", stat.utime, stat.stime)
+	}
+	if stat.startTimeTicks != 999 {
+		t.Fatalf("startTimeTicks = %d, want 999", stat.startTimeTicks)
 	}
 }
 
@@ -48,8 +53,10 @@ func TestParseProcPidStat_MalformedContent(t *testing.T) {
 		{"no parens", "1234 bash S 1 1234 1234\n"},
 		{"unbalanced parens", "1234 (bash S 1 1234 1234\n"},
 		{"too few fields after comm", "1234 (bash) S 1 2\n"},
-		{"non-numeric utime", "1234 (bash) S 1 1234 1234 0 -1 0 0 0 0 0 abc 5 0 0 20 0 1 0 0 0 0\n"},
-		{"non-numeric stime", "1234 (bash) S 1 1234 1234 0 -1 0 0 0 0 0 10 abc 0 0 20 0 1 0 0 0 0\n"},
+		{"enough fields for utime/stime but not starttime", "1234 (bash) S 1 1234 1234 0 -1 0 0 0 0 0 10 5 0 0 20 0 1 0\n"},
+		{"non-numeric utime", "1234 (bash) S 1 1234 1234 0 -1 0 0 0 0 0 abc 5 0 0 20 0 1 0 999 0 0\n"},
+		{"non-numeric stime", "1234 (bash) S 1 1234 1234 0 -1 0 0 0 0 0 10 abc 0 0 20 0 1 0 999 0 0\n"},
+		{"non-numeric starttime", "1234 (bash) S 1 1234 1234 0 -1 0 0 0 0 0 10 5 0 0 20 0 1 0 abc 0 0\n"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -95,12 +102,12 @@ func TestParseProcPidStatusRSS_MalformedLine(t *testing.T) {
 // meaningful immediately.
 func TestProcessCollector_Collect_FirstCallHasNoCPUButHasMemory(t *testing.T) {
 	root := t.TempDir()
-	writeFakeProcess(t, root, 100, "big", 1000, 200, 51200)
-	writeFakeProcess(t, root, 200, "small", 500, 100, 10240)
+	writeFakeProcess(t, root, 100, "big", 1000, 200, 51200, 1000)
+	writeFakeProcess(t, root, 200, "small", 500, 100, 10240, 1000)
 
 	c := &ProcessCollector{root: root, now: time.Now}
 
-	procs, err := c.Collect(10)
+	procs, err := c.Collect(10, 1)
 	if err != nil {
 		t.Fatalf("Collect: %v", err)
 	}
@@ -117,25 +124,26 @@ func TestProcessCollector_Collect_FirstCallHasNoCPUButHasMemory(t *testing.T) {
 // TestProcessCollector_Collect_TopNOrdering is the acceptance test for
 // issue #16: a fixture pid set produces the correct top-N ordering by CPU
 // and by memory, computed independently of each other from two samples a
-// known interval apart.
+// known interval apart. coreCount 1 keeps CPUPercent equal to raw (non
+// core-normalized) usage, so the expected percentages are simple.
 func TestProcessCollector_Collect_TopNOrdering(t *testing.T) {
 	root := t.TempDir()
-	writeFakeProcess(t, root, 100, "cpu-hog", 1000, 200, 51200) // 60% CPU, 50MB
-	writeFakeProcess(t, root, 200, "mem-hog", 500, 100, 102400) // 35% CPU, 100MB
-	writeFakeProcess(t, root, 300, "idle", 100, 50, 10240)      // 7% CPU, 10MB
+	writeFakeProcess(t, root, 100, "cpu-hog", 1000, 200, 51200, 1000) // 60% CPU, 50MB
+	writeFakeProcess(t, root, 200, "mem-hog", 500, 100, 102400, 1000) // 35% CPU, 100MB
+	writeFakeProcess(t, root, 300, "idle", 100, 50, 10240, 1000)      // 7% CPU, 10MB
 
 	fakeNow := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	c := &ProcessCollector{root: root, now: func() time.Time { return fakeNow }}
-	if _, err := c.Collect(10); err != nil {
+	if _, err := c.Collect(10, 1); err != nil {
 		t.Fatalf("first Collect: %v", err)
 	}
 
-	overwriteTempFile(t, filepath.Join(root, "100", "stat"), fakeStatLine(100, "cpu-hog", 1500, 300))
-	overwriteTempFile(t, filepath.Join(root, "200", "stat"), fakeStatLine(200, "mem-hog", 800, 150))
-	overwriteTempFile(t, filepath.Join(root, "300", "stat"), fakeStatLine(300, "idle", 150, 70))
+	overwriteTempFile(t, filepath.Join(root, "100", "stat"), fakeProcPidStatLine(100, "cpu-hog", 1500, 300, 1000))
+	overwriteTempFile(t, filepath.Join(root, "200", "stat"), fakeProcPidStatLine(200, "mem-hog", 800, 150, 1000))
+	overwriteTempFile(t, filepath.Join(root, "300", "stat"), fakeProcPidStatLine(300, "idle", 150, 70, 1000))
 	fakeNow = fakeNow.Add(10 * time.Second)
 
-	procs, err := c.Collect(2)
+	procs, err := c.Collect(2, 1)
 	if err != nil {
 		t.Fatalf("second Collect: %v", err)
 	}
@@ -161,15 +169,101 @@ func TestProcessCollector_Collect_TopNOrdering(t *testing.T) {
 	}
 }
 
+// TestProcessCollector_Collect_NormalizesByCoreCount covers the fix for
+// cpu_percent being reported `top`-style per-core (able to exceed 100% on
+// multi-core hardware) rather than normalized against total CPU capacity
+// like Snapshot.CPU.OverallPercent: the same fixture that yields 60% at
+// coreCount 1 must yield 15% at coreCount 4.
+func TestProcessCollector_Collect_NormalizesByCoreCount(t *testing.T) {
+	root := t.TempDir()
+	writeFakeProcess(t, root, 100, "cpu-hog", 1000, 200, 51200, 1000)
+
+	fakeNow := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	c := &ProcessCollector{root: root, now: func() time.Time { return fakeNow }}
+	if _, err := c.Collect(10, 4); err != nil {
+		t.Fatalf("first Collect: %v", err)
+	}
+
+	overwriteTempFile(t, filepath.Join(root, "100", "stat"), fakeProcPidStatLine(100, "cpu-hog", 1500, 300, 1000))
+	fakeNow = fakeNow.Add(10 * time.Second)
+
+	procs, err := c.Collect(10, 4)
+	if err != nil {
+		t.Fatalf("second Collect: %v", err)
+	}
+	if len(procs.ByCPU) != 1 || diffFloat(procs.ByCPU[0].CPUPercent, 15) > 0.01 {
+		t.Fatalf("ByCPU = %+v, want pid 100 at 15%% (60%% / 4 cores)", procs.ByCPU)
+	}
+}
+
+// TestProcessCollector_Collect_NormalizesByCoreCount_TreatsBelowOneAsOne
+// covers the guard against a bogus coreCount (0, or negative from a caller
+// bug): it must not divide by zero or invert the sign, but behave like
+// coreCount 1.
+func TestProcessCollector_Collect_NormalizesByCoreCount_TreatsBelowOneAsOne(t *testing.T) {
+	root := t.TempDir()
+	writeFakeProcess(t, root, 100, "cpu-hog", 1000, 200, 51200, 1000)
+
+	fakeNow := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	c := &ProcessCollector{root: root, now: func() time.Time { return fakeNow }}
+	if _, err := c.Collect(10, 0); err != nil {
+		t.Fatalf("first Collect: %v", err)
+	}
+
+	overwriteTempFile(t, filepath.Join(root, "100", "stat"), fakeProcPidStatLine(100, "cpu-hog", 1500, 300, 1000))
+	fakeNow = fakeNow.Add(10 * time.Second)
+
+	procs, err := c.Collect(10, 0)
+	if err != nil {
+		t.Fatalf("second Collect: %v", err)
+	}
+	if len(procs.ByCPU) != 1 || diffFloat(procs.ByCPU[0].CPUPercent, 60) > 0.01 {
+		t.Fatalf("ByCPU = %+v, want pid 100 at 60%% (coreCount 0 treated as 1)", procs.ByCPU)
+	}
+}
+
+// TestProcessCollector_Collect_DetectsPIDReuse covers the fix for a pid
+// recycled between two Collect calls: without a process-identity check, a
+// new occupant of pid 100 whose utime/stime happen to be numerically
+// greater than the previous occupant's last sample would pass the
+// monotonic-increase check and be attributed a bogus CPU delta belonging to
+// a different process entirely. /proc/<pid>/stat's starttime is fixed for
+// the life of a process, so a changed starttime must reset the pid to "no
+// prior sample" (0% CPU), the same as a genuinely new process.
+func TestProcessCollector_Collect_DetectsPIDReuse(t *testing.T) {
+	root := t.TempDir()
+	writeFakeProcess(t, root, 100, "original", 100, 50, 1024, 1000) // total 150 ticks, starttime 1000
+
+	fakeNow := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	c := &ProcessCollector{root: root, now: func() time.Time { return fakeNow }}
+	if _, err := c.Collect(10, 1); err != nil {
+		t.Fatalf("first Collect: %v", err)
+	}
+
+	// pid 100 exits and a different process is started, reusing the pid.
+	// Its utime/stime (600 ticks total) are numerically greater than the
+	// previous occupant's, and its starttime (2000) differs.
+	overwriteTempFile(t, filepath.Join(root, "100", "stat"), fakeProcPidStatLine(100, "reused", 500, 100, 2000))
+	fakeNow = fakeNow.Add(10 * time.Second)
+
+	procs, err := c.Collect(10, 1)
+	if err != nil {
+		t.Fatalf("second Collect: %v", err)
+	}
+	if len(procs.ByCPU) != 1 || procs.ByCPU[0].CPUPercent != 0 {
+		t.Fatalf("ByCPU = %+v, want pid 100 (reused, different starttime) at 0%% CPU, not a bogus delta", procs.ByCPU)
+	}
+}
+
 // TestProcessCollector_Collect_TopNClampedToAvailableProcesses covers
 // requesting more processes than exist: the result must not be padded with
 // zero-value entries.
 func TestProcessCollector_Collect_TopNClampedToAvailableProcesses(t *testing.T) {
 	root := t.TempDir()
-	writeFakeProcess(t, root, 100, "only", 100, 50, 1024)
+	writeFakeProcess(t, root, 100, "only", 100, 50, 1024, 1000)
 
 	c := &ProcessCollector{root: root, now: time.Now}
-	procs, err := c.Collect(50)
+	procs, err := c.Collect(50, 1)
 	if err != nil {
 		t.Fatalf("Collect: %v", err)
 	}
@@ -183,10 +277,10 @@ func TestProcessCollector_Collect_TopNClampedToAvailableProcesses(t *testing.T) 
 // rankings, never null.
 func TestProcessCollector_Collect_TopZeroReturnsEmptyNotNil(t *testing.T) {
 	root := t.TempDir()
-	writeFakeProcess(t, root, 100, "only", 100, 50, 1024)
+	writeFakeProcess(t, root, 100, "only", 100, 50, 1024, 1000)
 
 	c := &ProcessCollector{root: root, now: time.Now}
-	procs, err := c.Collect(0)
+	procs, err := c.Collect(0, 1)
 	if err != nil {
 		t.Fatalf("Collect: %v", err)
 	}
@@ -209,28 +303,22 @@ func TestProcessCollector_Collect_TopZeroReturnsEmptyNotNil(t *testing.T) {
 // failing the whole collection.
 func TestProcessCollector_Collect_SkipsUnreadableProcesses(t *testing.T) {
 	root := t.TempDir()
-	writeFakeProcess(t, root, 100, "healthy", 100, 50, 1024)
+	writeFakeProcess(t, root, 100, "healthy", 100, 50, 1024, 1000)
 	// pid 200 has a stat file but no status file, simulating a process that
 	// exited between the two reads.
 	if err := os.MkdirAll(filepath.Join(root, "200"), 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
-	writeTempFile(t, filepath.Join(root, "200"), "stat", fakeStatLine(200, "vanished", 100, 50))
+	writeTempFile(t, filepath.Join(root, "200"), "stat", fakeProcPidStatLine(200, "vanished", 100, 50, 1000))
 	// A non-pid entry (e.g. "self") must be ignored, not treated as an error.
 	writeTempFile(t, root, "self", "not a pid")
 
 	c := &ProcessCollector{root: root, now: time.Now}
-	procs, err := c.Collect(10)
+	procs, err := c.Collect(10, 1)
 	if err != nil {
 		t.Fatalf("Collect: %v", err)
 	}
 	if len(procs.ByCPU) != 1 || procs.ByCPU[0].PID != 100 {
 		t.Fatalf("ByCPU = %+v, want only pid 100", procs.ByCPU)
 	}
-}
-
-// fakeStatLine renders a synthetic /proc/<pid>/stat line with the given
-// utime/stime, matching the layout writeFakeProcess writes.
-func fakeStatLine(pid int, comm string, utime, stime uint64) string {
-	return fmt.Sprintf("%d (%s) S 1 1 1 0 -1 0 0 0 0 0 %d %d 0 0 20 0 1 0 0 0 0\n", pid, comm, utime, stime)
 }

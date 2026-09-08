@@ -19,11 +19,12 @@ const procRootPath = "/proc"
 // rather than queried via sysconf(_SC_CLK_TCK), which would require cgo.
 const processClockTicksPerSecond = 100
 
-// processStat holds one process's name and cumulative CPU-time counters,
-// read from /proc/<pid>/stat.
+// processStat holds one process's name, cumulative CPU-time counters, and
+// start time, read from /proc/<pid>/stat.
 type processStat struct {
-	comm         string
-	utime, stime uint64
+	comm           string
+	utime, stime   uint64
+	startTimeTicks uint64
 }
 
 // parseProcPidStat parses /proc/<pid>/stat content into a processStat. The
@@ -31,8 +32,9 @@ type processStat struct {
 // even parentheses (e.g. a process renamed to "(sshd)"), so it is extracted
 // between the first "(" and the last ")" rather than by naive field
 // splitting. Every field after the closing paren is then whitespace
-// delimited with state as its first entry, so utime/stime — fields 14 and
-// 15 of the whole line — sit at offsets 11 and 12 of that remainder.
+// delimited with state as its first entry, so utime/stime/starttime —
+// fields 14, 15, and 22 of the whole line — sit at offsets 11, 12, and 19
+// of that remainder.
 func parseProcPidStat(data string) (processStat, error) {
 	open := strings.IndexByte(data, '(')
 	closeIdx := strings.LastIndexByte(data, ')')
@@ -40,7 +42,7 @@ func parseProcPidStat(data string) (processStat, error) {
 		return processStat{}, fmt.Errorf("unexpected /proc/<pid>/stat content: %q", data)
 	}
 	fields := strings.Fields(data[closeIdx+1:])
-	if len(fields) < 13 {
+	if len(fields) < 20 {
 		return processStat{}, fmt.Errorf("too few fields after comm in /proc/<pid>/stat content: %q", data)
 	}
 	utime, err := strconv.ParseUint(fields[11], 10, 64)
@@ -51,7 +53,11 @@ func parseProcPidStat(data string) (processStat, error) {
 	if err != nil {
 		return processStat{}, fmt.Errorf("parse stime: %w", err)
 	}
-	return processStat{comm: data[open+1 : closeIdx], utime: utime, stime: stime}, nil
+	startTime, err := strconv.ParseUint(fields[19], 10, 64)
+	if err != nil {
+		return processStat{}, fmt.Errorf("parse starttime: %w", err)
+	}
+	return processStat{comm: data[open+1 : closeIdx], utime: utime, stime: stime, startTimeTicks: startTime}, nil
 }
 
 // parseProcPidStatusRSS parses /proc/<pid>/status content for its VmRSS
@@ -103,12 +109,22 @@ func NewProcessCollector() *ProcessCollector {
 // that call; RSS is meaningful immediately. Subsequent calls report real
 // CPU deltas over the time elapsed since the previous call.
 //
+// coreCount normalizes CPUPercent against total CPU capacity, the same way
+// Snapshot.CPU.OverallPercent is: a process pegging a single core on a
+// 4-core host reports 25%, not 100%, so the two are on a comparable scale
+// rather than CPUPercent alone following `top`'s default per-core
+// convention (which can exceed 100% on multi-core hardware). Values less
+// than 1 are treated as 1 (no normalization).
+//
 // A process that exits between the directory listing and reading its own
 // stat/status files, or whose files aren't readable (e.g. a zombie, or a
 // kernel thread with a restricted /proc/<pid>/status), is skipped rather
 // than treated as a collection error — with potentially hundreds of
 // processes churning, that is the expected steady state, not a failure.
-func (c *ProcessCollector) Collect(topN int) (Processes, error) {
+func (c *ProcessCollector) Collect(topN, coreCount int) (Processes, error) {
+	if coreCount < 1 {
+		coreCount = 1
+	}
 	entries, err := os.ReadDir(c.root)
 	if err != nil {
 		return Processes{}, fmt.Errorf("read %s: %w", c.root, err)
@@ -150,9 +166,17 @@ func (c *ProcessCollector) Collect(topN int) (Processes, error) {
 	for pid, stat := range cur {
 		var cpuPercent float64
 		if c.prev != nil && elapsed > 0 {
-			if p, ok := c.prev[pid]; ok && stat.utime >= p.utime && stat.stime >= p.stime {
+			// p.startTimeTicks == stat.startTimeTicks confirms pid still
+			// names the same process: /proc/<pid>/stat's starttime (field
+			// 22) is fixed for the life of a process, so a pid recycled
+			// between two Collect calls gets a different one. Without this
+			// check, a reused pid whose new occupant happens to have
+			// higher utime/stime than the old one's final sample would pass
+			// the monotonic-increase check below and report a bogus delta
+			// attributed to the wrong process.
+			if p, ok := c.prev[pid]; ok && p.startTimeTicks == stat.startTimeTicks && stat.utime >= p.utime && stat.stime >= p.stime {
 				ticks := float64((stat.utime - p.utime) + (stat.stime - p.stime))
-				cpuPercent = ticks / processClockTicksPerSecond / elapsed * 100
+				cpuPercent = ticks / processClockTicksPerSecond / elapsed * 100 / float64(coreCount)
 			}
 		}
 		all = append(all, Process{PID: pid, Name: stat.comm, CPUPercent: cpuPercent, RSSBytes: rss[pid]})
