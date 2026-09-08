@@ -145,6 +145,17 @@ func (s *Server) handlePrometheusMetrics(w http.ResponseWriter, _ *http.Request)
 	_, _ = w.Write(renderPrometheusMetrics(s.metrics.Snapshot()))
 }
 
+// handleProcesses serves GET /api/v1/processes: the current top-N
+// processes by CPU usage and by resident memory (RSS), recomputed on the
+// slow tick (see config.Config.ProcessesTopN) rather than the fast one,
+// since walking every /proc/<pid> entry on every fast tick would be too
+// costly on constrained hardware. Kept off GET /api/v1/metrics to bound
+// that response's payload size. Only registered when processes_enabled is
+// true — see docs/API.md.
+func (s *Server) handleProcesses(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, s.log.Error, s.metrics.Processes())
+}
+
 // handleServerStats serves GET /api/v1/serverstats: in-memory counters of
 // PiMonitor's own HTTP traffic (total requests, broken down by response
 // status class and by route), recorded by withLogging on every request.

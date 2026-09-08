@@ -27,6 +27,10 @@ type MetricsProvider interface {
 	// every request.
 	HistoryGeneration() uint64
 	Alerts() alert.Report
+	// Processes returns the current top-N processes by CPU usage and by
+	// resident memory (RSS), served by GET /api/v1/processes when
+	// cfg.ProcessesEnabled is true.
+	Processes() collector.Processes
 }
 
 // defaultMaxInFlight bounds how many requests may be actively processing at
@@ -93,6 +97,11 @@ type Config struct {
 	// registered at all, so it 404s rather than existing-but-empty. See
 	// config.Config.PrometheusEnabled.
 	PrometheusEnabled bool
+	// ProcessesEnabled registers GET /api/v1/processes: the current top-N
+	// processes by CPU usage and by resident memory (RSS). Left false (the
+	// default) the route isn't registered at all, so it 404s rather than
+	// existing-but-empty. See config.Config.ProcessesEnabled.
+	ProcessesEnabled bool
 	// Client is echoed back verbatim by GET /api/v1/config.
 	Client ClientConfig
 }

@@ -17,10 +17,12 @@ type Config struct {
 	// memory/swap, disk, disk I/O, network, and wireless metrics are
 	// sampled.
 	FastInterval time.Duration
-	// SlowInterval is how often available apt updates are checked. This
-	// can be much less frequent than FastInterval since the underlying
-	// apt cache is itself only refreshed periodically by a separate,
-	// root-privileged systemd timer.
+	// SlowInterval is how often available apt updates are checked, and (when
+	// ProcessesEnabled) the top-N process ranking is recomputed. This can be
+	// much less frequent than FastInterval since the underlying apt cache is
+	// itself only refreshed periodically by a separate, root-privileged
+	// systemd timer, and walking every /proc/<pid> entry is too costly to
+	// repeat at FastInterval's cadence.
 	SlowInterval time.Duration
 	// HistoryCapacity is the number of samples retained per metric time
 	// series (e.g. FastInterval=5s and HistoryCapacity=720 covers a 1
@@ -58,6 +60,13 @@ type Config struct {
 	// Nil disables notifications. It is started by Run and fed the events each
 	// evaluation emits.
 	Notifier *alert.Notifier
+	// ProcessesEnabled toggles the top-N process collector. When enabled,
+	// each slow tick recomputes the top-N processes by CPU usage and by RSS,
+	// served by GET /api/v1/processes.
+	ProcessesEnabled bool
+	// ProcessesTopN is how many processes are reported per ranking (CPU,
+	// memory) when ProcessesEnabled is true.
+	ProcessesTopN int
 }
 
 // History is the collected time series for every metric, keyed by
@@ -169,6 +178,7 @@ type Collector struct {
 	sysInfo   *SysInfoCollector
 	updates   *UpdatesCollector
 	uptime    *UptimeCollector
+	processes *ProcessCollector
 
 	// alerts is nil when alerting is disabled.
 	alerts *alert.Engine
@@ -188,6 +198,11 @@ type Collector struct {
 
 	mu     sync.RWMutex
 	latest Snapshot
+	// latestProcesses is the most recently computed top-N process ranking,
+	// refreshed on the slow tick when cfg.ProcessesEnabled is true. Kept
+	// separate from latest/Snapshot so it stays off GET /api/v1/metrics,
+	// bounding that response's payload size — see Processes().
+	latestProcesses Processes
 	// historyGen counts fastTicks that have recorded at least one history
 	// point. HTTP handlers use it to detect whether the retained history has
 	// actually changed since a cached, already-serialised response was built,
@@ -240,7 +255,10 @@ func New(cfg Config, log *slog.Logger) *Collector {
 		// Disks and DiskIO start as [] rather than nil so they marshal as
 		// [] (not null) before the first fast tick completes, matching
 		// docs/API.md.
-		latest:          Snapshot{Disks: []Disk{}, DiskIO: []DiskIO{}},
+		latest: Snapshot{Disks: []Disk{}, DiskIO: []DiskIO{}},
+		// ByCPU/ByMemory start as [] for the same reason, before the first
+		// slow tick has run (or when ProcessesEnabled is false).
+		latestProcesses: Processes{ByCPU: []Process{}, ByMemory: []Process{}},
 		alerts:          alerts,
 		notifier:        notifier,
 		cpu:             NewCPUCollector(),
@@ -256,6 +274,7 @@ func New(cfg Config, log *slog.Logger) *Collector {
 		sysInfo:         NewSysInfoCollector(),
 		updates:         NewUpdatesCollector(cfg.UpdatesStaleThreshold),
 		uptime:          NewUptimeCollector(),
+		processes:       NewProcessCollector(),
 		log:             log,
 		cpuHist:         NewRingBuffer[HistoryPoint](cfg.HistoryCapacity),
 		l1Hist:          NewRingBuffer[HistoryPoint](cfg.HistoryCapacity),
@@ -642,6 +661,16 @@ func (c *Collector) recordDeviceHistory(now time.Time, disks []Disk, diskIO []Di
 	evictStaleSeries(c.txHist, netKeys, now, historyWindow)
 }
 
+// Processes returns the most recently computed top-N processes by CPU usage
+// and by resident memory (RSS). When ProcessesEnabled is false, or before
+// the first slow tick has run, it reports both rankings empty rather than a
+// real reading.
+func (c *Collector) Processes() Processes {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.latestProcesses
+}
+
 // Alerts returns the current alert states and recent transition events. When
 // alerting is disabled it reports enabled=false with no states or events.
 func (c *Collector) Alerts() alert.Report {
@@ -673,10 +702,24 @@ func (c *Collector) slowTick(ctx context.Context) {
 	updates, err := c.updates.Collect(ctx)
 	if err != nil {
 		c.log.Warn("updates collection failed", "error", err)
-		return
+	} else {
+		c.mu.Lock()
+		c.latest.Updates = updates
+		c.mu.Unlock()
 	}
 
+	if !c.cfg.ProcessesEnabled {
+		return
+	}
+	c.mu.RLock()
+	coreCount := c.latest.CPUCount
+	c.mu.RUnlock()
+	procs, err := c.processes.Collect(c.cfg.ProcessesTopN, coreCount)
+	if err != nil {
+		c.log.Warn("process collection failed", "error", err)
+		return
+	}
 	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.latest.Updates = updates
+	c.latestProcesses = procs
+	c.mu.Unlock()
 }

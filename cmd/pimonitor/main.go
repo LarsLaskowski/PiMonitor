@@ -62,6 +62,8 @@ func run(args []string) error {
 		AlertFor:              cfg.AlertFor(),
 		Thresholds:            cfg.Thresholds,
 		Notifier:              notifier,
+		ProcessesEnabled:      cfg.ProcessesEnabled,
+		ProcessesTopN:         cfg.ProcessesTopN,
 	}
 	if cfg.HistoryPersistEnabled {
 		collCfg.PersistPath = filepath.Join(cfg.DataDir, "history.bin")
@@ -124,6 +126,7 @@ func serverConfig(cfg config.Config, version string) httpapi.Config {
 		TLSCertFile:         cfg.TLSCertFile,
 		TLSKeyFile:          cfg.TLSKeyFile,
 		PrometheusEnabled:   cfg.PrometheusEnabled,
+		ProcessesEnabled:    cfg.ProcessesEnabled,
 		HealthzMaxStaleness: cfg.HealthzMaxStaleness(collector.WorstCaseTickOverhead),
 		Client:              clientConfig(cfg, version),
 	}

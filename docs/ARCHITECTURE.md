@@ -64,7 +64,7 @@ by the same shutdown context, so a stuck flush cannot hang the process indefinit
 
 `Collector` (`collector.go`) owns one sub-collector struct per metric family — `cpu`,
 `cpuFreq`, `loadAvg`, `memory`, `disk`, `diskIO`, `network`, `wireless`, `temp`, `throttled`,
-`sysInfo`, `updates`, `uptime` — each in its own file (`cpu.go`, `memory.go`, ...) with a `Collect()`
+`sysInfo`, `updates`, `uptime`, `processes` — each in its own file (`cpu.go`, `memory.go`, ...) with a `Collect()`
 method that reads `/proc`/`/sys` (or shells out to `vcgencmd`/`apt` where no `/proc`/`/sys`
 source exists) and returns a typed value plus an error. Every one of these parsers is
 built to be unit-testable against fixture strings rather than real `/proc`/`/sys` access —
@@ -79,9 +79,13 @@ on their own interval:
   non-Pi hardware) leaves that field at its zero value for this snapshot rather than
   blocking the others.
 - **Slow tick** (`slowTick`, default every `updates_check_minutes` = 15 min): available
-  apt updates. This is deliberately much less frequent than the fast tick because the
-  underlying apt cache is itself only refreshed every 6h by the separate root-privileged
-  timer — polling it every 5s would be pure overhead.
+  apt updates, and — when `processes_enabled` is set — the top-N process ranking by CPU
+  and by memory (`process.go`). Both are deliberately much less frequent than the fast
+  tick: the underlying apt cache is itself only refreshed every 6h by the separate
+  root-privileged timer, and walking every `/proc/<pid>` entry is too costly to repeat at
+  the fast tick's cadence. The two are independent of each other — an apt failure logs a
+  warning but does not skip process collection on that same tick, matching the fast tick's
+  per-source error isolation.
 
 **Snapshot + history, guarded by one `sync.RWMutex`.** `Collector.latest` holds the most
 recent value of every metric (`Snapshot()` returns a copy under `RLock`); each scalar
@@ -315,7 +319,8 @@ gated), the versioned, API-key-gated routes — `GET /api/v1/metrics`,
 `GET /api/v1/serverstats`, plus one per-metric sub-resource of the snapshot
 (`GET /api/v1/metrics/cpu`, `/temperature`, `/memory`, `/disks`, `/network`,
 `/updates`) — and `GET /metrics`, registered only when
-`prometheus_enabled` is set but gated the same way, plus `GET /` serving the embedded
+`prometheus_enabled` is set but gated the same way, and `GET /api/v1/processes`,
+registered only when `processes_enabled` is set, plus `GET /` serving the embedded
 dashboard via the `staticHandler` passed into `New` (`nil` in tests, to exercise the API
 layer without the frontend). See [`API.md`](API.md) for the
 full response schemas.

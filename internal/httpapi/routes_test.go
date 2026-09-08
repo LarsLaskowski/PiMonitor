@@ -50,7 +50,7 @@ func TestRouteTable_EveryRouteHasItsOwnStatsBucket(t *testing.T) {
 // backs. Any status but 404 means the pattern is registered; the handlers'
 // own behavior is covered by their tests.
 func TestRouteTable_EveryRouteIsRegistered(t *testing.T) {
-	s, _ := newTestServer(Config{PrometheusEnabled: true})
+	s, _ := newTestServer(Config{PrometheusEnabled: true, ProcessesEnabled: true})
 	for _, rt := range routeTable {
 		t.Run(rt.path, func(t *testing.T) {
 			req := httptest.NewRequest(rt.method, rt.path, nil)
@@ -92,7 +92,7 @@ func TestRouteTable_DisabledRoutesAreNotRegistered(t *testing.T) {
 // a newly added route isn't in their hardcoded lists.
 func TestRouteTable_VersionedRoutesGoThroughAPIRoute(t *testing.T) {
 	const key = "s3cret"
-	s, _ := newTestServer(Config{APIKey: key, PrometheusEnabled: true})
+	s, _ := newTestServer(Config{APIKey: key, PrometheusEnabled: true, ProcessesEnabled: true})
 	for _, rt := range routeTable {
 		if !strings.HasPrefix(rt.path, "/api/v1/") {
 			continue
