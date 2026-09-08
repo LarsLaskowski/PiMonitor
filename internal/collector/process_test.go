@@ -102,8 +102,8 @@ func TestParseProcPidStatusRSS_MalformedLine(t *testing.T) {
 // meaningful immediately.
 func TestProcessCollector_Collect_FirstCallHasNoCPUButHasMemory(t *testing.T) {
 	root := t.TempDir()
-	writeFakeProcess(t, root, 100, "big", 1000, 200, 51200, 1000)
-	writeFakeProcess(t, root, 200, "small", 500, 100, 10240, 1000)
+	writeFakeProcess(t, root, 100, fakeProcess{comm: "big", utime: 1000, stime: 200, rssKB: 51200, startTime: 1000})
+	writeFakeProcess(t, root, 200, fakeProcess{comm: "small", utime: 500, stime: 100, rssKB: 10240, startTime: 1000})
 
 	c := &ProcessCollector{root: root, now: time.Now}
 
@@ -128,9 +128,9 @@ func TestProcessCollector_Collect_FirstCallHasNoCPUButHasMemory(t *testing.T) {
 // core-normalized) usage, so the expected percentages are simple.
 func TestProcessCollector_Collect_TopNOrdering(t *testing.T) {
 	root := t.TempDir()
-	writeFakeProcess(t, root, 100, "cpu-hog", 1000, 200, 51200, 1000) // 60% CPU, 50MB
-	writeFakeProcess(t, root, 200, "mem-hog", 500, 100, 102400, 1000) // 35% CPU, 100MB
-	writeFakeProcess(t, root, 300, "idle", 100, 50, 10240, 1000)      // 7% CPU, 10MB
+	writeFakeProcess(t, root, 100, fakeProcess{comm: "cpu-hog", utime: 1000, stime: 200, rssKB: 51200, startTime: 1000}) // 60% CPU, 50MB
+	writeFakeProcess(t, root, 200, fakeProcess{comm: "mem-hog", utime: 500, stime: 100, rssKB: 102400, startTime: 1000}) // 35% CPU, 100MB
+	writeFakeProcess(t, root, 300, fakeProcess{comm: "idle", utime: 100, stime: 50, rssKB: 10240, startTime: 1000})      // 7% CPU, 10MB
 
 	fakeNow := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	c := &ProcessCollector{root: root, now: func() time.Time { return fakeNow }}
@@ -176,7 +176,7 @@ func TestProcessCollector_Collect_TopNOrdering(t *testing.T) {
 // coreCount 1 must yield 15% at coreCount 4.
 func TestProcessCollector_Collect_NormalizesByCoreCount(t *testing.T) {
 	root := t.TempDir()
-	writeFakeProcess(t, root, 100, "cpu-hog", 1000, 200, 51200, 1000)
+	writeFakeProcess(t, root, 100, fakeProcess{comm: "cpu-hog", utime: 1000, stime: 200, rssKB: 51200, startTime: 1000})
 
 	fakeNow := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	c := &ProcessCollector{root: root, now: func() time.Time { return fakeNow }}
@@ -202,7 +202,7 @@ func TestProcessCollector_Collect_NormalizesByCoreCount(t *testing.T) {
 // coreCount 1.
 func TestProcessCollector_Collect_NormalizesByCoreCount_TreatsBelowOneAsOne(t *testing.T) {
 	root := t.TempDir()
-	writeFakeProcess(t, root, 100, "cpu-hog", 1000, 200, 51200, 1000)
+	writeFakeProcess(t, root, 100, fakeProcess{comm: "cpu-hog", utime: 1000, stime: 200, rssKB: 51200, startTime: 1000})
 
 	fakeNow := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	c := &ProcessCollector{root: root, now: func() time.Time { return fakeNow }}
@@ -232,7 +232,7 @@ func TestProcessCollector_Collect_NormalizesByCoreCount_TreatsBelowOneAsOne(t *t
 // prior sample" (0% CPU), the same as a genuinely new process.
 func TestProcessCollector_Collect_DetectsPIDReuse(t *testing.T) {
 	root := t.TempDir()
-	writeFakeProcess(t, root, 100, "original", 100, 50, 1024, 1000) // total 150 ticks, starttime 1000
+	writeFakeProcess(t, root, 100, fakeProcess{comm: "original", utime: 100, stime: 50, rssKB: 1024, startTime: 1000}) // total 150 ticks, starttime 1000
 
 	fakeNow := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	c := &ProcessCollector{root: root, now: func() time.Time { return fakeNow }}
@@ -260,7 +260,7 @@ func TestProcessCollector_Collect_DetectsPIDReuse(t *testing.T) {
 // zero-value entries.
 func TestProcessCollector_Collect_TopNClampedToAvailableProcesses(t *testing.T) {
 	root := t.TempDir()
-	writeFakeProcess(t, root, 100, "only", 100, 50, 1024, 1000)
+	writeFakeProcess(t, root, 100, fakeProcess{comm: "only", utime: 100, stime: 50, rssKB: 1024, startTime: 1000})
 
 	c := &ProcessCollector{root: root, now: time.Now}
 	procs, err := c.Collect(50, 1)
@@ -277,7 +277,7 @@ func TestProcessCollector_Collect_TopNClampedToAvailableProcesses(t *testing.T) 
 // rankings, never null.
 func TestProcessCollector_Collect_TopZeroReturnsEmptyNotNil(t *testing.T) {
 	root := t.TempDir()
-	writeFakeProcess(t, root, 100, "only", 100, 50, 1024, 1000)
+	writeFakeProcess(t, root, 100, fakeProcess{comm: "only", utime: 100, stime: 50, rssKB: 1024, startTime: 1000})
 
 	c := &ProcessCollector{root: root, now: time.Now}
 	procs, err := c.Collect(0, 1)
@@ -303,7 +303,7 @@ func TestProcessCollector_Collect_TopZeroReturnsEmptyNotNil(t *testing.T) {
 // failing the whole collection.
 func TestProcessCollector_Collect_SkipsUnreadableProcesses(t *testing.T) {
 	root := t.TempDir()
-	writeFakeProcess(t, root, 100, "healthy", 100, 50, 1024, 1000)
+	writeFakeProcess(t, root, 100, fakeProcess{comm: "healthy", utime: 100, stime: 50, rssKB: 1024, startTime: 1000})
 	// pid 200 has a stat file but no status file, simulating a process that
 	// exited between the two reads.
 	if err := os.MkdirAll(filepath.Join(root, "200"), 0o755); err != nil {

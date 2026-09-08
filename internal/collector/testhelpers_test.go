@@ -27,22 +27,32 @@ func overwriteTempFile(t *testing.T, path, content string) {
 	}
 }
 
+// fakeProcess describes one synthetic /proc/<pid> fixture for
+// writeFakeProcess: comm/utime/stime are the /proc/<pid>/stat fields of
+// the same name; rssKB is the value written on the VmRSS line of
+// /proc/<pid>/status; startTime is the raw starttime jiffie counter (field
+// 22), which ProcessCollector uses to tell a genuinely continuing process
+// apart from a different process that has reused the same pid. Grouped
+// into a struct (rather than five writeFakeProcess parameters) to keep
+// that function's signature short.
+type fakeProcess struct {
+	comm         string
+	utime, stime uint64
+	rssKB        uint64
+	startTime    uint64
+}
+
 // writeFakeProcess writes a synthetic /proc/<pid> directory (stat and
 // status files) under root, for ProcessCollector tests that need a fixture
-// pid set without touching real /proc. utime/stime are the raw jiffie
-// counters /proc/<pid>/stat reports; rssKB is the value written on the
-// VmRSS line of /proc/<pid>/status; startTime is the raw starttime jiffie
-// counter (field 22), which ProcessCollector uses to tell a genuinely
-// continuing process apart from a different process that has reused the
-// same pid.
-func writeFakeProcess(t *testing.T, root string, pid int, comm string, utime, stime, rssKB, startTime uint64) {
+// pid set without touching real /proc.
+func writeFakeProcess(t *testing.T, root string, pid int, p fakeProcess) {
 	t.Helper()
 	dir := filepath.Join(root, strconv.Itoa(pid))
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatalf("mkdir %s: %v", dir, err)
 	}
-	writeTempFile(t, dir, "stat", fakeProcPidStatLine(pid, comm, utime, stime, startTime))
-	status := fmt.Sprintf("Name:\t%s\nVmRSS:\t%d kB\n", comm, rssKB)
+	writeTempFile(t, dir, "stat", fakeProcPidStatLine(pid, p.comm, p.utime, p.stime, p.startTime))
+	status := fmt.Sprintf("Name:\t%s\nVmRSS:\t%d kB\n", p.comm, p.rssKB)
 	writeTempFile(t, dir, "status", status)
 }
 
