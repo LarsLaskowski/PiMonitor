@@ -293,6 +293,29 @@ var validLogLevels = map[string]bool{
 // it misbehave. It returns a descriptive error for the first violation so a
 // daemon fails fast at startup rather than later at runtime.
 func (c Config) Validate() error {
+	if err := c.validateTiming(); err != nil {
+		return err
+	}
+	if err := c.validateServer(); err != nil {
+		return err
+	}
+	if err := c.Thresholds.validate(); err != nil {
+		return err
+	}
+	if c.Alerts.ForSeconds < 0 {
+		return fmt.Errorf("alerts.for_seconds must be >= 0 (got %v)", c.Alerts.ForSeconds)
+	}
+	if err := c.Alerts.validate(); err != nil {
+		return err
+	}
+	if c.ProcessesTopN < 1 || c.ProcessesTopN > maxProcessesTopN {
+		return fmt.Errorf("processes_top_n must be between 1 and %d (got %v)", maxProcessesTopN, c.ProcessesTopN)
+	}
+	return nil
+}
+
+// validateTiming checks the poll/update/history interval and window fields.
+func (c Config) validateTiming() error {
 	if c.PollIntervalSeconds <= 0 {
 		return fmt.Errorf("poll_interval_seconds must be > 0 (got %v)", c.PollIntervalSeconds)
 	}
@@ -314,6 +337,12 @@ func (c Config) Validate() error {
 	if ratio := c.HistoryWindowMinutes * 60 / c.PollIntervalSeconds; ratio > maxHistoryCapacity {
 		return fmt.Errorf("history_window_minutes (%v) / poll_interval_seconds (%v) implies %v history points per series, exceeding the %d limit; increase poll_interval_seconds or reduce history_window_minutes", c.HistoryWindowMinutes, c.PollIntervalSeconds, ratio, maxHistoryCapacity)
 	}
+	return nil
+}
+
+// validateServer checks the HTTP server, persistence, logging, and healthz
+// fields.
+func (c Config) validateServer() error {
 	if c.HistoryPersistEnabled && c.DataDir == "" {
 		return fmt.Errorf("data_dir must not be empty when history_persist_enabled is true")
 	}
@@ -331,18 +360,6 @@ func (c Config) Validate() error {
 	}
 	if c.HealthzMaxStalenessSeconds > 0 && c.HealthzMaxStalenessSeconds < c.PollIntervalSeconds {
 		return fmt.Errorf("healthz_max_staleness_seconds (%v) must be >= poll_interval_seconds (%v), or /healthz reports unhealthy permanently", c.HealthzMaxStalenessSeconds, c.PollIntervalSeconds)
-	}
-	if err := c.Thresholds.validate(); err != nil {
-		return err
-	}
-	if c.Alerts.ForSeconds < 0 {
-		return fmt.Errorf("alerts.for_seconds must be >= 0 (got %v)", c.Alerts.ForSeconds)
-	}
-	if err := c.Alerts.validate(); err != nil {
-		return err
-	}
-	if c.ProcessesTopN < 1 || c.ProcessesTopN > maxProcessesTopN {
-		return fmt.Errorf("processes_top_n must be between 1 and %d (got %v)", maxProcessesTopN, c.ProcessesTopN)
 	}
 	return nil
 }
