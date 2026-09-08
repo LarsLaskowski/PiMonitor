@@ -132,6 +132,19 @@ type Config struct {
 	HealthzMaxStalenessSeconds float64    `yaml:"healthz_max_staleness_seconds"`
 	Thresholds                 Thresholds `yaml:"thresholds"`
 	Alerts                     Alerts     `yaml:"alerts"`
+	// ProcessesEnabled toggles GET /api/v1/processes: the top-N running
+	// processes by CPU usage and by resident memory (RSS). Off by default —
+	// walking every /proc/<pid> entry is more invasive than the other
+	// metrics (it exposes what's running on the host, not just aggregate
+	// load), so this is a deliberate opt-in. Recomputed on the slow tick
+	// (updates_check_minutes), not the fast one — see
+	// collector.Config.SlowInterval.
+	ProcessesEnabled bool `yaml:"processes_enabled"`
+	// ProcessesTopN is how many processes are reported per ranking (CPU,
+	// memory) when processes_enabled is true. Validated regardless of
+	// processes_enabled so a typo is caught at startup even while the
+	// feature is off.
+	ProcessesTopN int `yaml:"processes_top_n"`
 }
 
 // Default returns PiMonitor's built-in default configuration.
@@ -172,6 +185,8 @@ func Default() Config {
 			NotifyRetryBackoffSeconds: 1,
 			NotifyMinIntervalSeconds:  5,
 		},
+		ProcessesEnabled: false,
+		ProcessesTopN:    5,
 	}
 }
 
@@ -257,6 +272,13 @@ func (c Config) HistoryCapacity() int {
 // than any real dashboard use case needs.
 const maxHistoryCapacity = 1_000_000
 
+// maxProcessesTopN bounds ProcessesTopN, so a config typo (or an
+// intentionally huge value) can't make GET /api/v1/processes return an
+// unreasonably large payload — a real host rarely has more than a few
+// hundred processes anyway, so this is a generous ceiling, not a
+// realistic setting.
+const maxProcessesTopN = 100
+
 // validLogLevels are the log levels newLogger understands; any other value
 // silently falls back to info, so we reject it here instead.
 var validLogLevels = map[string]bool{
@@ -318,6 +340,9 @@ func (c Config) Validate() error {
 	}
 	if err := c.Alerts.validate(); err != nil {
 		return err
+	}
+	if c.ProcessesTopN < 1 || c.ProcessesTopN > maxProcessesTopN {
+		return fmt.Errorf("processes_top_n must be between 1 and %d (got %v)", maxProcessesTopN, c.ProcessesTopN)
 	}
 	return nil
 }

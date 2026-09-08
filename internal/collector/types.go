@@ -103,6 +103,26 @@ type DiskIO struct {
 	WriteBytesPerSec float64 `json:"write_bytes_per_sec"`
 }
 
+// Process is a single running process's identity and current CPU/memory
+// usage, as reported by GET /api/v1/processes.
+type Process struct {
+	PID        int     `json:"pid"`
+	Name       string  `json:"name"`
+	CPUPercent float64 `json:"cpu_percent"`
+	RSSBytes   uint64  `json:"rss_bytes"`
+}
+
+// Processes is the top-N running processes by CPU usage and by resident
+// memory (RSS). It is recomputed on the slow tick (see
+// Config.ProcessesTopN) rather than the fast one, since walking every
+// /proc/<pid> entry is too costly to do at the same cadence as the other
+// metrics, and is served by its own GET /api/v1/processes endpoint rather
+// than folded into Snapshot, to bound the main snapshot's payload size.
+type Processes struct {
+	ByCPU    []Process `json:"by_cpu"`
+	ByMemory []Process `json:"by_memory"`
+}
+
 // SystemInfo holds identity information that rarely changes at runtime.
 type SystemInfo struct {
 	KernelVersion string `json:"kernel_version"`

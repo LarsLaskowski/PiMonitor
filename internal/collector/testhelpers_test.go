@@ -1,8 +1,10 @@
 package collector
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"testing"
 )
 
@@ -23,6 +25,27 @@ func overwriteTempFile(t *testing.T, path, content string) {
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatalf("overwrite temp file %s: %v", path, err)
 	}
+}
+
+// writeFakeProcess writes a synthetic /proc/<pid> directory (stat and
+// status files) under root, for ProcessCollector tests that need a fixture
+// pid set without touching real /proc. utime/stime are the raw jiffie
+// counters /proc/<pid>/stat reports; rssKB is the value written on the
+// VmRSS line of /proc/<pid>/status.
+func writeFakeProcess(t *testing.T, root string, pid int, comm string, utime, stime, rssKB uint64) {
+	t.Helper()
+	dir := filepath.Join(root, strconv.Itoa(pid))
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("mkdir %s: %v", dir, err)
+	}
+	// Field layout mirrors a real /proc/<pid>/stat line: pid (comm) state
+	// ppid pgrp session tty_nr tpgid flags minflt cminflt majflt cmajflt
+	// utime stime ... — only utime/stime are ever read by the collector, so
+	// every other field is a fixed placeholder.
+	stat := fmt.Sprintf("%d (%s) S 1 1 1 0 -1 0 0 0 0 0 %d %d 0 0 20 0 1 0 0 0 0\n", pid, comm, utime, stime)
+	writeTempFile(t, dir, "stat", stat)
+	status := fmt.Sprintf("Name:\t%s\nVmRSS:\t%d kB\n", comm, rssKB)
+	writeTempFile(t, dir, "status", status)
 }
 
 // writeFakeVcgencmd writes an executable shell script standing in for the

@@ -381,6 +381,44 @@ func TestCollector_Alerts_EvaluatedOnFastTick(t *testing.T) {
 	}
 }
 
+// TestCollector_Processes_DisabledByDefault covers the wiring half of issue
+// #16: with ProcessesEnabled left false, slowTick must never touch the
+// process collector, so Processes() keeps reporting both rankings empty.
+func TestCollector_Processes_DisabledByDefault(t *testing.T) {
+	c := newTestCollector()
+	c.slowTick(context.Background())
+
+	procs := c.Processes()
+	if len(procs.ByCPU) != 0 || len(procs.ByMemory) != 0 {
+		t.Fatalf("expected empty rankings while ProcessesEnabled is false, got %+v", procs)
+	}
+}
+
+// TestCollector_Processes_PopulatedOnSlowTick covers the other half: with
+// ProcessesEnabled true, slowTick refreshes Processes() from a fixture
+// /proc root (per docs/TESTS.md, injected rather than reading the real
+// /proc), independent of whatever the updates collector (which shells out
+// to apt) does on this tick.
+func TestCollector_Processes_PopulatedOnSlowTick(t *testing.T) {
+	c := New(Config{
+		FastInterval:     time.Second,
+		SlowInterval:     time.Minute,
+		HistoryCapacity:  10,
+		ProcessesEnabled: true,
+		ProcessesTopN:    5,
+	}, nil)
+	dir := t.TempDir()
+	writeFakeProcess(t, dir, 100, "hog", 1000, 200, 51200)
+	c.processes = &ProcessCollector{root: dir, now: time.Now}
+
+	c.slowTick(context.Background())
+
+	procs := c.Processes()
+	if len(procs.ByMemory) != 1 || procs.ByMemory[0].PID != 100 {
+		t.Fatalf("Processes().ByMemory = %+v, want the fixture's single pid-100 entry", procs.ByMemory)
+	}
+}
+
 // TestCollector_Notifier_NotWiredWhenAlertsDisabled ensures a notifier built
 // from configured webhooks is never wired in while the alert engine is
 // disabled, since a disabled engine never produces events to deliver.

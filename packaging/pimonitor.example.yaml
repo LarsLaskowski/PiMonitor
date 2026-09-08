@@ -63,6 +63,18 @@ pi_model_enabled: true
 # header in your Prometheus scrape_config.
 prometheus_enabled: false
 
+# Whether to expose GET /api/v1/processes: the top-N running processes by
+# CPU usage and by resident memory (RSS). Off by default - walking every
+# /proc/<pid> entry is more invasive than the other metrics (it exposes
+# what's running on the host, not just aggregate load), so this is a
+# deliberate opt-in. Recomputed on the slow tick (updates_check_minutes),
+# not poll_interval_seconds - see docs/API.md.
+processes_enabled: false
+
+# How many processes each ranking (CPU, memory) returns when
+# processes_enabled is true. Must be between 1 and 100.
+processes_top_n: 5
+
 # If set, all /api/v1/... requests must include this value as either
 # "Authorization: Bearer <api_key>" or "X-Api-Key: <api_key>". Leave empty
 # (the default) to allow unauthenticated access on a trusted LAN. Set this

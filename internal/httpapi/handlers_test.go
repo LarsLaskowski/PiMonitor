@@ -26,6 +26,7 @@ type fakeMetrics struct {
 	// when the generation hasn't moved.
 	historyCalls int
 	alerts       alert.Report
+	processes    collector.Processes
 }
 
 func (f *fakeMetrics) Snapshot() collector.Snapshot { return f.snapshot }
@@ -33,8 +34,9 @@ func (f *fakeMetrics) History() collector.History {
 	f.historyCalls++
 	return f.history
 }
-func (f *fakeMetrics) HistoryGeneration() uint64 { return f.historyGen }
-func (f *fakeMetrics) Alerts() alert.Report      { return f.alerts }
+func (f *fakeMetrics) HistoryGeneration() uint64      { return f.historyGen }
+func (f *fakeMetrics) Alerts() alert.Report           { return f.alerts }
+func (f *fakeMetrics) Processes() collector.Processes { return f.processes }
 
 func newTestServer(cfg Config) (*Server, *fakeMetrics) {
 	fm := &fakeMetrics{
@@ -485,6 +487,59 @@ func TestHandleAlerts(t *testing.T) {
 func TestHandleAlerts_GatedByAPIKey(t *testing.T) {
 	s, _ := newTestServer(Config{APIKey: "secret123"})
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/alerts", nil)
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status without key = %d, want 401", rec.Code)
+	}
+}
+
+// TestHandleProcesses is the acceptance test for issue #16's HTTP surface:
+// GET /api/v1/processes, once enabled, serves exactly the top-N rankings
+// the collector computed.
+func TestHandleProcesses(t *testing.T) {
+	s, fm := newTestServer(Config{ProcessesEnabled: true})
+	fm.processes = collector.Processes{
+		ByCPU:    []collector.Process{{PID: 100, Name: "hog", CPUPercent: 60, RSSBytes: 51200}},
+		ByMemory: []collector.Process{{PID: 200, Name: "leaky", CPUPercent: 5, RSSBytes: 1048576}},
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/processes", nil)
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	var got collector.Processes
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if len(got.ByCPU) != 1 || got.ByCPU[0].PID != 100 {
+		t.Fatalf("ByCPU = %+v, want the fake's single pid-100 entry", got.ByCPU)
+	}
+	if len(got.ByMemory) != 1 || got.ByMemory[0].PID != 200 {
+		t.Fatalf("ByMemory = %+v, want the fake's single pid-200 entry", got.ByMemory)
+	}
+}
+
+// TestHandleProcesses_DisabledByDefault pins that GET /api/v1/processes
+// 404s when processes_enabled is left at its default (false), rather than
+// existing but always serving an empty ranking — the same
+// register-only-when-enabled pattern as GET /metrics.
+func TestHandleProcesses_DisabledByDefault(t *testing.T) {
+	s, _ := newTestServer(Config{})
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/processes", nil)
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404 while processes_enabled is false", rec.Code)
+	}
+}
+
+func TestHandleProcesses_GatedByAPIKey(t *testing.T) {
+	s, _ := newTestServer(Config{ProcessesEnabled: true, APIKey: "secret123"})
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/processes", nil)
 	rec := httptest.NewRecorder()
 	s.Handler().ServeHTTP(rec, req)
 	if rec.Code != http.StatusUnauthorized {

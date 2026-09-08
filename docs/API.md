@@ -524,6 +524,52 @@ Notes:
   retains points. A client accumulating history from `?since=` deltas needs
   it to bound its local window to the same span the server keeps.
 
+### `GET /api/v1/processes`
+
+Returns the top-N running processes by CPU usage and by resident memory
+(RSS), each ranked independently.
+
+It is **off by default**: set `processes_enabled: true` in the config file
+(see [`packaging/pimonitor.example.yaml`](../packaging/pimonitor.example.yaml))
+to register the route — walking every `/proc/<pid>` entry is more invasive
+than the other metrics (it exposes what's running on the host, not just
+aggregate load), so this is a deliberate opt-in, the same pattern as
+[`GET /metrics`](#get-metrics-prometheus). Left disabled, `GET
+/api/v1/processes` returns `404 Not Found` rather than existing but empty.
+`processes_top_n` controls how many entries each ranking returns (default
+5).
+
+```json
+{
+  "by_cpu": [
+    { "pid": 1234, "name": "python3", "cpu_percent": 34.2, "rss_bytes": 52428800 },
+    { "pid": 5678, "name": "pimonitor", "cpu_percent": 2.1, "rss_bytes": 18874368 }
+  ],
+  "by_memory": [
+    { "pid": 5678, "name": "pimonitor", "cpu_percent": 2.1, "rss_bytes": 18874368 },
+    { "pid": 1234, "name": "python3", "cpu_percent": 34.2, "rss_bytes": 52428800 }
+  ]
+}
+```
+
+Notes:
+
+- This is recomputed on the **slow tick** (`updates_check_minutes`), not the
+  fast one: walking every `/proc/<pid>` entry is far more expensive than
+  reading a single `/proc` file, so doing it at `poll_interval_seconds`'s
+  cadence would cost too much on constrained hardware such as a Pi Zero.
+  Expect the reported CPU percentages to reflect average usage over that
+  slower interval, not an instantaneous reading.
+- `cpu_percent` is 0 for every process immediately after startup (there is
+  no prior sample yet to compute a delta from); it becomes meaningful from
+  the second slow tick onward. `rss_bytes` is accurate immediately.
+- A process that exits between two slow ticks, or whose `/proc/<pid>` files
+  are momentarily unreadable (e.g. a zombie), is silently excluded from
+  that tick's rankings rather than causing an error.
+- This is deliberately its own endpoint rather than a field of `GET
+  /api/v1/metrics`, so the main snapshot's payload size doesn't grow with
+  however many processes are running on the host.
+
 ### `GET /api/v1/serverstats`
 
 Returns in-memory counters of PiMonitor's own HTTP traffic: total requests
@@ -556,6 +602,7 @@ off.
     "/api/v1/metrics/updates": 0,
     "/api/v1/alerts": 5,
     "/api/v1/config": 3,
+    "/api/v1/processes": 0,
     "/api/v1/serverstats": 1,
     "other-api": 0,
     "static": 2

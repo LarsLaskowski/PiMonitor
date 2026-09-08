@@ -37,6 +37,12 @@ func TestDefault(t *testing.T) {
 	if cfg.Alerts.ForSeconds != 30 {
 		t.Fatalf("Alerts.ForSeconds = %v, want 30", cfg.Alerts.ForSeconds)
 	}
+	if cfg.ProcessesEnabled {
+		t.Fatal("expected ProcessesEnabled to default to false")
+	}
+	if cfg.ProcessesTopN != 5 {
+		t.Fatalf("ProcessesTopN = %v, want 5", cfg.ProcessesTopN)
+	}
 }
 
 func TestDurationHelpers(t *testing.T) {
@@ -480,6 +486,9 @@ func TestValidate_RejectsBadValues(t *testing.T) {
 		{"negative notify max retries", func(c *Config) { c.Alerts.NotifyMaxRetries = -1 }},
 		{"negative notify backoff", func(c *Config) { c.Alerts.NotifyRetryBackoffSeconds = -1 }},
 		{"negative notify min interval", func(c *Config) { c.Alerts.NotifyMinIntervalSeconds = -1 }},
+		{"zero processes top n", func(c *Config) { c.ProcessesTopN = 0 }},
+		{"negative processes top n", func(c *Config) { c.ProcessesTopN = -1 }},
+		{"processes top n exceeds sanity cap", func(c *Config) { c.ProcessesTopN = maxProcessesTopN + 1 }},
 		{"webhook with empty url", func(c *Config) { c.Alerts.Webhooks = []Webhook{{URL: ""}} }},
 		{"webhook with bad min_level", func(c *Config) {
 			c.Alerts.Webhooks = []Webhook{{URL: "http://x", MinLevel: "info"}}
@@ -562,6 +571,10 @@ func TestValidate_AcceptsValidEdgeCases(t *testing.T) {
 	// healthz_max_staleness_seconds exactly equal to poll_interval_seconds is
 	// the smallest accepted value, not rejected as "below" it.
 	cfg.HealthzMaxStalenessSeconds = cfg.PollIntervalSeconds
+	// processes_top_n exactly at the cap is allowed, whether or not the
+	// feature is enabled.
+	cfg.ProcessesEnabled = true
+	cfg.ProcessesTopN = maxProcessesTopN
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("Validate() rejected a valid edge-case config: %v", err)
 	}

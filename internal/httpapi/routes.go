@@ -70,6 +70,13 @@ var routeTable = append([]route{
 		api:     true,
 		enabled: func(cfg Config) bool { return cfg.PrometheusEnabled },
 	},
+	{
+		method:  http.MethodGet,
+		path:    "/api/v1/processes",
+		handler: (*Server).handleProcesses,
+		api:     true,
+		enabled: func(cfg Config) bool { return cfg.ProcessesEnabled },
+	},
 }, metricsSubResourceRoutes()...)
 
 // metricsSubResource is one narrow, read-only view of the current snapshot,
