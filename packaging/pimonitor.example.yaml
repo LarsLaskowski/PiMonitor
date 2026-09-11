@@ -15,8 +15,8 @@ log_level: "info"
 # visible via GET /api/v1/serverstats regardless of this setting.
 access_log_enabled: true
 
-# How often live metrics (CPU, load average, temperature, memory/swap,
-# disk, disk I/O, network, wireless) are sampled.
+# How often live metrics (CPU, load average, temperature, hwmon sensors,
+# memory/swap, disk, disk I/O, network, wireless) are sampled.
 poll_interval_seconds: 5
 
 # How often available apt updates are checked. This only reads the
