@@ -54,6 +54,7 @@ func run(args []string) error {
 		SlowInterval:          cfg.SlowInterval(),
 		HistoryCapacity:       cfg.HistoryCapacity(),
 		NetworkEnabled:        cfg.NetworkEnabled,
+		HwmonEnabled:          cfg.HwmonEnabled,
 		UpdatesStaleThreshold: cfg.UpdatesStaleThreshold(),
 		DistroInfoEnabled:     cfg.DistroInfoEnabled,
 		PiModelEnabled:        cfg.PiModelEnabled,

@@ -48,6 +48,12 @@ data_dir: "/var/lib/pimonitor"
 # Whether to collect and display network interface throughput.
 network_enabled: true
 
+# Whether to enumerate hwmon temperature sensors (the SoC sensor plus any
+# other exposed sensor: a PoE-HAT fan controller, an NVMe/SSD drive, an
+# attached I2C/1-Wire sensor, ...), reported as the "sensors" array
+# alongside the existing "temperature" field.
+hwmon_enabled: true
+
 # Whether to show the OS distribution / Raspberry Pi model in the
 # dashboard.
 distro_info_enabled: true

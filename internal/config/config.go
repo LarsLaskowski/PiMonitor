@@ -97,8 +97,14 @@ type Config struct {
 	HistoryPersistEnabled        bool    `yaml:"history_persist_enabled"`
 	DataDir                      string  `yaml:"data_dir"`
 	NetworkEnabled               bool    `yaml:"network_enabled"`
-	DistroInfoEnabled            bool    `yaml:"distro_info_enabled"`
-	PiModelEnabled               bool    `yaml:"pi_model_enabled"`
+	// HwmonEnabled toggles enumeration of the kernel hwmon subsystem
+	// (Snapshot.sensors): the SoC sensor plus any other exposed sensor
+	// (PoE-HAT fan controller, NVMe/SSD drive, attached I2C/1-Wire sensor,
+	// ...). On by default - it's cheap sysfs reads, additive to the existing
+	// temperature field.
+	HwmonEnabled      bool `yaml:"hwmon_enabled"`
+	DistroInfoEnabled bool `yaml:"distro_info_enabled"`
+	PiModelEnabled    bool `yaml:"pi_model_enabled"`
 	// PrometheusEnabled toggles GET /metrics, a Prometheus text-exposition
 	// rendering of the current snapshot, served alongside the JSON
 	// /api/v1/... API. It defaults to false — a distinct opt-in rather than
@@ -159,6 +165,7 @@ func Default() Config {
 		HistoryPersistEnabled:        true,
 		DataDir:                      "/var/lib/pimonitor",
 		NetworkEnabled:               true,
+		HwmonEnabled:                 true,
 		DistroInfoEnabled:            true,
 		PiModelEnabled:               true,
 		PrometheusEnabled:            false,

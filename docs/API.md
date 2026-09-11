@@ -162,6 +162,10 @@ extract the fields you need (e.g. via JSONPath in openHAB's HTTP binding).
   "wireless": [
     { "interface": "wlan0", "link_quality": 70, "signal_dbm": -40 }
   ],
+  "sensors": [
+    { "chip": "cpu_thermal", "label": "cpu_thermal temp1", "celsius": 48.6 },
+    { "chip": "nvme", "label": "Composite", "celsius": 34.9 }
+  ],
   "system": {
     "kernel_version": "6.6.31+rpt-rpi-v8",
     "distribution": "Raspberry Pi OS Bookworm (Debian 12)",
@@ -233,6 +237,18 @@ Notes:
   signal strength in dBm on drivers that report an absolute value; some
   drivers instead report a driver-relative signal quality number in this
   same field. More negative (or lower) means weaker signal either way.
+- `sensors` enumerates every temperature channel exposed by the kernel's
+  hwmon subsystem (`/sys/class/hwmon/hwmon*/temp*_input`) — the SoC sensor
+  itself, plus, depending on the board and attached hardware, a PoE-HAT fan
+  controller, NVMe/SSD drives, or user-attached I2C/1-Wire sensors. This is
+  additive breadth alongside `temperature` above, not a replacement for it:
+  `temperature` remains the primary, clearly-labelled CPU/SoC reading used
+  by the dashboard gauge and the alert engine. `chip` is the hwmon driver's
+  name (e.g. `cpu_thermal`, `nvme`); `label` is the sysfs `temp*_label` file
+  when present, otherwise `chip` plus the channel index. The array is
+  omitted entirely when no hwmon sensor is found (this includes hosts
+  without `/sys/class/hwmon` at all) or when disabled via
+  `hwmon_enabled: false`.
 - `cpu_frequency` is one entry per CPU core with a readable sysfs `cpufreq`
   directory (`scaling_cur_freq`, `scaling_governor`), sorted by `core`
   index. It is omitted entirely on systems without a cpufreq driver (e.g.
@@ -297,7 +313,7 @@ Notes:
   keeps returning every field, including the ones with no endpoint of
   their own (`timestamp`, `uptime_seconds`, `load_average`, `cpu_count`,
   `cpu_frequency`, `swap`, `gpu_temperature`, `throttled`, `system`,
-  `disk_io`, `wireless`).
+  `disk_io`, `wireless`, `sensors`).
   Poll the full snapshot if you need several metrics at once — six narrow
   requests cost more than one full one.
 - A field that carries no data is never a `404` — the endpoint exists and

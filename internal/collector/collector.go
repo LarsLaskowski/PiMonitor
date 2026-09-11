@@ -30,6 +30,10 @@ type Config struct {
 	HistoryCapacity int
 	// NetworkEnabled toggles network throughput collection entirely.
 	NetworkEnabled bool
+	// HwmonEnabled toggles hwmon sensor enumeration (Snapshot.Sensors)
+	// entirely. hwmon reads are cheap sysfs files, so this defaults to true;
+	// it exists mainly for a host where the extra breadth isn't wanted.
+	HwmonEnabled bool
 	// UpdatesStaleThreshold is how old the apt cache may be before the
 	// Updates.Stale flag is set.
 	UpdatesStaleThreshold time.Duration
@@ -173,6 +177,7 @@ type Collector struct {
 	diskIO    *DiskIOCollector
 	network   *NetworkCollector
 	wireless  *WirelessCollector
+	hwmon     *HwmonCollector
 	temp      *TemperatureCollector
 	throttled *ThrottledCollector
 	sysInfo   *SysInfoCollector
@@ -269,6 +274,7 @@ func New(cfg Config, log *slog.Logger) *Collector {
 		diskIO:          NewDiskIOCollector(),
 		network:         NewNetworkCollector(),
 		wireless:        NewWirelessCollector(),
+		hwmon:           NewHwmonCollector(),
 		temp:            NewTemperatureCollector(vcg),
 		throttled:       NewThrottledCollector(vcg),
 		sysInfo:         NewSysInfoCollector(),
@@ -459,6 +465,7 @@ type fastTickSamples struct {
 	diskIOErr  error
 	netIfaces  []NetworkInterface
 	wireless   []Wireless
+	sensors    []TemperatureSensor
 	uptimeSecs float64
 }
 
@@ -514,6 +521,12 @@ func (c *Collector) collectFastTickSamples(ctx context.Context) fastTickSamples 
 	if err != nil {
 		c.log.Warn("wireless collection failed", "error", err)
 	}
+	if c.cfg.HwmonEnabled {
+		s.sensors, err = c.hwmon.Collect()
+		if err != nil {
+			c.log.Warn("hwmon sensor collection failed", "error", err)
+		}
+	}
 	s.uptimeSecs, err = c.uptime.Collect()
 	if err != nil {
 		c.log.Warn("uptime collection failed", "error", err)
@@ -554,6 +567,7 @@ func (c *Collector) fastTick(ctx context.Context) {
 	c.latest.DiskIO = s.diskIO
 	c.latest.Network = s.netIfaces
 	c.latest.Wireless = s.wireless
+	c.latest.Sensors = s.sensors
 
 	c.cpuHist.Add(HistoryPoint{Timestamp: s.now, Value: s.cpuUsage.OverallPercent})
 	c.l1Hist.Add(HistoryPoint{Timestamp: s.now, Value: s.load.Load1})
