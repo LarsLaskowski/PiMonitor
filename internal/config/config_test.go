@@ -16,6 +16,9 @@ func TestDefault(t *testing.T) {
 	if !cfg.NetworkEnabled {
 		t.Fatal("expected NetworkEnabled to default to true")
 	}
+	if !cfg.HwmonEnabled {
+		t.Fatal("expected HwmonEnabled to default to true")
+	}
 	if cfg.PrometheusEnabled {
 		t.Fatal("expected PrometheusEnabled to default to false")
 	}
@@ -143,6 +146,7 @@ func TestLoad_YAMLFilePartialOverride(t *testing.T) {
 	yamlContent := `
 listen_addr: ":9090"
 network_enabled: false
+hwmon_enabled: false
 prometheus_enabled: true
 thresholds:
   temperature_warn_c: 55
@@ -160,6 +164,9 @@ thresholds:
 	}
 	if cfg.NetworkEnabled {
 		t.Fatal("expected NetworkEnabled to be overridden to false")
+	}
+	if cfg.HwmonEnabled {
+		t.Fatal("expected HwmonEnabled to be overridden to false")
 	}
 	if !cfg.PrometheusEnabled {
 		t.Fatal("expected PrometheusEnabled to be overridden to true")

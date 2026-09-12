@@ -38,6 +38,27 @@ type GPUTemperature struct {
 	Celsius float64 `json:"celsius"`
 }
 
+// TemperatureSensor is a single reading enumerated from the kernel's hwmon
+// subsystem: the SoC sensor itself, or a genuinely separate sensor (a
+// PoE-HAT fan controller, an NVMe/SSD drive, a user-attached I2C/1-Wire
+// sensor, ...). Chip is the backing driver's hwmon "name" (e.g.
+// "cpu_thermal", "nvme"); Label is a human-readable channel name (the
+// sysfs "label" file when present, otherwise Chip plus channel index).
+// Hwmon is the sysfs directory the reading came from (e.g. "hwmon3"),
+// which disambiguates two chips that report the same Chip/Label - two NVMe
+// drives both named "nvme" with a "Composite" channel, for instance - since
+// Chip and Label alone cannot tell them apart. hwmon numbering is not
+// guaranteed stable across reboots, so Hwmon identifies a sensor only
+// within a single boot, not across restarts. This is additive breadth
+// alongside the primary Temperature reading above, not a replacement for
+// it.
+type TemperatureSensor struct {
+	Chip    string  `json:"chip"`
+	Label   string  `json:"label"`
+	Hwmon   string  `json:"hwmon"`
+	Celsius float64 `json:"celsius"`
+}
+
 // Throttled is the Raspberry Pi under-voltage / throttling state decoded
 // from the `vcgencmd get_throttled` bitmask. The *Now flags reflect the
 // current state; the *SinceBoot flags latch whether the condition has
@@ -170,17 +191,18 @@ type Snapshot struct {
 	// internal/httpapi — that need to tell a genuine 0°C reading apart from
 	// no reading at all, the same distinction alert.Sample.TemperatureValid
 	// already draws for the alert engine.
-	TemperatureValid bool               `json:"-"`
-	GPUTemperature   *GPUTemperature    `json:"gpu_temperature,omitempty"`
-	Throttled        *Throttled         `json:"throttled,omitempty"`
-	Memory           Memory             `json:"memory"`
-	Swap             Swap               `json:"swap"`
-	Disks            []Disk             `json:"disks"`
-	DiskIO           []DiskIO           `json:"disk_io"`
-	Network          []NetworkInterface `json:"network,omitempty"`
-	Wireless         []Wireless         `json:"wireless,omitempty"`
-	System           SystemInfo         `json:"system"`
-	Updates          Updates            `json:"updates"`
+	TemperatureValid bool                `json:"-"`
+	GPUTemperature   *GPUTemperature     `json:"gpu_temperature,omitempty"`
+	Sensors          []TemperatureSensor `json:"sensors,omitempty"`
+	Throttled        *Throttled          `json:"throttled,omitempty"`
+	Memory           Memory              `json:"memory"`
+	Swap             Swap                `json:"swap"`
+	Disks            []Disk              `json:"disks"`
+	DiskIO           []DiskIO            `json:"disk_io"`
+	Network          []NetworkInterface  `json:"network,omitempty"`
+	Wireless         []Wireless          `json:"wireless,omitempty"`
+	System           SystemInfo          `json:"system"`
+	Updates          Updates             `json:"updates"`
 }
 
 // HistoryPoint is a single timestamped sample in a metric's ring buffer.

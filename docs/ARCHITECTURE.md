@@ -63,21 +63,21 @@ by the same shutdown context, so a stuck flush cannot hang the process indefinit
 ## Metric collection (`internal/collector`)
 
 `Collector` (`collector.go`) owns one sub-collector struct per metric family — `cpu`,
-`cpuFreq`, `loadAvg`, `memory`, `disk`, `diskIO`, `network`, `wireless`, `temp`, `throttled`,
-`sysInfo`, `updates`, `uptime`, `processes` — each in its own file (`cpu.go`, `memory.go`, ...) with a `Collect()`
-method that reads `/proc`/`/sys` (or shells out to `vcgencmd`/`apt` where no `/proc`/`/sys`
-source exists) and returns a typed value plus an error. Every one of these parsers is
-built to be unit-testable against fixture strings rather than real `/proc`/`/sys` access —
-see [`TESTS.md`](TESTS.md).
+`cpuFreq`, `loadAvg`, `memory`, `disk`, `diskIO`, `network`, `wireless`, `hwmon`, `temp`,
+`throttled`, `sysInfo`, `updates`, `uptime`, `processes` — each in its own file (`cpu.go`,
+`memory.go`, ...) with a `Collect()` method that reads `/proc`/`/sys` (or shells out to
+`vcgencmd`/`apt` where no `/proc`/`/sys` source exists) and returns a typed value plus an
+error. Every one of these parsers is built to be unit-testable against fixture strings
+rather than real `/proc`/`/sys` access — see [`TESTS.md`](TESTS.md).
 
 **Two independent tickers** drive collection, both started immediately on `Run` and then
 on their own interval:
 
 - **Fast tick** (`fastTick`, default every `poll_interval_seconds` = 5s): CPU usage/load
-  average/temperature/throttling/memory/swap/disk/disk I/O/network/wireless. Every sub-collector's error is
-  logged and does *not* abort the tick — a failure in one metric (e.g. no thermal zone on
-  non-Pi hardware) leaves that field at its zero value for this snapshot rather than
-  blocking the others.
+  average/temperature/hwmon sensors/throttling/memory/swap/disk/disk I/O/network/wireless.
+  Every sub-collector's error is logged and does *not* abort the tick — a failure in one
+  metric (e.g. no thermal zone on non-Pi hardware) leaves that field at its zero value for
+  this snapshot rather than blocking the others.
 - **Slow tick** (`slowTick`, default every `updates_check_minutes` = 15 min): available
   apt updates, and — when `processes_enabled` is set — the top-N process ranking by CPU
   and by memory (`process.go`). Both are deliberately much less frequent than the fast
@@ -533,7 +533,8 @@ apt package cache (`apt-get update`) requires root while reading its result
 (`apt list --upgradable`) and everything else PiMonitor collects does not:
 
 - **`pimonitor.service`** runs as a dedicated, unprivileged system user. It only reads
-  world-readable files under `/proc`, `/sys/class/thermal`, `/etc/os-release`, and the
+  world-readable files under `/proc`, `/sys/class/thermal`,
+  `/sys/devices/system/cpu/*/cpufreq`, `/sys/class/hwmon`, `/etc/os-release`, and the
   existing apt cache, plus the read-only `apt list --upgradable` command and the optional
   `vcgencmd measure_temp` / `vcgencmd get_throttled` commands — all invoked with fixed
   argument lists (never user input interpolated into a shell command), and further

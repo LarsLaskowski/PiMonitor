@@ -37,7 +37,8 @@ reporters and reviewers have context:
 
 - **The main `pimonitor` service runs unprivileged**, as a dedicated system
   user with no special capabilities. It only reads world-readable files under
-  `/proc`, `/sys/class/thermal`, `/etc/os-release`, and the existing apt
+  `/proc`, `/sys/class/thermal`, `/sys/devices/system/cpu/*/cpufreq`,
+  `/sys/class/hwmon`, `/etc/os-release`, and the existing apt
   cache under `/var/lib/apt/lists/` (via the read-only `apt list --upgradable`
   command). It never invokes anything that requires root.
 - **Only apt cache refresh runs as root**, via a separate, narrowly-scoped

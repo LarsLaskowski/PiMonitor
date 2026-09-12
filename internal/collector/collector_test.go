@@ -3,6 +3,7 @@ package collector
 import (
 	"context"
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -23,6 +24,7 @@ func newTestCollector() *Collector {
 		SlowInterval:          time.Minute,
 		HistoryCapacity:       10,
 		NetworkEnabled:        true,
+		HwmonEnabled:          true,
 		UpdatesStaleThreshold: time.Hour,
 		DistroInfoEnabled:     true,
 		PiModelEnabled:        true,
@@ -308,6 +310,56 @@ func TestCollector_FastTick_Wireless_NoInterfaces(t *testing.T) {
 	snap := c.Snapshot()
 	if snap.Wireless != nil {
 		t.Fatalf("expected nil Snapshot.Wireless with no wireless interfaces, got %+v", snap.Wireless)
+	}
+}
+
+// TestCollector_FastTick_Hwmon verifies fastTick wires HwmonCollector
+// results into Snapshot.Sensors, mirroring the wireless wiring test above.
+func TestCollector_FastTick_Hwmon(t *testing.T) {
+	c := newTestCollector()
+	root := t.TempDir()
+	chipDir := filepath.Join(root, "hwmon0")
+	if err := os.MkdirAll(chipDir, 0o755); err != nil {
+		t.Fatalf("mkdir %s: %v", chipDir, err)
+	}
+	writeTempFile(t, chipDir, "name", "cpu_thermal\n")
+	writeTempFile(t, chipDir, "temp1_input", "48600\n")
+	c.hwmon = &HwmonCollector{glob: filepath.Join(root, "hwmon*")}
+
+	c.fastTick(context.Background())
+
+	snap := c.Snapshot()
+	if len(snap.Sensors) != 1 {
+		t.Fatalf("expected 1 sensor from fixture, got %d: %+v", len(snap.Sensors), snap.Sensors)
+	}
+	if snap.Sensors[0].Chip != "cpu_thermal" || snap.Sensors[0].Celsius != 48.6 {
+		t.Fatalf("unexpected sensor: %+v", snap.Sensors[0])
+	}
+}
+
+// TestCollector_FastTick_HwmonDisabled verifies that HwmonEnabled: false
+// skips hwmon collection entirely, mirroring the network disabled test
+// above.
+func TestCollector_FastTick_HwmonDisabled(t *testing.T) {
+	c := New(Config{
+		FastInterval:    time.Second,
+		SlowInterval:    time.Minute,
+		HistoryCapacity: 10,
+		HwmonEnabled:    false,
+	}, nil)
+	root := t.TempDir()
+	chipDir := filepath.Join(root, "hwmon0")
+	if err := os.MkdirAll(chipDir, 0o755); err != nil {
+		t.Fatalf("mkdir %s: %v", chipDir, err)
+	}
+	writeTempFile(t, chipDir, "temp1_input", "48600\n")
+	c.hwmon = &HwmonCollector{glob: filepath.Join(root, "hwmon*")}
+
+	c.fastTick(context.Background())
+
+	snap := c.Snapshot()
+	if snap.Sensors != nil {
+		t.Fatalf("expected no sensors when hwmon is disabled, got %+v", snap.Sensors)
 	}
 }
 
