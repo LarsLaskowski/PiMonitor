@@ -77,6 +77,7 @@ automation systems like openHAB). Runs as a systemd service.
 
 The main service (`pimonitor.service`) never requires root: it only reads
 world-readable files under `/proc`, `/sys/class/thermal`,
+`/sys/devices/system/cpu/*/cpufreq`, `/sys/class/hwmon`,
 `/etc/os-release`, and the apt cache, plus the read-only
 `apt list --upgradable` command. A separate, root-privileged systemd timer
 (`pimonitor-apt-update.timer`) refreshes the apt cache periodically -

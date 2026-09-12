@@ -62,6 +62,7 @@ func readHwmonSensors(glob string) ([]TemperatureSensor, error) {
 			sensors = append(sensors, TemperatureSensor{
 				Chip:    chipName,
 				Label:   hwmonLabel(chipDir, chipName, idx),
+				Hwmon:   filepath.Base(chipDir),
 				Celsius: float64(milliC) / 1000,
 			})
 		}

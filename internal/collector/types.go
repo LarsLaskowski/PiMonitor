@@ -43,12 +43,19 @@ type GPUTemperature struct {
 // PoE-HAT fan controller, an NVMe/SSD drive, a user-attached I2C/1-Wire
 // sensor, ...). Chip is the backing driver's hwmon "name" (e.g.
 // "cpu_thermal", "nvme"); Label is a human-readable channel name (the
-// sysfs "label" file when present, otherwise Chip plus channel index). This
-// is additive breadth alongside the primary Temperature reading above, not
-// a replacement for it.
+// sysfs "label" file when present, otherwise Chip plus channel index).
+// Hwmon is the sysfs directory the reading came from (e.g. "hwmon3"),
+// which disambiguates two chips that report the same Chip/Label - two NVMe
+// drives both named "nvme" with a "Composite" channel, for instance - since
+// Chip and Label alone cannot tell them apart. hwmon numbering is not
+// guaranteed stable across reboots, so Hwmon identifies a sensor only
+// within a single boot, not across restarts. This is additive breadth
+// alongside the primary Temperature reading above, not a replacement for
+// it.
 type TemperatureSensor struct {
 	Chip    string  `json:"chip"`
 	Label   string  `json:"label"`
+	Hwmon   string  `json:"hwmon"`
 	Celsius float64 `json:"celsius"`
 }
 

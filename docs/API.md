@@ -163,8 +163,8 @@ extract the fields you need (e.g. via JSONPath in openHAB's HTTP binding).
     { "interface": "wlan0", "link_quality": 70, "signal_dbm": -40 }
   ],
   "sensors": [
-    { "chip": "cpu_thermal", "label": "cpu_thermal temp1", "celsius": 48.6 },
-    { "chip": "nvme", "label": "Composite", "celsius": 34.9 }
+    { "chip": "cpu_thermal", "label": "cpu_thermal temp1", "hwmon": "hwmon0", "celsius": 48.6 },
+    { "chip": "nvme", "label": "Composite", "hwmon": "hwmon1", "celsius": 34.9 }
   ],
   "system": {
     "kernel_version": "6.6.31+rpt-rpi-v8",
@@ -245,9 +245,14 @@ Notes:
   `temperature` remains the primary, clearly-labelled CPU/SoC reading used
   by the dashboard gauge and the alert engine. `chip` is the hwmon driver's
   name (e.g. `cpu_thermal`, `nvme`); `label` is the sysfs `temp*_label` file
-  when present, otherwise `chip` plus the channel index. The array is
-  omitted entirely when no hwmon sensor is found (this includes hosts
-  without `/sys/class/hwmon` at all) or when disabled via
+  when present, otherwise `chip` plus the channel index. `hwmon` is the
+  sysfs directory the reading came from (e.g. `hwmon0`), included because
+  `chip`/`label` alone cannot distinguish two identical chips (e.g. two NVMe
+  drives, both named `nvme` with a `Composite` channel) — but note that
+  hwmon numbering is not guaranteed stable across reboots, so `hwmon`
+  identifies a sensor only within a single boot, not across restarts. The
+  array is omitted entirely when no hwmon sensor is found (this includes
+  hosts without `/sys/class/hwmon` at all) or when disabled via
   `hwmon_enabled: false`.
 - `cpu_frequency` is one entry per CPU core with a readable sysfs `cpufreq`
   directory (`scaling_cur_freq`, `scaling_governor`), sorted by `core`

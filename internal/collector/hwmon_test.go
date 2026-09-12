@@ -47,9 +47,9 @@ func TestReadHwmonSensors_MultipleChipsAndChannels(t *testing.T) {
 		t.Fatalf("readHwmonSensors: %v", err)
 	}
 	want := []TemperatureSensor{
-		{Chip: "cpu_thermal", Label: "cpu_thermal temp1", Celsius: 48.6},
-		{Chip: "nvme", Label: "Composite", Celsius: 34.9},
-		{Chip: "nvme", Label: "Sensor 1", Celsius: 36.0},
+		{Chip: "cpu_thermal", Label: "cpu_thermal temp1", Hwmon: "hwmon0", Celsius: 48.6},
+		{Chip: "nvme", Label: "Composite", Hwmon: "hwmon1", Celsius: 34.9},
+		{Chip: "nvme", Label: "Sensor 1", Hwmon: "hwmon1", Celsius: 36.0},
 	}
 	if len(got) != len(want) {
 		t.Fatalf("got %d sensors, want %d: %+v", len(got), len(want), got)
@@ -58,6 +58,37 @@ func TestReadHwmonSensors_MultipleChipsAndChannels(t *testing.T) {
 		if got[i] != want[i] {
 			t.Fatalf("sensor[%d] = %+v, want %+v", i, got[i], want[i])
 		}
+	}
+}
+
+// TestReadHwmonSensors_DisambiguatesIdenticalChips covers two chips that
+// report the same Chip name and Label (e.g. two identical NVMe drives, each
+// exposing a "Composite" channel): Chip/Label alone cannot tell them apart,
+// so Hwmon (the sysfs hwmon<N> directory each reading came from) must differ
+// between them.
+func TestReadHwmonSensors_DisambiguatesIdenticalChips(t *testing.T) {
+	root := t.TempDir()
+	nvme0 := writeHwmonChip(t, root, "hwmon3", "nvme")
+	writeHwmonChannel(t, nvme0, 1, "34900", "Composite")
+	nvme1 := writeHwmonChip(t, root, "hwmon4", "nvme")
+	writeHwmonChannel(t, nvme1, 1, "36200", "Composite")
+
+	got, err := readHwmonSensors(filepath.Join(root, "hwmon*"))
+
+	if err != nil {
+		t.Fatalf("readHwmonSensors: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("expected 2 sensors, got %d: %+v", len(got), got)
+	}
+	if got[0].Chip != got[1].Chip || got[0].Label != got[1].Label {
+		t.Fatalf("expected identical Chip/Label to set up the ambiguity this test checks, got %+v and %+v", got[0], got[1])
+	}
+	if got[0].Hwmon == got[1].Hwmon {
+		t.Fatalf("expected distinct Hwmon directories to disambiguate identical chips, both got %q", got[0].Hwmon)
+	}
+	if got[0].Hwmon != "hwmon3" || got[1].Hwmon != "hwmon4" {
+		t.Fatalf("Hwmon = %q, %q; want hwmon3, hwmon4", got[0].Hwmon, got[1].Hwmon)
 	}
 }
 
@@ -74,7 +105,7 @@ func TestReadHwmonSensors_MissingLabelFallsBackToChipNameAndIndex(t *testing.T) 
 	if len(got) != 1 {
 		t.Fatalf("expected 1 sensor, got %d: %+v", len(got), got)
 	}
-	want := TemperatureSensor{Chip: "unknown_chip", Label: "unknown_chip temp3", Celsius: 50.0}
+	want := TemperatureSensor{Chip: "unknown_chip", Label: "unknown_chip temp3", Hwmon: "hwmon0", Celsius: 50.0}
 	if got[0] != want {
 		t.Fatalf("got %+v, want %+v", got[0], want)
 	}
@@ -96,7 +127,7 @@ func TestReadHwmonSensors_NoChipName(t *testing.T) {
 	if len(got) != 1 {
 		t.Fatalf("expected 1 sensor, got %d: %+v", len(got), got)
 	}
-	want := TemperatureSensor{Chip: "", Label: "temp1", Celsius: 20.0}
+	want := TemperatureSensor{Chip: "", Label: "temp1", Hwmon: "hwmon0", Celsius: 20.0}
 	if got[0] != want {
 		t.Fatalf("got %+v, want %+v", got[0], want)
 	}
