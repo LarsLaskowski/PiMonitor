@@ -1,0 +1,21 @@
+# Template for the project repositories: .github/workflows/notify-website.yml
+# Triggers a rebuild of www.e-networld.de after every published release.
+# Requires the repository secret WEBSITE_DISPATCH_TOKEN
+# (fine-grained token, repository access limited to LarsLaskowski/e-networld,
+# permission "Contents: Read and write").
+name: Notify website
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: peter-evans/repository-dispatch@v4
+        with:
+          token: ${{ secrets.WEBSITE_DISPATCH_TOKEN }}
+          repository: LarsLaskowski/e-networld
+          event-type: release
+          client-payload: '{"repo": "${{ github.repository }}", "tag": "${{ github.event.release.tag_name }}"}'
