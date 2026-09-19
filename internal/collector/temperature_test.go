@@ -90,6 +90,7 @@ func TestParseVcgencmdTemp(t *testing.T) {
 		{name: "PMIC reading, same form as the die reading", output: "temp=52.1'C\n", wantTemp: 52.1},
 		{name: "unsupported sensor (Pi 3 asked for pmic)", output: `error=1 error_msg="Invalid arguments"`, wantErr: true},
 		{name: "malformed output", output: "garbage output", wantErr: true},
+		{name: "temp= prefix with an unparseable number", output: "temp=N/A'C", wantErr: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -92,11 +92,11 @@ type TemperatureCollector struct {
 	lastZoneDetect time.Time
 	vcg            *vcgencmdRunner // nil disables the GPU/SoC and PMIC readings
 
-	// pmicUnsupported latches true once vcgencmd has answered
-	// `measure_temp pmic` with something other than a temperature reading
-	// (see errVcgencmdUnsupportedOutput) — i.e. the board itself has no
-	// PMIC sensor, a Pi 3 and earlier. Unlike a failed exec or a timeout,
-	// which are transient and worth retrying, "this board has no PMIC" can
+	// pmicUnsupported latches true once vcgencmd has run successfully but
+	// answered `measure_temp pmic` with something other than a temperature
+	// reading (see errVcgencmdUnsupportedOutput) — in practice, the board
+	// has no PMIC sensor, a Pi 3 and earlier. Unlike a failed exec or a
+	// timeout, which are transient and worth retrying, that outcome can
 	// never become false at runtime, so latching it avoids paying a
 	// pointless vcgencmd invocation on every fast tick for the rest of the
 	// process's life. A real exec/timeout failure does not set this flag
