@@ -128,6 +128,7 @@ extract the fields you need (e.g. via JSONPath in openHAB's HTTP binding).
   "cpu_count": 4,
   "temperature": { "zone": "cpu-thermal", "celsius": 48.6 },
   "gpu_temperature": { "celsius": 47.8 },
+  "pmic_temperature": { "celsius": 52.1 },
   "throttled": {
     "under_voltage_now": false,
     "frequency_capped_now": false,
@@ -261,7 +262,16 @@ Notes:
   and a core that is offline or whose driver doesn't expose both files is
   simply left out rather than failing the whole reading.
 - `gpu_temperature` is only present if `vcgencmd` is installed and
-  responded successfully; otherwise the field is omitted.
+  responded successfully; otherwise the field is omitted. Note that it is
+  not a second physical sensor: CPU and GPU share the SoC die, so this
+  reads the same sensor as `temperature`, by a different route.
+- `pmic_temperature` is the Power-Management IC's own sensor — genuinely
+  separate silicon from the SoC, and useful for spotting power-delivery or
+  board-level heat distinct from CPU load. It exists only on the Raspberry
+  Pi 4 and 5, is read via `vcgencmd measure_temp pmic`, and is omitted
+  (exactly like `gpu_temperature`) whenever `vcgencmd` is unavailable or
+  the board has no PMIC sensor. It is not exposed through sysfs hwmon on
+  Raspberry Pi OS, so it never appears in `sensors` either.
 - `throttled` decodes the Raspberry Pi `vcgencmd get_throttled` bitmask.
   The `*_now` flags reflect the current state; the `*_since_boot` flags
   latch whether the condition has occurred at any point since boot. A set
@@ -317,7 +327,8 @@ Notes:
 - These are additive to `v1`: `GET /api/v1/metrics` is unchanged, and
   keeps returning every field, including the ones with no endpoint of
   their own (`timestamp`, `uptime_seconds`, `load_average`, `cpu_count`,
-  `cpu_frequency`, `swap`, `gpu_temperature`, `throttled`, `system`,
+  `cpu_frequency`, `swap`, `gpu_temperature`, `pmic_temperature`,
+  `throttled`, `system`,
   `disk_io`, `wireless`, `sensors`).
   Poll the full snapshot if you need several metrics at once — six narrow
   requests cost more than one full one.
@@ -718,6 +729,7 @@ Metrics exposed (all gauges, prefixed `pimonitor_`):
 | `cpu_core_usage_percent` | `core` (0-based index) | Omitted entirely on platforms without per-core data |
 | `temperature_celsius` | `zone` | Omitted entirely — the whole family is skipped — whenever the most recent temperature collection failed (e.g. no readable thermal zone) or hasn't completed yet; a `0` reading is never fabricated for a missing sensor |
 | `gpu_temperature_celsius` | — | Only present when `vcgencmd` responded, like `gpu_temperature` in `GET /api/v1/metrics` |
+| `pmic_temperature_celsius` | — | Only present when `vcgencmd measure_temp pmic` responded (Raspberry Pi 4/5), like `pmic_temperature` in `GET /api/v1/metrics` |
 | `memory_total_bytes`, `memory_available_bytes`, `memory_used_percent` | — | |
 | `swap_total_bytes`, `swap_used_bytes`, `swap_used_percent` | — | |
 | `disk_total_bytes`, `disk_used_bytes`, `disk_used_percent` | `mount` | One series per mounted filesystem, same set as `disks` in `GET /api/v1/metrics` (pseudo-filesystems and network filesystems already excluded) |

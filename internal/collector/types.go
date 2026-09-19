@@ -38,6 +38,17 @@ type GPUTemperature struct {
 	Celsius float64 `json:"celsius"`
 }
 
+// PMICTemperature is the optional vcgencmd-sourced temperature of the
+// Power-Management IC. Unlike GPUTemperature — which reads the same
+// physical die sensor as Temperature, since CPU and GPU share the SoC die
+// — the PMIC is a genuinely separate on-board sensor, and it exists only
+// on the Raspberry Pi 4 and 5. Raspberry Pi OS does not expose it through
+// sysfs hwmon, so TemperatureSensor below never carries it; `vcgencmd
+// measure_temp pmic` is the only way to read it.
+type PMICTemperature struct {
+	Celsius float64 `json:"celsius"`
+}
+
 // TemperatureSensor is a single reading enumerated from the kernel's hwmon
 // subsystem: the SoC sensor itself, or a genuinely separate sensor (a
 // PoE-HAT fan controller, an NVMe/SSD drive, a user-attached I2C/1-Wire
@@ -193,6 +204,7 @@ type Snapshot struct {
 	// already draws for the alert engine.
 	TemperatureValid bool                `json:"-"`
 	GPUTemperature   *GPUTemperature     `json:"gpu_temperature,omitempty"`
+	PMICTemperature  *PMICTemperature    `json:"pmic_temperature,omitempty"`
 	Sensors          []TemperatureSensor `json:"sensors,omitempty"`
 	Throttled        *Throttled          `json:"throttled,omitempty"`
 	Memory           Memory              `json:"memory"`

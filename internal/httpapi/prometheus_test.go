@@ -9,7 +9,7 @@ import (
 )
 
 // fullSnapshot exercises every field renderPrometheusMetrics knows about,
-// including the optional/per-device ones (GPU temperature, multiple CPU
+// including the optional/per-device ones (GPU and PMIC temperature, multiple CPU
 // cores, disks, network interfaces).
 func fullSnapshot() collector.Snapshot {
 	return collector.Snapshot{
@@ -20,6 +20,7 @@ func fullSnapshot() collector.Snapshot {
 		Temperature:      collector.Temperature{Zone: "cpu-thermal", Celsius: 48.6},
 		TemperatureValid: true,
 		GPUTemperature:   &collector.GPUTemperature{Celsius: 47.8},
+		PMICTemperature:  &collector.PMICTemperature{Celsius: 52.1},
 		Memory:           collector.Memory{TotalBytes: 4137000000, AvailableBytes: 2900000000, UsedPercent: 29.9},
 		Swap:             collector.Swap{TotalBytes: 104857600, UsedBytes: 0, UsedPercent: 0},
 		Disks: []collector.Disk{
@@ -44,6 +45,7 @@ func TestRenderPrometheusMetrics_LabelsAndValues(t *testing.T) {
 		{"per-core CPU gauge, core 1", `pimonitor_cpu_core_usage_percent{core="1"} 15`},
 		{"temperature gauge with zone label", `pimonitor_temperature_celsius{zone="cpu-thermal"} 48.6`},
 		{"GPU temperature gauge", "pimonitor_gpu_temperature_celsius 47.8"},
+		{"PMIC temperature gauge", "pimonitor_pmic_temperature_celsius 52.1"},
 		{"memory total bytes", "pimonitor_memory_total_bytes 4137000000"},
 		{"memory available bytes", "pimonitor_memory_available_bytes 2900000000"},
 		{"memory used percent", "pimonitor_memory_used_percent 29.9"},
@@ -90,7 +92,7 @@ func TestRenderPrometheusMetrics_HelpAndTypeComments(t *testing.T) {
 
 // TestRenderPrometheusMetrics_OmitsAbsentOptionalFields guards the same
 // omit-when-absent behavior GET /api/v1/metrics already documents: no GPU
-// temperature without vcgencmd, no network section when monitoring is
+// or PMIC temperature without vcgencmd, no network section when monitoring is
 // disabled (empty slice), no disk section without any mounted filesystem,
 // and no per-core CPU family without per-core data.
 func TestRenderPrometheusMetrics_OmitsAbsentOptionalFields(t *testing.T) {
@@ -105,6 +107,7 @@ func TestRenderPrometheusMetrics_OmitsAbsentOptionalFields(t *testing.T) {
 	for _, absent := range []string{
 		"pimonitor_cpu_core_usage_percent",
 		"pimonitor_gpu_temperature_celsius",
+		"pimonitor_pmic_temperature_celsius",
 		"pimonitor_disk_",
 		"pimonitor_network_",
 	} {

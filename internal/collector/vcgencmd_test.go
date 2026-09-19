@@ -77,6 +77,25 @@ func TestVcgencmdRunner_Run_ExecutesSubcommand(t *testing.T) {
 	}
 }
 
+// TestVcgencmdRunner_Run_PassesSubcommandArguments pins that a
+// subcommand's own arguments reach the binary as separate argv entries:
+// `measure_temp pmic` only reads the Power-Management IC's sensor (issue
+// #56) if the "pmic" argument is actually passed through.
+func TestVcgencmdRunner_Run_PassesSubcommandArguments(t *testing.T) {
+	dir := t.TempDir()
+	path := writeFakeVcgencmd(t, dir, "fake-vcgencmd", `echo "argv: $1|$2"`)
+	r := &vcgencmdRunner{detected: true, path: path}
+
+	out, err := r.run(context.Background(), "measure_temp", "pmic")
+
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if out != "argv: measure_temp|pmic" {
+		t.Fatalf("run() output = %q, want %q", out, "argv: measure_temp|pmic")
+	}
+}
+
 func TestVcgencmdRunner_Run_CommandFails(t *testing.T) {
 	dir := t.TempDir()
 	path := writeFakeVcgencmd(t, dir, "fake-vcgencmd", "exit 1")

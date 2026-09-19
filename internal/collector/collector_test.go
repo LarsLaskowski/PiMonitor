@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -334,6 +335,78 @@ func TestCollector_FastTick_Hwmon(t *testing.T) {
 	}
 	if snap.Sensors[0].Chip != "cpu_thermal" || snap.Sensors[0].Celsius != 48.6 {
 		t.Fatalf("unexpected sensor: %+v", snap.Sensors[0])
+	}
+}
+
+// fakeVcgencmdCollector points a Collector's two vcgencmd-backed
+// collectors at one fake binary that logs every invocation to countFile,
+// so a test can assert both what a tick reads and how many firmware calls
+// it costs. The fake answers get_throttled, measure_temp and measure_temp
+// pmic the way a Pi 4/5 would.
+func fakeVcgencmdCollector(t *testing.T, c *Collector) (countFile string) {
+	t.Helper()
+	dir := t.TempDir()
+	countFile = filepath.Join(dir, "invocations")
+	path := writeFakeVcgencmd(t, dir, "fake-vcgencmd", `echo "$@" >> `+countFile+`
+if [ "$1" = "get_throttled" ]; then
+  echo "throttled=0x0"
+elif [ "$2" = "pmic" ]; then
+  echo "temp=52.1'C"
+else
+  echo "temp=42.8'C"
+fi`)
+	vcg := &vcgencmdRunner{detected: true, path: path}
+
+	zoneRoot := t.TempDir()
+	writeThermalZone(t, zoneRoot, "thermal_zone0", "cpu-thermal", "50000")
+	c.temp = &TemperatureCollector{
+		zonePath: filepath.Join(zoneRoot, "thermal_zone0"),
+		zoneType: "cpu-thermal",
+		vcg:      vcg,
+	}
+	c.throttled = &ThrottledCollector{vcg: vcg}
+	return countFile
+}
+
+// TestCollector_FastTick_PMICTemperature covers issue #56's wiring: the
+// PMIC reading collected alongside the GPU/SoC one must reach the
+// published snapshot.
+func TestCollector_FastTick_PMICTemperature(t *testing.T) {
+	c := newTestCollector()
+	fakeVcgencmdCollector(t, c)
+
+	c.fastTick(context.Background())
+
+	snap := c.Snapshot()
+	if snap.GPUTemperature == nil || snap.GPUTemperature.Celsius != 42.8 {
+		t.Fatalf("GPUTemperature = %+v, want Celsius=42.8", snap.GPUTemperature)
+	}
+	if snap.PMICTemperature == nil || snap.PMICTemperature.Celsius != 52.1 {
+		t.Fatalf("PMICTemperature = %+v, want Celsius=52.1", snap.PMICTemperature)
+	}
+}
+
+// TestWorstCaseTickOverhead_CoversEveryVcgencmdInvocation keeps the
+// /healthz staleness budget honest: every vcgencmd call a fast tick makes
+// runs sequentially and can each stall for up to vcgencmdTimeout, so
+// WorstCaseTickOverhead must budget for all of them. Adding a firmware
+// call (issue #56 added `measure_temp pmic`) without widening the constant
+// would make /healthz flap on a Pi whose only problem is slow firmware, so
+// this counts the invocations rather than trusting the constant's comment.
+func TestWorstCaseTickOverhead_CoversEveryVcgencmdInvocation(t *testing.T) {
+	c := newTestCollector()
+	countFile := fakeVcgencmdCollector(t, c)
+
+	c.fastTick(context.Background())
+
+	logged, err := os.ReadFile(countFile)
+	if err != nil {
+		t.Fatalf("read vcgencmd invocation log: %v", err)
+	}
+	invocations := len(strings.Split(strings.TrimSpace(string(logged)), "\n"))
+	if want := time.Duration(invocations)*vcgencmdTimeout + defaultStatfsTimeout; WorstCaseTickOverhead < want {
+		t.Fatalf("WorstCaseTickOverhead = %v, want at least %v: a fast tick makes %d vcgencmd invocations (%s), each bounded by %v\ninvocations:\n%s",
+			WorstCaseTickOverhead, want, invocations, countFile, vcgencmdTimeout, logged)
 	}
 }
 

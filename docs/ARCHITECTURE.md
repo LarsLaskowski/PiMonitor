@@ -337,8 +337,9 @@ Left at its default (`healthz_max_staleness_seconds: 0`), that bound is `3 *
 poll_interval_seconds + 2 * collector.WorstCaseTickOverhead`, not just the poll
 interval alone: `Collector.fastTick` (`collector.go`) publishes `latest.Timestamp`
 only when a tick *completes*, sequentially running collectors that themselves
-degrade via timeout rather than fail fast — `TemperatureCollector`/`ThrottledCollector`
-each bound a hung `vcgencmd` call at `vcgencmdTimeout`, `DiskCollector` bounds a
+degrade via timeout rather than fail fast — `TemperatureCollector` (twice, for
+`measure_temp` and `measure_temp pmic`) and `ThrottledCollector` each bound a hung
+`vcgencmd` call at `vcgencmdTimeout`, `DiskCollector` bounds a
 stalled `statfs` at `defaultStatfsTimeout` — so a single legitimately slow tick can
 already take `collector.WorstCaseTickOverhead`, and the timestamp visible right
 before the *next* tick publishes can lag by up to twice that. Ignoring this would
@@ -536,7 +537,7 @@ apt package cache (`apt-get update`) requires root while reading its result
   world-readable files under `/proc`, `/sys/class/thermal`,
   `/sys/devices/system/cpu/*/cpufreq`, `/sys/class/hwmon`, `/etc/os-release`, and the
   existing apt cache, plus the read-only `apt list --upgradable` command and the optional
-  `vcgencmd measure_temp` / `vcgencmd get_throttled` commands — all invoked with fixed
+  `vcgencmd measure_temp` / `vcgencmd measure_temp pmic` / `vcgencmd get_throttled` commands — all invoked with fixed
   argument lists (never user input interpolated into a shell command), and further
   sandboxed via systemd unit hardening directives.
 - **`pimonitor-apt-update.timer`** runs as root, on a schedule (every 6h), and performs

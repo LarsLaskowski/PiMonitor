@@ -149,9 +149,13 @@ func dropPrefix(points []HistoryPoint, keep func(HistoryPoint) bool) []HistoryPo
 
 // WorstCaseTickOverhead is the most a single fastTick may legitimately run
 // over instant /proc-style reads before c.latest is updated. Within
-// collectFastTickSamples, TemperatureCollector and ThrottledCollector each
-// shell out to vcgencmd (bounded by vcgencmdTimeout), and these run
-// sequentially, not concurrently, so their worst case is additive.
+// collectFastTickSamples, TemperatureCollector shells out to vcgencmd twice
+// (`measure_temp` and `measure_temp pmic`) and ThrottledCollector once
+// (`get_throttled`), each bounded by vcgencmdTimeout, and these run
+// sequentially, not concurrently, so their worst case is additive — hence
+// the factor of three below, which must be kept in step with the number of
+// vcgencmd invocations a tick makes (see
+// TestWorstCaseTickOverhead_CoversEveryVcgencmdInvocation).
 // DiskCollector bounds a stalled statfs at defaultStatfsTimeout — counted
 // once here, which is the common case: a single dying device or
 // unresponsive network mount. Several mounts stalling at the same time cost
@@ -162,7 +166,7 @@ func dropPrefix(points []HistoryPoint, keep func(HistoryPoint) bool) []HistoryPo
 // firmware call or an unresponsive mount, both of which the collector
 // deliberately degrades rather than dies on — isn't mistaken for a stalled
 // collector.
-const WorstCaseTickOverhead = 2*vcgencmdTimeout + defaultStatfsTimeout
+const WorstCaseTickOverhead = 3*vcgencmdTimeout + defaultStatfsTimeout
 
 // Collector periodically samples every metric source and keeps the latest
 // snapshot plus a bounded in-memory history per metric.
@@ -454,6 +458,7 @@ type fastTickSamples struct {
 	load       LoadAverage
 	temp       Temperature
 	gpuTemp    *GPUTemperature
+	pmicTemp   *PMICTemperature
 	tempErr    error
 	throttled  *Throttled
 	mem        Memory
@@ -491,7 +496,7 @@ func (c *Collector) collectFastTickSamples(ctx context.Context) fastTickSamples 
 	if err != nil {
 		c.log.Warn("load average collection failed", "error", err)
 	}
-	s.temp, s.gpuTemp, s.tempErr = c.temp.Collect(ctx)
+	s.temp, s.gpuTemp, s.pmicTemp, s.tempErr = c.temp.Collect(ctx)
 	if s.tempErr != nil {
 		c.log.Warn("temperature collection failed", "error", s.tempErr)
 	}
@@ -548,6 +553,7 @@ func (c *Collector) fastTick(ctx context.Context) {
 	c.latest.Temperature = s.temp
 	c.latest.TemperatureValid = s.tempErr == nil
 	c.latest.GPUTemperature = s.gpuTemp
+	c.latest.PMICTemperature = s.pmicTemp
 	c.latest.Throttled = s.throttled
 	c.latest.Memory = s.mem
 	c.latest.Swap = s.swap

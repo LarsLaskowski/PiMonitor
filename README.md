@@ -14,8 +14,8 @@ automation systems like openHAB). Runs as a systemd service.
   active `cpufreq` scaling governor
 - **Load average** - 1/5/15 minute values shown as gauges, scaled to CPU
   core count
-- **CPU temperature** - auto-detected thermal zone, with an optional
-  `vcgencmd`-sourced GPU temperature if available
+- **CPU temperature** - auto-detected thermal zone, with optional
+  `vcgencmd`-sourced GPU and PMIC (Pi 4/5) temperatures if available
 - **Memory & swap** usage
 - **Filesystem usage** - per mounted filesystem, pseudo filesystems
   (tmpfs, proc, overlay, ...) excluded by default

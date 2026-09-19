@@ -95,7 +95,7 @@ func TestHealthzMaxStaleness(t *testing.T) {
 			name:         "default adds 2x tick overhead on top of the poll-interval multiple",
 			pollSeconds:  5,
 			staleSeconds: 0,
-			tickOverhead: 12 * time.Second, // collector.WorstCaseTickOverhead in production
+			tickOverhead: 12 * time.Second, // a non-zero overhead, as collector.WorstCaseTickOverhead is in production
 			want:         15*time.Second + 24*time.Second,
 		},
 		{
