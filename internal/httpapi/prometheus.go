@@ -30,6 +30,7 @@ func renderPrometheusMetrics(snap collector.Snapshot) []byte {
 	writeCPUMetrics(&buf, snap.CPU)
 	writeTemperatureMetrics(&buf, snap)
 	writeGPUTemperatureMetrics(&buf, snap.GPUTemperature)
+	writePMICTemperatureMetrics(&buf, snap.PMICTemperature)
 	writeMemoryMetrics(&buf, snap.Memory)
 	writeSwapMetrics(&buf, snap.Swap)
 	writeDiskMetrics(&buf, snap.Disks)
@@ -83,6 +84,20 @@ func writeGPUTemperatureMetrics(buf *bytes.Buffer, gpuTemp *collector.GPUTempera
 	}
 	writeGaugeHeader(buf, "pimonitor_gpu_temperature_celsius", "GPU/SoC temperature in Celsius (vcgencmd).")
 	writeMetric(buf, "pimonitor_gpu_temperature_celsius", "", "", gpuTemp.Celsius)
+}
+
+// writePMICTemperatureMetrics renders the Power-Management IC reading,
+// which — unlike the GPU/SoC one, a second view of the same die sensor as
+// pimonitor_temperature_celsius — is a physically separate sensor. It is
+// present only on a Pi 4/5 whose vcgencmd answered `measure_temp pmic`, and
+// like every other optional family the whole family is skipped when there
+// is no reading, rather than reporting a fabricated 0.
+func writePMICTemperatureMetrics(buf *bytes.Buffer, pmicTemp *collector.PMICTemperature) {
+	if pmicTemp == nil {
+		return
+	}
+	writeGaugeHeader(buf, "pimonitor_pmic_temperature_celsius", "PMIC temperature in Celsius (vcgencmd, Pi 4/5 only).")
+	writeMetric(buf, "pimonitor_pmic_temperature_celsius", "", "", pmicTemp.Celsius)
 }
 
 func writeMemoryMetrics(buf *bytes.Buffer, mem collector.Memory) {

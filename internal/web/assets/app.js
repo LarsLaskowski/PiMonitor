@@ -238,7 +238,12 @@
       setText('temp-value', 'n/a');
       tempEl.className = 'metric-value';
     }
-    setText('temp-gpu', snap.gpu_temperature ? 'GPU: ' + snap.gpu_temperature.celsius.toFixed(1) + ' °C' : '');
+    // Secondary temperature readings, each present only when vcgencmd
+    // answered for it: the GPU/SoC die sensor, and the Pi 4/5 PMIC.
+    const tempExtras = [];
+    if (snap.gpu_temperature) tempExtras.push('GPU: ' + snap.gpu_temperature.celsius.toFixed(1) + ' °C');
+    if (snap.pmic_temperature) tempExtras.push('PMIC: ' + snap.pmic_temperature.celsius.toFixed(1) + ' °C');
+    setText('temp-gpu', tempExtras.join(' · '));
 
     // Memory & swap (show absolute sizes alongside the percentage, like
     // the filesystem rows).

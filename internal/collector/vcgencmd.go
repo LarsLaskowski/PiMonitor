@@ -70,10 +70,12 @@ func (r *vcgencmdRunner) redetectLocked() {
 	}
 }
 
-// run executes `vcgencmd <subcommand>` with a bounded timeout and returns
-// its trimmed stdout. It returns errVcgencmdUnavailable, without attempting
-// an exec, if vcgencmd has not been detected.
-func (r *vcgencmdRunner) run(ctx context.Context, subcommand string) (string, error) {
+// run executes `vcgencmd <subcommand> [args...]` with a bounded timeout and
+// returns its trimmed stdout. args carries a subcommand's own arguments,
+// e.g. the "pmic" in `vcgencmd measure_temp pmic`. It returns
+// errVcgencmdUnavailable, without attempting an exec, if vcgencmd has not
+// been detected.
+func (r *vcgencmdRunner) run(ctx context.Context, subcommand string, args ...string) (string, error) {
 	r.mu.Lock()
 	r.redetectLocked()
 	path := r.path
@@ -86,7 +88,7 @@ func (r *vcgencmdRunner) run(ctx context.Context, subcommand string) (string, er
 	ctx, cancel := context.WithTimeout(ctx, vcgencmdTimeout)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, path, subcommand)
+	cmd := exec.CommandContext(ctx, path, append([]string{subcommand}, args...)...)
 	// Build the child environment explicitly rather than inheriting the
 	// service's: PiMonitor's own environment may carry PIMONITOR_API_KEY, and
 	// there is no reason for that secret to be visible in vcgencmd's
@@ -96,7 +98,7 @@ func (r *vcgencmdRunner) run(ctx context.Context, subcommand string) (string, er
 
 	out, err := cmd.Output()
 	if err != nil {
-		return "", fmt.Errorf("run vcgencmd %s: %w", subcommand, err)
+		return "", fmt.Errorf("run vcgencmd %s: %w", strings.Join(append([]string{subcommand}, args...), " "), err)
 	}
 	return strings.TrimSpace(string(out)), nil
 }

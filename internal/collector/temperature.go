@@ -73,8 +73,8 @@ func readThermalZoneMilliC(zonePath string) (float64, error) {
 	return float64(milliC) / 1000, nil
 }
 
-// TemperatureCollector reads CPU temperature from sysfs, with an optional
-// vcgencmd-sourced GPU/SoC reading on Raspberry Pi OS.
+// TemperatureCollector reads CPU temperature from sysfs, with optional
+// vcgencmd-sourced GPU/SoC and PMIC readings on Raspberry Pi OS.
 //
 // The thermal zone is resolved lazily and re-resolved (throttled) when it
 // is still missing, so a sensor or driver that appears after the process
@@ -90,7 +90,18 @@ type TemperatureCollector struct {
 	zonePath       string
 	zoneType       string
 	lastZoneDetect time.Time
-	vcg            *vcgencmdRunner // nil disables the GPU/SoC reading
+	vcg            *vcgencmdRunner // nil disables the GPU/SoC and PMIC readings
+
+	// pmicUnsupported latches true once vcgencmd has run successfully but
+	// answered `measure_temp pmic` with something other than a temperature
+	// reading (see errVcgencmdUnsupportedOutput) — in practice, the board
+	// has no PMIC sensor, a Pi 3 and earlier. Unlike a failed exec or a
+	// timeout, which are transient and worth retrying, that outcome can
+	// never become false at runtime, so latching it avoids paying a
+	// pointless vcgencmd invocation on every fast tick for the rest of the
+	// process's life. A real exec/timeout failure does not set this flag
+	// and keeps retrying, same as the GPU/SoC reading.
+	pmicUnsupported bool
 }
 
 // NewTemperatureCollector auto-detects the CPU thermal zone. Detection
@@ -99,7 +110,8 @@ type TemperatureCollector struct {
 // development off-Pi). If the zone is missing at construction, Collect
 // re-attempts detection at most once every detectRetryInterval, so a sensor
 // that shows up later is used automatically. vcg is the vcgencmd runner
-// shared with ThrottledCollector; pass nil to disable the GPU/SoC reading.
+// shared with ThrottledCollector; pass nil to disable the GPU/SoC and PMIC
+// readings.
 func NewTemperatureCollector(vcg *vcgencmdRunner) *TemperatureCollector {
 	c := &TemperatureCollector{zoneGlob: thermalZoneGlob, now: time.Now, vcg: vcg}
 	c.redetectZoneLocked()
@@ -125,8 +137,8 @@ func (c *TemperatureCollector) redetectZoneLocked() {
 }
 
 // Collect returns the current CPU temperature and, if vcgencmd is
-// available, the GPU/SoC temperature as a secondary reading.
-func (c *TemperatureCollector) Collect(ctx context.Context) (Temperature, *GPUTemperature, error) {
+// available, the GPU/SoC and PMIC temperatures as secondary readings.
+func (c *TemperatureCollector) Collect(ctx context.Context) (Temperature, *GPUTemperature, *PMICTemperature, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -137,7 +149,7 @@ func (c *TemperatureCollector) Collect(ctx context.Context) (Temperature, *GPUTe
 
 	c.redetectZoneLocked()
 	if c.zonePath == "" {
-		return Temperature{}, nil, fmt.Errorf("no CPU thermal zone detected")
+		return Temperature{}, nil, nil, fmt.Errorf("no CPU thermal zone detected")
 	}
 	celsius, err := readThermalZoneMilliC(c.zonePath)
 	if err != nil {
@@ -151,44 +163,75 @@ func (c *TemperatureCollector) Collect(ctx context.Context) (Temperature, *GPUTe
 			}
 		}
 		if err != nil {
-			return Temperature{}, nil, err
+			return Temperature{}, nil, nil, err
 		}
 	}
 	temp := Temperature{Zone: c.zoneType, Celsius: celsius}
 
-	gpuTemp, err := c.readVcgencmdTemp(ctx)
-	if err != nil {
-		// vcgencmd is an optional extra data point; its unavailability or
-		// failure should not fail the whole collection.
-		return temp, nil, nil
+	// The vcgencmd readings are optional extra data points: unavailability
+	// or failure must fail neither the whole collection nor each other. The
+	// PMIC sensor in particular exists only on the Pi 4/5, so on older
+	// boards `measure_temp` succeeds while `measure_temp pmic` does not.
+	var gpuTemp *GPUTemperature
+	if gpuC, err := c.readVcgencmdTemp(ctx); err == nil {
+		gpuTemp = &GPUTemperature{Celsius: gpuC}
 	}
-	return temp, &gpuTemp, nil
+	var pmicTemp *PMICTemperature
+	if !c.pmicUnsupported {
+		pmicC, err := c.readVcgencmdTemp(ctx, "pmic")
+		switch {
+		case err == nil:
+			pmicTemp = &PMICTemperature{Celsius: pmicC}
+		case errors.Is(err, errVcgencmdUnsupportedOutput):
+			// vcgencmd ran and answered, just not with a PMIC reading:
+			// this board has no PMIC sensor, which cannot change at
+			// runtime. Stop asking.
+			c.pmicUnsupported = true
+		}
+	}
+	return temp, gpuTemp, pmicTemp, nil
 }
 
-// readVcgencmdTemp runs `vcgencmd measure_temp` (via the shared vcg runner)
-// and parses output of the form "temp=42.8'C".
-func (c *TemperatureCollector) readVcgencmdTemp(ctx context.Context) (GPUTemperature, error) {
+// readVcgencmdTemp runs `vcgencmd measure_temp [args...]` (via the shared
+// vcg runner) and parses output of the form "temp=42.8'C". args carries the
+// subcommand's own arguments: none for the GPU/SoC die reading, "pmic" for
+// the Power-Management IC's own sensor.
+func (c *TemperatureCollector) readVcgencmdTemp(ctx context.Context, args ...string) (float64, error) {
 	if c.vcg == nil {
-		return GPUTemperature{}, errVcgencmdUnavailable
+		return 0, errVcgencmdUnavailable
 	}
-	out, err := c.vcg.run(ctx, "measure_temp")
+	out, err := c.vcg.run(ctx, "measure_temp", args...)
 	if err != nil {
-		return GPUTemperature{}, err
+		return 0, err
 	}
 	return parseVcgencmdTemp(out)
 }
 
-func parseVcgencmdTemp(output string) (GPUTemperature, error) {
+// errVcgencmdUnsupportedOutput indicates vcgencmd executed successfully but
+// answered with something other than a "temp=NN.N'C" line — its
+// "error=1 error_msg=..." response, or any other output parseVcgencmdTemp
+// doesn't recognize. For a sensor-specific subcommand (measure_temp pmic)
+// this means the requested sensor does not exist on this board: a
+// permanent condition for the life of the process, unlike a failed exec or
+// a timeout, which are transient and worth retrying. Callers that want to
+// tell the two apart (see TemperatureCollector.pmicUnsupported) check for
+// this with errors.Is.
+var errVcgencmdUnsupportedOutput = errors.New("vcgencmd: output is not a temperature reading")
+
+// parseVcgencmdTemp decodes vcgencmd's "temp=NN.N'C" output into degrees
+// Celsius. The form is identical for every measure_temp variant, so the
+// GPU/SoC and PMIC readings share this parser.
+func parseVcgencmdTemp(output string) (float64, error) {
 	output = strings.TrimSpace(output)
 	const prefix = "temp="
 	if !strings.HasPrefix(output, prefix) {
-		return GPUTemperature{}, fmt.Errorf("unexpected vcgencmd output: %q", output)
+		return 0, fmt.Errorf("%w: unexpected vcgencmd output: %q", errVcgencmdUnsupportedOutput, output)
 	}
 	rest := strings.TrimPrefix(output, prefix)
 	rest = strings.TrimSuffix(rest, "'C")
 	celsius, err := strconv.ParseFloat(rest, 64)
 	if err != nil {
-		return GPUTemperature{}, fmt.Errorf("parse vcgencmd temp %q: %w", output, err)
+		return 0, fmt.Errorf("%w: parse vcgencmd temp %q: %w", errVcgencmdUnsupportedOutput, output, err)
 	}
-	return GPUTemperature{Celsius: celsius}, nil
+	return celsius, nil
 }
