@@ -2,8 +2,10 @@ package collector
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -69,42 +71,45 @@ func TestReadThermalZoneMilliC(t *testing.T) {
 	}
 }
 
+// TestParseVcgencmdTemp covers every output shape parseVcgencmdTemp must
+// handle: the plain GPU/SoC die reading, the PMIC reading (issue #56,
+// identical "temp=NN.N'C" form so both share this parser), and the two
+// ways firmware reports "not a temperature" — an explicit error line when
+// the requested sensor doesn't exist on this board, and output that is
+// simply unparseable. Both error cases must be errVcgencmdUnsupportedOutput
+// so TemperatureCollector.Collect can tell "no such sensor" (latch, stop
+// asking) apart from a transient exec/timeout failure (keep retrying).
 func TestParseVcgencmdTemp(t *testing.T) {
-	got, err := parseVcgencmdTemp("temp=42.8'C\n")
-	if err != nil {
-		t.Fatalf("parseVcgencmdTemp: %v", err)
+	tests := []struct {
+		name     string
+		output   string
+		wantTemp float64
+		wantErr  bool
+	}{
+		{name: "GPU/SoC die reading", output: "temp=42.8'C\n", wantTemp: 42.8},
+		{name: "PMIC reading, same form as the die reading", output: "temp=52.1'C\n", wantTemp: 52.1},
+		{name: "unsupported sensor (Pi 3 asked for pmic)", output: `error=1 error_msg="Invalid arguments"`, wantErr: true},
+		{name: "malformed output", output: "garbage output", wantErr: true},
 	}
-	if diffFloat(got, 42.8) > 0.001 {
-		t.Fatalf("celsius = %v, want 42.8", got)
-	}
-}
-
-// TestParseVcgencmdTemp_PMICOutput documents that `vcgencmd measure_temp
-// pmic` reports the same "temp=NN.N'C" form as the plain measure_temp, so
-// both readings share one parser (issue #56).
-func TestParseVcgencmdTemp_PMICOutput(t *testing.T) {
-	got, err := parseVcgencmdTemp("temp=52.1'C\n")
-	if err != nil {
-		t.Fatalf("parseVcgencmdTemp: %v", err)
-	}
-	if diffFloat(got, 52.1) > 0.001 {
-		t.Fatalf("celsius = %v, want 52.1", got)
-	}
-}
-
-// TestParseVcgencmdTemp_UnsupportedSensor covers what firmware answers when
-// the requested sensor does not exist on the board (a Pi 3 asked for the
-// PMIC): an error line rather than a temperature, which must be reported as
-// a parse error so the caller can omit the field.
-func TestParseVcgencmdTemp_UnsupportedSensor(t *testing.T) {
-	if _, err := parseVcgencmdTemp(`error=1 error_msg="Invalid arguments"`); err == nil {
-		t.Fatal("expected error for an unsupported-sensor vcgencmd response")
-	}
-}
-
-func TestParseVcgencmdTemp_Malformed(t *testing.T) {
-	if _, err := parseVcgencmdTemp("garbage output"); err == nil {
-		t.Fatal("expected error for malformed vcgencmd output")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := parseVcgencmdTemp(tt.output)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("expected an error, got nil")
+				}
+				if !errors.Is(err, errVcgencmdUnsupportedOutput) {
+					t.Fatalf("error = %v, want errVcgencmdUnsupportedOutput", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("parseVcgencmdTemp: %v", err)
+			}
+			if diffFloat(got, tt.wantTemp) > 0.001 {
+				t.Fatalf("celsius = %v, want %v", got, tt.wantTemp)
+			}
+		})
 	}
 }
 
@@ -164,64 +169,119 @@ else
 fi`)
 }
 
-func TestTemperatureCollector_Collect_WithPMICTemp(t *testing.T) {
+// TestTemperatureCollector_Collect_PMIC covers every way `measure_temp
+// pmic` can answer: a genuine reading (Pi 4/5), the "sensor not present"
+// error line (Pi 3 and earlier), and the invocation simply failing outright
+// (a firmware that fails the exec rather than printing an error line). In
+// every case the GPU/SoC reading and the overall collection must survive
+// undisturbed; only the PMIC field's presence differs.
+func TestTemperatureCollector_Collect_PMIC(t *testing.T) {
+	tests := []struct {
+		name       string
+		pmicScript string
+		wantPMIC   bool
+		wantPMICC  float64
+	}{
+		{
+			name:       "PMIC sensor present (Pi 4/5)",
+			pmicScript: `  echo "temp=52.1'C"`,
+			wantPMIC:   true,
+			wantPMICC:  52.1,
+		},
+		{
+			name:       "PMIC unsupported: error line (Pi 3 and earlier)",
+			pmicScript: `  echo 'error=1 error_msg="Invalid arguments"'`,
+			wantPMIC:   false,
+		},
+		{
+			name:       "PMIC invocation exits non-zero",
+			pmicScript: "  exit 1",
+			wantPMIC:   false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			root := t.TempDir()
+			writeThermalZone(t, root, "thermal_zone0", "cpu-thermal", "50000")
+			path := pmicAwareVcgencmd(t, t.TempDir(), tt.pmicScript)
+
+			c := &TemperatureCollector{
+				zonePath: filepath.Join(root, "thermal_zone0"),
+				zoneType: "cpu-thermal",
+				vcg:      &vcgencmdRunner{detected: true, path: path},
+			}
+			temp, gpuTemp, pmicTemp, err := c.Collect(context.Background())
+			if err != nil {
+				t.Fatalf("Collect: %v", err)
+			}
+			if diffFloat(temp.Celsius, 50.0) > 0.001 {
+				t.Fatalf("Celsius = %v, want 50.0", temp.Celsius)
+			}
+			if gpuTemp == nil || diffFloat(gpuTemp.Celsius, 42.8) > 0.001 {
+				t.Fatalf("gpuTemp = %+v, want Celsius=42.8 (the die reading must survive whatever the PMIC invocation did)", gpuTemp)
+			}
+			if !tt.wantPMIC {
+				if pmicTemp != nil {
+					t.Fatalf("pmicTemp = %+v, want nil", pmicTemp)
+				}
+				return
+			}
+			if pmicTemp == nil || diffFloat(pmicTemp.Celsius, tt.wantPMICC) > 0.001 {
+				t.Fatalf("pmicTemp = %+v, want Celsius=%v", pmicTemp, tt.wantPMICC)
+			}
+		})
+	}
+}
+
+// TestTemperatureCollector_Collect_PMICUnsupportedLatches guards the "stop
+// trying" latch: once vcgencmd has answered `measure_temp pmic` with a
+// non-temperature response, a board without a PMIC sensor must not pay
+// another such invocation on every subsequent fast tick for the rest of
+// the process's life — the condition cannot change at runtime.
+func TestTemperatureCollector_Collect_PMICUnsupportedLatches(t *testing.T) {
+	scriptDir := t.TempDir()
+	logFile := filepath.Join(scriptDir, "pmic-invocations")
 	root := t.TempDir()
 	writeThermalZone(t, root, "thermal_zone0", "cpu-thermal", "50000")
-	path := pmicAwareVcgencmd(t, t.TempDir(), `  echo "temp=52.1'C"`)
+	path := pmicAwareVcgencmd(t, scriptDir, `  echo "$@" >> `+logFile+`
+  echo 'error=1 error_msg="Invalid arguments"'`)
 
 	c := &TemperatureCollector{
 		zonePath: filepath.Join(root, "thermal_zone0"),
 		zoneType: "cpu-thermal",
 		vcg:      &vcgencmdRunner{detected: true, path: path},
 	}
-	temp, gpuTemp, pmicTemp, err := c.Collect(context.Background())
+
+	const ticks = 3
+	for i := 0; i < ticks; i++ {
+		_, _, pmicTemp, err := c.Collect(context.Background())
+		if err != nil {
+			t.Fatalf("Collect #%d: %v", i, err)
+		}
+		if pmicTemp != nil {
+			t.Fatalf("Collect #%d: pmicTemp = %+v, want nil", i, pmicTemp)
+		}
+	}
+
+	if !c.pmicUnsupported {
+		t.Fatal("expected pmicUnsupported to latch true after an unsupported-output response")
+	}
+
+	logged, err := os.ReadFile(logFile)
 	if err != nil {
-		t.Fatalf("Collect: %v", err)
+		t.Fatalf("read pmic invocation log (expected exactly one invocation): %v", err)
 	}
-	if diffFloat(temp.Celsius, 50.0) > 0.001 {
-		t.Fatalf("Celsius = %v, want 50.0", temp.Celsius)
-	}
-	if gpuTemp == nil || diffFloat(gpuTemp.Celsius, 42.8) > 0.001 {
-		t.Fatalf("gpuTemp = %+v, want Celsius=42.8", gpuTemp)
-	}
-	if pmicTemp == nil || diffFloat(pmicTemp.Celsius, 52.1) > 0.001 {
-		t.Fatalf("pmicTemp = %+v, want Celsius=52.1", pmicTemp)
+	if invocations := len(strings.Split(strings.TrimSpace(string(logged)), "\n")); invocations != 1 {
+		t.Fatalf("measure_temp pmic was invoked %d times across %d Collect() calls, want 1 (the latch should suppress the rest):\n%s",
+			invocations, ticks, logged)
 	}
 }
 
-// TestTemperatureCollector_Collect_PMICUnsupported covers a Pi 3 and
-// earlier: `measure_temp` still answers, while `measure_temp pmic` reports
-// an error line because the board has no PMIC sensor. The PMIC field must
-// be omitted without disturbing the GPU/SoC reading or failing collection.
-func TestTemperatureCollector_Collect_PMICUnsupported(t *testing.T) {
-	root := t.TempDir()
-	writeThermalZone(t, root, "thermal_zone0", "cpu-thermal", "50000")
-	path := pmicAwareVcgencmd(t, t.TempDir(), `  echo 'error=1 error_msg="Invalid arguments"'`)
-
-	c := &TemperatureCollector{
-		zonePath: filepath.Join(root, "thermal_zone0"),
-		zoneType: "cpu-thermal",
-		vcg:      &vcgencmdRunner{detected: true, path: path},
-	}
-	temp, gpuTemp, pmicTemp, err := c.Collect(context.Background())
-	if err != nil {
-		t.Fatalf("Collect: %v", err)
-	}
-	if diffFloat(temp.Celsius, 50.0) > 0.001 {
-		t.Fatalf("Celsius = %v, want 50.0", temp.Celsius)
-	}
-	if gpuTemp == nil || diffFloat(gpuTemp.Celsius, 42.8) > 0.001 {
-		t.Fatalf("gpuTemp = %+v, want Celsius=42.8 (the die reading must survive a missing PMIC)", gpuTemp)
-	}
-	if pmicTemp != nil {
-		t.Fatalf("expected no PMIC temp on a board without the sensor, got %+v", pmicTemp)
-	}
-}
-
-// TestTemperatureCollector_Collect_PMICExitsNonZero is the other shape of
-// "no PMIC on this board": firmware that fails the invocation outright
-// rather than printing an error line.
-func TestTemperatureCollector_Collect_PMICExitsNonZero(t *testing.T) {
+// TestTemperatureCollector_Collect_PMICTransientFailureKeepsRetrying is the
+// counterpart to the latch test above: a failed exec (as opposed to a
+// successful one with unsupported output) must not latch, since it may
+// well succeed on the next tick.
+func TestTemperatureCollector_Collect_PMICTransientFailureKeepsRetrying(t *testing.T) {
 	root := t.TempDir()
 	writeThermalZone(t, root, "thermal_zone0", "cpu-thermal", "50000")
 	path := pmicAwareVcgencmd(t, t.TempDir(), "  exit 1")
@@ -231,15 +291,15 @@ func TestTemperatureCollector_Collect_PMICExitsNonZero(t *testing.T) {
 		zoneType: "cpu-thermal",
 		vcg:      &vcgencmdRunner{detected: true, path: path},
 	}
-	_, gpuTemp, pmicTemp, err := c.Collect(context.Background())
-	if err != nil {
-		t.Fatalf("Collect: %v", err)
+
+	for i := 0; i < 2; i++ {
+		if _, _, _, err := c.Collect(context.Background()); err != nil {
+			t.Fatalf("Collect #%d: %v", i, err)
+		}
 	}
-	if gpuTemp == nil {
-		t.Fatal("expected the GPU/SoC reading to survive a failing PMIC invocation")
-	}
-	if pmicTemp != nil {
-		t.Fatalf("expected no PMIC temp when the pmic invocation fails, got %+v", pmicTemp)
+
+	if c.pmicUnsupported {
+		t.Fatal("a failed exec must not latch pmicUnsupported: the same board may still have a PMIC sensor")
 	}
 }
 
