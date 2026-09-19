@@ -5,6 +5,8 @@
 # permission "Contents: Read and write").
 name: Notify website
 
+permissions: {}
+
 on:
   release:
     types: [published]
