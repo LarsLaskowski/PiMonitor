@@ -202,35 +202,50 @@ func TestTemperatureCollector_Collect_PMIC(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			root := t.TempDir()
-			writeThermalZone(t, root, "thermal_zone0", "cpu-thermal", "50000")
-			path := pmicAwareVcgencmd(t, t.TempDir(), tt.pmicScript)
-
-			c := &TemperatureCollector{
-				zonePath: filepath.Join(root, "thermal_zone0"),
-				zoneType: "cpu-thermal",
-				vcg:      &vcgencmdRunner{detected: true, path: path},
-			}
-			temp, gpuTemp, pmicTemp, err := c.Collect(context.Background())
-			if err != nil {
-				t.Fatalf("Collect: %v", err)
-			}
-			if diffFloat(temp.Celsius, 50.0) > 0.001 {
-				t.Fatalf("Celsius = %v, want 50.0", temp.Celsius)
-			}
-			if gpuTemp == nil || diffFloat(gpuTemp.Celsius, 42.8) > 0.001 {
-				t.Fatalf("gpuTemp = %+v, want Celsius=42.8 (the die reading must survive whatever the PMIC invocation did)", gpuTemp)
-			}
-			if !tt.wantPMIC {
-				if pmicTemp != nil {
-					t.Fatalf("pmicTemp = %+v, want nil", pmicTemp)
-				}
-				return
-			}
-			if pmicTemp == nil || diffFloat(pmicTemp.Celsius, tt.wantPMICC) > 0.001 {
-				t.Fatalf("pmicTemp = %+v, want Celsius=%v", pmicTemp, tt.wantPMICC)
-			}
+			assertPMICCollect(t, tt.pmicScript, tt.wantPMIC, tt.wantPMICC)
 		})
+	}
+}
+
+// assertPMICCollect runs Collect against a fake vcgencmd whose `measure_temp
+// pmic` invocation is scripted by pmicScript, and checks the three things
+// every TestTemperatureCollector_Collect_PMIC case cares about: the die
+// reading is unaffected, the GPU/SoC reading always survives whatever the
+// PMIC invocation did, and the PMIC field itself is present with wantPMICC
+// (if wantPMIC) or absent (if not). Split out of the table-driven test's
+// t.Run closure to keep that function's (and this one's) cognitive
+// complexity down — SonarQube counts a closure's branching into its
+// enclosing function, and the combined for-loop-plus-closure had crept past
+// the default threshold of 15.
+func assertPMICCollect(t *testing.T, pmicScript string, wantPMIC bool, wantPMICC float64) {
+	t.Helper()
+	root := t.TempDir()
+	writeThermalZone(t, root, "thermal_zone0", "cpu-thermal", "50000")
+	path := pmicAwareVcgencmd(t, t.TempDir(), pmicScript)
+
+	c := &TemperatureCollector{
+		zonePath: filepath.Join(root, "thermal_zone0"),
+		zoneType: "cpu-thermal",
+		vcg:      &vcgencmdRunner{detected: true, path: path},
+	}
+	temp, gpuTemp, pmicTemp, err := c.Collect(context.Background())
+	if err != nil {
+		t.Fatalf("Collect: %v", err)
+	}
+	if diffFloat(temp.Celsius, 50.0) > 0.001 {
+		t.Fatalf("Celsius = %v, want 50.0", temp.Celsius)
+	}
+	if gpuTemp == nil || diffFloat(gpuTemp.Celsius, 42.8) > 0.001 {
+		t.Fatalf("gpuTemp = %+v, want Celsius=42.8 (the die reading must survive whatever the PMIC invocation did)", gpuTemp)
+	}
+	if !wantPMIC {
+		if pmicTemp != nil {
+			t.Fatalf("pmicTemp = %+v, want nil", pmicTemp)
+		}
+		return
+	}
+	if pmicTemp == nil || diffFloat(pmicTemp.Celsius, wantPMICC) > 0.001 {
+		t.Fatalf("pmicTemp = %+v, want Celsius=%v", pmicTemp, wantPMICC)
 	}
 }
 
