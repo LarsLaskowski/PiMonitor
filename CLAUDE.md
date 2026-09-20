@@ -79,9 +79,11 @@ severity model and the "round 1 is a full review, later rounds review only
 the delta" rule live in that one file, so they are identical either way.
 
 Two rules about what reaches the pull request, spelled out in `create-pr`
-and `fix-issue`: the review loop stays invisible — a PR documents the
-finished change (components, guarantees, smoke test), never the rounds that
-produced it — and every point posted as a review comment is resolved in that
-same PR, whoever wrote it and whatever its severity: fixed, declined with a
-reason, or split into an issue created right away and linked from the reply.
+and `fix-issue`: the *internal* review loop stays invisible — a PR documents
+the finished change (components, guarantees, smoke test), never the pre-push
+passes that produced it — and every point posted as a review comment on the
+open PR is resolved in that same PR, whoever wrote it and whatever its
+severity: fixed, declined with a reason, or split into an issue created
+right away and linked from the reply. Public review on an open PR is public
+on purpose; only the pre-push loop is the part that stays in the session.
 The round caps limit re-reviews, not the number of findings worked off.
