@@ -77,3 +77,11 @@ it *before* pushing, so a change is reviewed while it is still local;
 review checklist, the integration-surface sweep, the blocking/non-blocking
 severity model and the "round 1 is a full review, later rounds review only
 the delta" rule live in that one file, so they are identical either way.
+
+Two rules about what reaches the pull request, spelled out in `create-pr`
+and `fix-issue`: the review loop stays invisible — a PR documents the
+finished change (components, guarantees, smoke test), never the rounds that
+produced it — and every point posted as a review comment is resolved in that
+same PR, whoever wrote it and whatever its severity: fixed, declined with a
+reason, or split into an issue created right away and linked from the reply.
+The round caps limit re-reviews, not the number of findings worked off.

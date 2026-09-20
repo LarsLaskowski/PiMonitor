@@ -131,8 +131,9 @@ build, vet and tests, since a fix can break them.
   contradicts the code; new or changed logic without a test.
 - **NON-BLOCKING** — a design or naming choice that is defensible either
   way, a documentation improvement, a test that could be stronger. Report it
-  once with a recommendation and mark it clearly. It does not gate the pull
-  request and it does not earn another review round.
+  once with a recommendation and mark it clearly. It does not earn another
+  review round. What happens to it after that is the calling session's call,
+  not yours — so report it only if it is worth someone's time to resolve.
 
 There is no third category. If a finding feels like a nit, it is
 non-blocking, and probably not worth reporting at all.
