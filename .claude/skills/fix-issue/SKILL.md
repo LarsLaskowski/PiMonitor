@@ -42,9 +42,12 @@ Use this skill to resolve a reported GitHub issue in this repository.
    blocking findings and re-running the reviewer on the delta until a pass
    comes back clean, capped at three passes. Non-blocking findings do not buy
    another pass, but they are still resolved before the push: fixed now while
-   the branch is local, or filed as an issue if genuinely out of scope. This
-   is what keeps the review out of the pull request comments, so do not skip
-   it and do not defer it to a separate review session.
+   the branch is local, or filed as an issue if genuinely out of scope. If
+   fixing them uses up the last pass's clean verdict, spend a remaining pass
+   on those fixes as a delta review, or say so when you report if the budget
+   is exhausted. This is what keeps the review out of the pull request
+   comments, so do not skip it and do not defer it to a separate review
+   session.
 8. **Push** the branch (`git push -u origin <branch-name>`) and **open a PR**
    referencing the issue (`Closes #<number>`), following the `create-pr`
    skill's verification and template steps — do not skip the push/PR-creation
@@ -56,18 +59,25 @@ Use this skill to resolve a reported GitHub issue in this repository.
 
 ## The loop stays invisible
 
-The review loop is working material and stays in this session. The pull
-request documents the **finished state** — the issue's cause, the fix, the
-components it touches, the guarantees it had to preserve, and the smoke test
-that shows the reported symptom is gone. It does not document the way there.
+This is about the **internal loop of step 7** — the passes that run in this
+session before the push. It is working material and stays here. Review
+comments posted on the pull request once it is open, and the replies to
+them, are public review and are governed by the next section.
 
-Nothing in the PR body, the commit messages, or any PR comment mentions that
-a review ran, how many passes it took, what it found, its verdicts or
-severities, or the `pimonitor-reviewer` subagent. Reviewer Notes say what a
-reviewer needs in order to review this fix — the affected collector, route
-or config key, the reported environment it has to keep working on, where to
-look first, and how to smoke-test it on a Pi. Next Steps is for genuine
-follow-up work with issue links, never a parking lot for review findings.
+The pull request documents the **finished state** — the issue's cause, the
+fix, the components it touches, the guarantees it had to preserve, and the
+smoke test that shows the reported symptom is gone. It does not document the
+way there. So nothing you write when opening the PR — the body, and the
+commit messages on the branch — mentions that an internal review ran, how
+many passes it took, what it found, its verdicts or severities, or the
+`pimonitor-reviewer` subagent. Commit messages still explain *why* the fix
+is what it is, in terms of the bug, never in terms of a finding.
+
+Reviewer Notes say what a reviewer needs in order to review this fix — the
+affected collector, route or config key, the reported environment it has to
+keep working on, where to look first, and how to smoke-test it on a Pi. Next
+Steps is for genuine follow-up work with issue links, never a parking lot
+for review findings.
 
 ## Every posted review point gets resolved in this PR
 

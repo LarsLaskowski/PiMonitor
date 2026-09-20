@@ -69,6 +69,11 @@ the repository's full review checklist.
    at **three passes**: if blocking findings remain after the third, stop and
    report the open findings to the user rather than continuing to iterate —
    at that point the change needs a decision, not another round.
+5. **Cover your last fixes.** Fixes you make after the final pass — including
+   fixes for its non-blocking findings — are themselves unreviewed. If the
+   three-pass budget still has a pass left, spend it on them as a delta
+   review. If it does not, say so when you report, and push anyway rather
+   than starting a fourth pass.
 
 Two rules keep this loop finite, and they are the point of the whole
 arrangement:
@@ -84,16 +89,25 @@ number of them.
 
 ## The loop stays invisible
 
-The review loop is working material. It does not travel with the change.
+This section is about the **internal loop above** — the passes that run in
+this session before the push. That loop is working material and does not
+travel with the change. Review comments posted on the pull request once it
+is open, and the replies to them, are a different thing: they are public
+review, governed by the next section, and nothing here forbids them.
 
 The pull request documents the **finished state**: what the change does,
 which components it touches, which guarantees it had to preserve, and how to
-smoke-test it. It does not document the way there. Nothing in the PR body,
-the commit messages, or any PR comment mentions:
+smoke-test it. It does not document the way there. So nothing you write when
+opening the PR — the body, and the commit messages on the branch — mentions:
 
-- that a review ran, or how many passes it took
-- findings, verdicts, severities, or which commit resolved which finding
-- the `pimonitor-reviewer` subagent, or review rounds of any kind
+- that an internal review ran, or how many passes it took
+- its findings, their verdicts or severities, or which commit resolved
+  which one
+- the `pimonitor-reviewer` subagent, or internal review rounds
+
+Commit messages still explain *why* the change is what it is, as always —
+they just explain it in terms of the change, never in terms of a finding
+that prompted it.
 
 A reviewer opening the PR gets the change, not its history — the loop's
 value was in fixing the code, and that value is already in the diff.
