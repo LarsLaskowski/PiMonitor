@@ -40,21 +40,54 @@ Use this skill to resolve a reported GitHub issue in this repository.
    loop from the `create-pr` skill — one or more `pimonitor-reviewer`
    subagent passes (Opus, fresh context) against the local branch, fixing
    blocking findings and re-running the reviewer on the delta until a pass
-   comes back clean, capped at three passes. Non-blocking findings are
-   recorded for the PR's Next Steps, not iterated on. This is what keeps the
-   review out of the pull request comments, so do not skip it and do not
-   defer it to a separate review session.
+   comes back clean, capped at three passes. Non-blocking findings do not buy
+   another pass, but they are still resolved before the push: fixed now while
+   the branch is local, or filed as an issue if genuinely out of scope. If
+   fixing them uses up the last pass's clean verdict, spend a remaining pass
+   on those fixes as a delta review, or say so when you report if the budget
+   is exhausted. This is what keeps the review out of the pull request
+   comments, so do not skip it and do not defer it to a separate review
+   session.
 8. **Push** the branch (`git push -u origin <branch-name>`) and **open a PR**
    referencing the issue (`Closes #<number>`), following the `create-pr`
    skill's verification and template steps — do not skip the push/PR-creation
-   steps even if verification already ran in step 5. Record the internal
-   review passes and their fix commits in Reviewer Notes.
+   steps even if verification already ran in step 5. Describe the fixed
+   state, not the review that got you there (see "The loop stays invisible"
+   below).
 9. If the fix is not fully verifiable without physical Pi hardware, say so
    explicitly in the PR description rather than claiming full verification.
 
-## Notes
+## The loop stays invisible
 
-- As with `create-pr`, do not add Claude/Anthropic attribution to commits or
-  PRs: no `Co-Authored-By: Claude ...` / `Claude-Session: ...` commit
-  trailers, and no "Generated with Claude Code" line or session link in the
-  PR body.
+This is about the **internal loop of step 7** — the passes that run in this
+session before the push. It is working material and stays here. Review
+comments posted on the pull request once it is open, and the replies to
+them, are public review and are governed by the next section.
+
+The pull request documents the **finished state** — the issue's cause, the
+fix, the components it touches, the guarantees it had to preserve, and the
+smoke test that shows the reported symptom is gone. It does not document the
+way there. So nothing you write when opening the PR — the body, and the
+commit messages on the branch — mentions that an internal review ran, how
+many passes it took, what it found, its verdicts or severities, or the
+`pimonitor-reviewer` subagent. Commit messages still explain *why* the fix
+is what it is, in terms of the bug, never in terms of a finding.
+
+Reviewer Notes say what a reviewer needs in order to review this fix — the
+affected collector, route or config key, the reported environment it has to
+keep working on, where to look first, and how to smoke-test it on a Pi. Next
+Steps is for genuine follow-up work with issue links, never a parking lot
+for review findings.
+
+## Every posted review point gets resolved in this PR
+
+Once the PR is open, any point posted as a review comment — from a human, a
+bot, or the `review-pr` skill, blocking or non-blocking — is work for this
+pull request. There is no deferring to "the next change that touches this
+file": it is not scheduled, and the session with the context is gone by
+then. Each posted point ends in one of three ways, all inside this PR: fixed
+and pushed with a one-line `Fixed in <sha>: …` reply, declined with a
+reason, or split into an issue **created now** and linked from the reply —
+then resolve the thread. The round caps limit re-reviews, not the number of
+findings worked off. See `create-pr`'s section of the same name for the full
+rule.

@@ -48,18 +48,35 @@ it converge:
   something — including in prose they wrote to fix a documentation finding?
   Never re-review untouched code; that is what turns three findings into
   four rounds.
-- **Only blocking findings justify another round.** Non-blocking findings go
-  into the PR's Next Steps section or a follow-up issue and are not chased.
+- **Only blocking findings justify another round.** Non-blocking findings do
+  not trigger a re-review — but once posted they are still the author's to
+  resolve in this PR (see below). The cap is on rounds, not on findings.
 - **Two consecutive rounds without a blocking finding means done.** Say so
   plainly instead of leaving the review open-ended.
 - **At most two rounds on GitHub.** If blocking findings survive that, the
   change needs a decision from the author, not another review pass — say what
-  is still blocking and stop.
+  is still blocking and stop. Stopping means no further *review* rounds; the
+  posted findings themselves still get worked off.
 
 ## Answering findings on your own PR
 
-When acting as the author of a PR under review, keep replies to one line:
-`Fixed in <sha>: <what changed>`. The reasoning belongs in the commit
-message, where it stays with the code; the reviewer verifies the commit, not
-the reply. Resolve the thread once it is answered. One summary comment per
-round beats one essay per thread.
+Every point posted on the PR gets worked off in that same PR — whoever wrote
+it, whatever its severity. Non-blocking is an ordering signal, not a licence
+to skip: "we'll do it with the next change to this file" is not an answer,
+because that change is not scheduled and the session that holds the context
+will not exist then.
+
+So each posted point ends in exactly one of three ways, before the PR
+merges:
+
+1. **Fixed** — push the fix, reply in one line, `Fixed in <sha>: <what
+   changed>`. The reasoning belongs in the commit message, where it stays
+   with the code; the reviewer verifies the commit, not the reply.
+2. **Declined** — reply with the reason it stays as it is. A reason, not a
+   deferral.
+3. **Split out** — only for real work that genuinely does not belong in this
+   PR: open the issue **now**, link it from the reply. "Follow-up issue"
+   without an issue is not an outcome.
+
+Resolve the thread once it is answered, whichever of the three it was. One
+summary comment per round beats one essay per thread.
