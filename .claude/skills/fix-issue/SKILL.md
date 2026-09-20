@@ -91,10 +91,3 @@ reason, or split into an issue **created now** and linked from the reply —
 then resolve the thread. The round caps limit re-reviews, not the number of
 findings worked off. See `create-pr`'s section of the same name for the full
 rule.
-
-## Notes
-
-- As with `create-pr`, do not add Claude/Anthropic attribution to commits or
-  PRs: no `Co-Authored-By: Claude ...` / `Claude-Session: ...` commit
-  trailers, and no "Generated with Claude Code" line or session link in the
-  PR body.
