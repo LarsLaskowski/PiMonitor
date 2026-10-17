@@ -1197,10 +1197,12 @@
         return;
       }
       // Refresh immediately on return so the user never looks at a stale
-      // card while waiting for the first interval to elapse.
-      pollMetrics();
-      pollHistory();
-      pollAlerts();
+      // card while waiting for the first interval to elapse. The three
+      // refreshes are independent and handle their own fetch errors, so they
+      // are fired concurrently and deliberately not awaited.
+      void pollMetrics();
+      void pollHistory();
+      void pollAlerts();
       startPolling();
     });
   }
@@ -1228,5 +1230,5 @@
     await reloadAll();
   }
 
-  main();
+  main().catch((e) => console.error('failed to initialise dashboard', e));
 })();

@@ -1,6 +1,7 @@
 package web
 
 import (
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -58,6 +59,33 @@ func TestAppJS_PollFunctionsGuardInFlightRequests(t *testing.T) {
 		}
 		if !strings.Contains(body, "finally") {
 			t.Errorf("app.js: %s should reset its in-flight guard flag in a finally block, or a thrown error would latch it and stop polling permanently", fn)
+		}
+	}
+}
+
+// TestAppJS_AsyncCallsAreNotFloating guards issue #168 (SonarCloud
+// javascript:S9383): a call to one of app.js's own async functions written
+// as a bare statement drops the returned promise, so any rejection surfaces
+// only as an anonymous "unhandled rejection". Every such call must be
+// awaited, explicitly discarded with `void` (fire-and-forget refreshes), or
+// chained to a rejection handler (`main().catch(...)`) — all of which keep
+// the call from starting the statement.
+func TestAppJS_AsyncCallsAreNotFloating(t *testing.T) {
+	data, err := assetsFS.ReadFile("assets/app.js")
+	if err != nil {
+		t.Fatalf("read app.js: %v", err)
+	}
+	js := string(data)
+
+	decls := regexp.MustCompile(`async function (\w+)\(`).FindAllStringSubmatch(js, -1)
+	if len(decls) == 0 {
+		t.Fatal("app.js: expected at least one async function declaration")
+	}
+	for _, d := range decls {
+		bare := regexp.MustCompile(`(?m)^[ \t]*` + d[1] + `\([^)]*\);`)
+		for _, loc := range bare.FindAllStringIndex(js, -1) {
+			line := strings.Count(js[:loc[0]], "\n") + 1
+			t.Errorf("app.js:%d: %s() is called as a bare statement; await it, prefix it with void, or attach .catch", line, d[1])
 		}
 	}
 }
