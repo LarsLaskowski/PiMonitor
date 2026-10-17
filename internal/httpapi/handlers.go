@@ -26,7 +26,7 @@ func writeJSON(w http.ResponseWriter, log func(msg string, args ...any), v any) 
 // Config{} directly; production always sets it from
 // config.Config.HealthzMaxStaleness(...), which never returns zero.
 func (s *Server) handleHealthz(w http.ResponseWriter, _ *http.Request) {
-	if max := s.cfg.HealthzMaxStaleness; max > 0 && time.Since(s.metrics.Snapshot().Timestamp) > max {
+	if maxStale := s.cfg.HealthzMaxStaleness; maxStale > 0 && time.Since(s.metrics.Snapshot().Timestamp) > maxStale {
 		http.Error(w, "stale: latest snapshot is older than the configured healthz_max_staleness_seconds", http.StatusServiceUnavailable)
 		return
 	}

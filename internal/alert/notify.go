@@ -414,14 +414,15 @@ func formatMessage(ev Event) string {
 		ev.Metric, resource, ev.Kind, ev.From, ev.To, ev.Value)
 }
 
-// eventReaches reports whether an event's severity reaches at least min. An
-// event is relevant to a webhook when either side of the transition is at or
-// above the webhook's minimum level, so a "min_level: crit" webhook still
-// receives the cleared event when a metric drops out of crit.
-func eventReaches(ev Event, min Level) bool {
+// eventReaches reports whether an event's severity reaches at least
+// minLevel. An event is relevant to a webhook when either side of the
+// transition is at or above the webhook's minimum level, so a
+// "min_level: crit" webhook still receives the cleared event when a metric
+// drops out of crit.
+func eventReaches(ev Event, minLevel Level) bool {
 	peak := severity(ev.From)
 	if s := severity(ev.To); s > peak {
 		peak = s
 	}
-	return peak >= severity(min)
+	return peak >= severity(minLevel)
 }
