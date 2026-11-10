@@ -943,3 +943,27 @@ func TestHistorySince_DoesNotMutateSource(t *testing.T) {
 		t.Fatalf("source series start = %v, want %v", full.CPUPercent[0].Timestamp, base)
 	}
 }
+
+// TestCollector_FastTick_ThrottledFailureLoggedOnce covers issue #176: a
+// vcgencmd get_throttled that fails identically on every fast tick must
+// produce one WARN line, not one per poll.
+func TestCollector_FastTick_ThrottledFailureLoggedOnce(t *testing.T) {
+	c := newTestCollector()
+	log, buf := newCapturingLogger()
+	c.log = log
+	dir := t.TempDir()
+	path := writeFakeVcgencmd(t, dir, "fake-vcgencmd", `echo "Can't open device file: /dev/vcio_gencmd"; exit 255`)
+	c.throttled = NewThrottledCollector(&vcgencmdRunner{detected: true, path: path})
+
+	for range 3 {
+		c.collectFastTickSamples(context.Background())
+	}
+
+	out := buf.String()
+	if got := countLogLines(out, "WARN", "throttled state collection failed"); got != 1 {
+		t.Fatalf("WARN lines = %d, want 1; log:\n%s", got, out)
+	}
+	if !strings.Contains(out, "/dev/vcio_gencmd") {
+		t.Fatalf("WARN line should carry vcgencmd's failure message; log:\n%s", out)
+	}
+}

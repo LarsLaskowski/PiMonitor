@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 )
 
 // vcgencmdTimeout bounds a single vcgencmd invocation so a hung firmware
@@ -98,7 +99,47 @@ func (r *vcgencmdRunner) run(ctx context.Context, subcommand string, args ...str
 
 	out, err := cmd.Output()
 	if err != nil {
-		return "", fmt.Errorf("run vcgencmd %s: %w", strings.Join(append([]string{subcommand}, args...), " "), err)
+		argv := strings.Join(append([]string{subcommand}, args...), " ")
+		// On its own an ExitError only reads "exit status 255", which hides
+		// the actual cause (e.g. "Can't open device file: /dev/vcio_gencmd"
+		// when the service user lacks the video group), so surface
+		// vcgencmd's own message. cmd.Output captures stderr into
+		// ExitError.Stderr, but vcgencmd prints its device-open failure to
+		// stdout, so fall back to that when stderr is empty.
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			detail := sanitizeVcgencmdDetail(exitErr.Stderr)
+			if detail == "" {
+				detail = sanitizeVcgencmdDetail(out)
+			}
+			if detail != "" {
+				return "", fmt.Errorf("run vcgencmd %s: %w: %s", argv, err, detail)
+			}
+		}
+		return "", fmt.Errorf("run vcgencmd %s: %w", argv, err)
 	}
 	return strings.TrimSpace(string(out)), nil
+}
+
+// vcgencmdDetailMaxLen bounds how much of vcgencmd's failure output is
+// carried into an error message, so a misbehaving binary cannot bloat every
+// log line.
+const vcgencmdDetailMaxLen = 200
+
+// sanitizeVcgencmdDetail turns vcgencmd's raw failure output (stderr, or
+// stdout when stderr is empty) into a single,
+// length-bounded line suitable for an error message: surrounding whitespace
+// is trimmed, internal whitespace runs (including newlines) collapse to one
+// space, and anything beyond vcgencmdDetailMaxLen bytes is cut at a rune
+// boundary and marked with an ellipsis.
+func sanitizeVcgencmdDetail(raw []byte) string {
+	s := strings.Join(strings.Fields(string(raw)), " ")
+	if len(s) <= vcgencmdDetailMaxLen {
+		return s
+	}
+	cut := vcgencmdDetailMaxLen
+	for cut > 0 && !utf8.RuneStart(s[cut]) {
+		cut--
+	}
+	return s[:cut] + "..."
 }

@@ -40,7 +40,14 @@ reporters and reviewers have context:
   `/proc`, `/sys/class/thermal`, `/sys/devices/system/cpu/*/cpufreq`,
   `/sys/class/hwmon`, `/etc/os-release`, and the existing apt
   cache under `/var/lib/apt/lists/` (via the read-only `apt list --upgradable`
-  command). It never invokes anything that requires root.
+  command), plus the optional, fixed-argument `vcgencmd measure_temp` /
+  `measure_temp pmic` / `get_throttled` calls. It never invokes anything that
+  requires root. Its only extra privilege is membership in the `video` group
+  (`SupplementaryGroups=video` in `pimonitor.service`), which Raspberry Pi OS
+  requires for opening the firmware device `vcgencmd` uses
+  (`/dev/vcio_gencmd` on current releases, `/dev/vchiq` on older ones). The group grants access to GPU,
+  framebuffer, camera (V4L2) and firmware-mailbox devices (the mailbox also
+  accepts write-type property calls), but not to root.
 - **Only apt cache refresh runs as root**, via a separate, narrowly-scoped
   systemd timer/service (`pimonitor-apt-update.timer`) that runs exactly one
   command (`apt-get update`) on a schedule. This unit performs no other

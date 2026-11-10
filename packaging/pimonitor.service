@@ -8,6 +8,16 @@ Wants=network-online.target
 Type=simple
 User=pimonitor
 Group=pimonitor
+# vcgencmd (GPU/PMIC temperature, under-voltage/throttling state) talks to
+# the firmware through a device node that Raspberry Pi OS's udev rules
+# create as root:video, mode 0660: /dev/vcio_gencmd on current releases
+# (e.g. Pi 5), /dev/vchiq on older ones. Without this group vcgencmd exits
+# with status 255 ("Can't open device file: /dev/vcio_gencmd" or "VCHI
+# initialization failed"). Set here rather than via
+# usermod in install.sh so manual installs of this unit get it as well.
+# The video group is a static base-passwd group on every Debian-family
+# system, so this does not fail on non-Pi hosts.
+SupplementaryGroups=video
 ExecStart=/usr/local/bin/pimonitor -config /etc/pimonitor/config.yaml
 Restart=on-failure
 RestartSec=5
@@ -24,9 +34,11 @@ RestartSec=5
 # /sys/class/thermal, /sys/devices/system/cpu/*/cpufreq, /sys/class/hwmon,
 # /etc/os-release, and the apt cache under
 # /var/lib/apt/lists/ (via `apt list --upgradable`), plus binds a TCP
-# listener - it needs no elevated privileges. Its only filesystem write
-# access is the state directory below, where it persists metric history
-# across restarts (data_dir in config.yaml, default /var/lib/pimonitor).
+# listener - it needs no elevated privileges. The one exception is the
+# video group (SupplementaryGroups= above) for vcgencmd's device access.
+# Its only filesystem write access is the state directory below, where it
+# persists metric history across restarts (data_dir in config.yaml,
+# default /var/lib/pimonitor).
 NoNewPrivileges=true
 ProtectSystem=strict
 # Creates /var/lib/pimonitor owned by the service user and, together with
@@ -46,11 +58,12 @@ CapabilityBoundingSet=
 # supported on Debian-family systems.
 #
 # NOTE: PrivateDevices is deliberately NOT set - `vcgencmd` needs
-# /dev/vchiq (or /dev/vcio) to read the GPU temperature. Enabling it would
+# /dev/vcio_gencmd or /dev/vchiq (see SupplementaryGroups=video above) to read
+# the GPU/PMIC temperature and the throttled state. Enabling it would
 # require paired DeviceAllow= rules and is out of scope. For the same
 # reason ProtectClock is NOT set: it implies DeviceAllow=char-rtc, and any
 # DeviceAllow= flips DevicePolicy into enforcing mode, which would silently
-# block /dev/vchiq. CAP_SYS_TIME is already dropped (empty
+# block those devices. CAP_SYS_TIME is already dropped (empty
 # CapabilityBoundingSet) and @clock syscalls are already denied by
 # ~@privileged below, so ProtectClock would add almost nothing anyway.
 #
