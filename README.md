@@ -355,8 +355,14 @@ running units, but leaves an existing `/etc/pimonitor/config.yaml` untouched.
 > systemd units.** For example, 1.1.0 adds `SupplementaryGroups=video` to
 > `pimonitor.service`; without the new unit, the `vcgencmd`-based readings
 > (`throttled`, `gpu_temperature`, `pmic_temperature`) stay empty on
-> Raspberry Pi OS. If you maintain a customised unit, merge the changes from
-> [`packaging/pimonitor.service`](packaging/pimonitor.service) into it.
+> Raspberry Pi OS.
+>
+> `install.sh` overwrites `/etc/systemd/system/pimonitor.service`, so edits
+> made directly in that file are lost on upgrade. Keep local customisations
+> in a drop-in instead (`sudo systemctl edit pimonitor.service`, stored under
+> `pimonitor.service.d/`), which `install.sh` leaves alone. Only if you
+> install the units by hand do you need to merge the changes from
+> [`packaging/pimonitor.service`](packaging/pimonitor.service) yourself.
 
 1. **Get the new version.** Either download the binary (or release tarball)
    for your architecture from the
