@@ -199,7 +199,7 @@ type Collector struct {
 	log *slog.Logger
 	// throttledFailures de-duplicates the throttled collector's failure
 	// log: vcgencmd failing for an environmental reason (e.g. the service
-	// user lacking access to /dev/vcio) fails identically on every fast
+	// user lacking access to /dev/vcio_gencmd) fails identically on every fast
 	// tick, so it is logged at WARN once rather than on every poll.
 	throttledFailures failureLog
 

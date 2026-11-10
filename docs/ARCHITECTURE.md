@@ -541,7 +541,7 @@ apt package cache (`apt-get update`) requires root while reading its result
   argument lists (never user input interpolated into a shell command), and further
   sandboxed via systemd unit hardening directives. Its only supplementary group is
   `video` (`SupplementaryGroups=video`), which `vcgencmd` needs in order to open
-  `/dev/vcio` / `/dev/vchiq` on Raspberry Pi OS.
+  `/dev/vcio_gencmd` / `/dev/vchiq` on Raspberry Pi OS.
 - **`pimonitor-apt-update.timer`** runs as root, on a schedule (every 6h), and performs
   exactly one action: `apt-get update`. It is not reachable from the web-facing service
   and exposes no other capability.
@@ -550,7 +550,7 @@ This is why the two are separate systemd units rather than one privileged servic
 why `install.sh` — the only component that needs elevated privileges — creates the
 unprivileged system user, installs both units, and enables/starts both, but never grants
 the main service any capability beyond what it needs to read already-world-readable state,
-plus membership in the `video` group so `vcgencmd` can open `/dev/vcio` / `/dev/vchiq`.
+plus membership in the `video` group so `vcgencmd` can open `/dev/vcio_gencmd` / `/dev/vchiq`.
 See [`SECURITY.md`](../SECURITY.md) for the full threat model and reporting process.
 
 **Build/release**: `make build-arm64` / `make build-arm` cross-compile

@@ -81,7 +81,7 @@ world-readable files under `/proc`, `/sys/class/thermal`,
 `/etc/os-release`, and the apt cache, plus the read-only
 `apt list --upgradable` command and the optional `vcgencmd` readings (for
 which the unit adds the service to the `video` group, needed to open
-`/dev/vcio` / `/dev/vchiq` on Raspberry Pi OS). A separate, root-privileged systemd timer
+`/dev/vcio_gencmd` / `/dev/vchiq` on Raspberry Pi OS). A separate, root-privileged systemd timer
 (`pimonitor-apt-update.timer`) refreshes the apt cache periodically -
 see [`SECURITY.md`](SECURITY.md) for the full threat model.
 

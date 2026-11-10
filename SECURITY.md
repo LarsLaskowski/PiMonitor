@@ -44,8 +44,8 @@ reporters and reviewers have context:
   `measure_temp pmic` / `get_throttled` calls. It never invokes anything that
   requires root. Its only extra privilege is membership in the `video` group
   (`SupplementaryGroups=video` in `pimonitor.service`), which Raspberry Pi OS
-  requires for opening the firmware mailbox devices `/dev/vcio` and
-  `/dev/vchiq` that `vcgencmd` uses. The group grants access to GPU,
+  requires for opening the firmware device `vcgencmd` uses
+  (`/dev/vcio_gencmd` on current releases, `/dev/vchiq` on older ones). The group grants access to GPU,
   framebuffer, camera (V4L2) and firmware-mailbox devices (the mailbox also
   accepts write-type property calls), but not to root.
 - **Only apt cache refresh runs as root**, via a separate, narrowly-scoped

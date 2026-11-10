@@ -952,7 +952,7 @@ func TestCollector_FastTick_ThrottledFailureLoggedOnce(t *testing.T) {
 	log, buf := newCapturingLogger()
 	c.log = log
 	dir := t.TempDir()
-	path := writeFakeVcgencmd(t, dir, "fake-vcgencmd", `echo "VCHI initialization failed" >&2; exit 255`)
+	path := writeFakeVcgencmd(t, dir, "fake-vcgencmd", `echo "Can't open device file: /dev/vcio_gencmd"; exit 255`)
 	c.throttled = NewThrottledCollector(&vcgencmdRunner{detected: true, path: path})
 
 	for range 3 {
@@ -963,7 +963,7 @@ func TestCollector_FastTick_ThrottledFailureLoggedOnce(t *testing.T) {
 	if got := countLogLines(out, "WARN", "throttled state collection failed"); got != 1 {
 		t.Fatalf("WARN lines = %d, want 1; log:\n%s", got, out)
 	}
-	if !strings.Contains(out, "VCHI initialization failed") {
-		t.Fatalf("WARN line should carry vcgencmd's stderr; log:\n%s", out)
+	if !strings.Contains(out, "/dev/vcio_gencmd") {
+		t.Fatalf("WARN line should carry vcgencmd's failure message; log:\n%s", out)
 	}
 }

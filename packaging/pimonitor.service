@@ -9,9 +9,11 @@ Type=simple
 User=pimonitor
 Group=pimonitor
 # vcgencmd (GPU/PMIC temperature, under-voltage/throttling state) talks to
-# the firmware through /dev/vcio and /dev/vchiq, which Raspberry Pi OS
-# ships as root:video, mode 0660. Without this group vcgencmd fails with
-# "VCHI initialization failed" (exit status 255). Set here rather than via
+# the firmware through a device node that Raspberry Pi OS's udev rules
+# create as root:video, mode 0660: /dev/vcio_gencmd on current releases
+# (e.g. Pi 5), /dev/vchiq on older ones. Without this group vcgencmd exits
+# with status 255 ("Can't open device file: /dev/vcio_gencmd" or "VCHI
+# initialization failed"). Set here rather than via
 # usermod in install.sh so manual installs of this unit get it as well.
 # The video group is a static base-passwd group on every Debian-family
 # system, so this does not fail on non-Pi hosts.
@@ -56,12 +58,12 @@ CapabilityBoundingSet=
 # supported on Debian-family systems.
 #
 # NOTE: PrivateDevices is deliberately NOT set - `vcgencmd` needs
-# /dev/vchiq (or /dev/vcio, see SupplementaryGroups=video above) to read
+# /dev/vcio_gencmd or /dev/vchiq (see SupplementaryGroups=video above) to read
 # the GPU/PMIC temperature and the throttled state. Enabling it would
 # require paired DeviceAllow= rules and is out of scope. For the same
 # reason ProtectClock is NOT set: it implies DeviceAllow=char-rtc, and any
 # DeviceAllow= flips DevicePolicy into enforcing mode, which would silently
-# block /dev/vchiq. CAP_SYS_TIME is already dropped (empty
+# block those devices. CAP_SYS_TIME is already dropped (empty
 # CapabilityBoundingSet) and @clock syscalls are already denied by
 # ~@privileged below, so ProtectClock would add almost nothing anyway.
 #
