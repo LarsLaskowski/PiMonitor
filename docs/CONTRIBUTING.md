@@ -13,7 +13,7 @@ installed it, you can download it [here](https://git-scm.com/downloads) or, if y
 a GUI-based approach, try [GitHub Desktop](https://desktop.github.com/).
 
 Once Git is installed, you'll also need the Go version this project targets (currently
-**Go 1.26+**, see [`go.mod`](../go.mod)). Instructions and downloads for your preferred OS
+**Go 1.27+**, see [`go.mod`](../go.mod)). Instructions and downloads for your preferred OS
 can be found [here](https://go.dev/dl/).
 
 > [!NOTE]
@@ -23,12 +23,18 @@ can be found [here](https://go.dev/dl/).
 > — it's raised whenever the declared version falls out of that support window, independent
 > of any new language features being adopted.
 
-For linting, install `golangci-lint` matching the version CI uses (currently `v2.13.1`,
+For linting, install `golangci-lint` matching the version CI uses (currently `v2.15.0`,
 see [`.github/workflows/ci.yml`](../.github/workflows/ci.yml)):
 
 ```sh
-go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.1
+go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0
 ```
+
+`golangci-lint` refuses to lint a module whose `go` directive is newer than the Go version
+it was built with. `go install …@version` builds with your local default toolchain rather
+than the one `go.mod` asks for, so if that default is older than the `go` line in
+[`go.mod`](../go.mod), prefix the command with `GOTOOLCHAIN=go<version>` (for example
+`GOTOOLCHAIN=go1.27.3 go install …`).
 
 > [!IMPORTANT]
 > The above steps are a one-time setup for your machine and do not need to be repeated
