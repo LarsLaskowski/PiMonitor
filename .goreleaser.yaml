@@ -39,6 +39,10 @@ checksum:
 
 changelog:
   disable: false
+  # Use GitHub's generated release notes so the label-based categories in
+  # .github/release.yml (Breaking changes, Features, Bug fixes, ...) apply.
+  # GoReleaser's default "git" changelog would ignore that file.
+  use: github-native
 
 release:
   github:
