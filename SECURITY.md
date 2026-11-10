@@ -2,8 +2,8 @@
 
 ## Supported Versions
 
-PiMonitor is currently pre-1.0. Security fixes are provided for the latest
-release only; there is no long-term support branch at this stage.
+Security fixes are provided for the latest release only; there is no
+long-term support branch.
 
 | Version | Supported |
 | ------- | --------- |

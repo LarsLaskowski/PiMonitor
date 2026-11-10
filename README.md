@@ -346,10 +346,23 @@ the only monitoring service left running on the Pi.
 
 ## Updating
 
-PiMonitor is distributed as a single binary, so upgrading is a matter of
-replacing that binary and restarting the service. `install.sh` is safe to
-re-run for this purpose: it overwrites the binary and the systemd units but
-leaves an existing `/etc/pimonitor/config.yaml` untouched.
+PiMonitor is distributed as a single binary plus its systemd units. The
+recommended way to upgrade is to re-run `install.sh` from the new release: it
+overwrites the binary and the systemd units, reloads systemd and restarts
+running units, but leaves an existing `/etc/pimonitor/config.yaml` untouched.
+
+> **Replacing only the binary is not enough when a release changes the
+> systemd units.** For example, 1.1.0 adds `SupplementaryGroups=video` to
+> `pimonitor.service`; without the new unit, the `vcgencmd`-based readings
+> (`throttled`, `gpu_temperature`, `pmic_temperature`) stay empty on
+> Raspberry Pi OS.
+>
+> `install.sh` overwrites `/etc/systemd/system/pimonitor.service`, so edits
+> made directly in that file are lost on upgrade. Keep local customisations
+> in a drop-in instead (`sudo systemctl edit pimonitor.service`, stored under
+> `pimonitor.service.d/`), which `install.sh` leaves alone. Only if you
+> install the units by hand do you need to merge the changes from
+> [`packaging/pimonitor.service`](packaging/pimonitor.service) yourself.
 
 1. **Get the new version.** Either download the binary (or release tarball)
    for your architecture from the
@@ -363,14 +376,17 @@ leaves an existing `/etc/pimonitor/config.yaml` untouched.
    sudo ./install.sh
    ```
 
-   This replaces `/usr/local/bin/pimonitor`, refreshes the systemd units, and
-   runs `systemctl daemon-reload`. Your configuration is preserved.
+   This replaces `/usr/local/bin/pimonitor`, refreshes the systemd units,
+   runs `systemctl daemon-reload`, and restarts `pimonitor.service` and
+   `pimonitor-apt-update.timer` if they were already running, so the new
+   binary and units take effect immediately. Your configuration is
+   preserved.
 
-3. **Restart the service** so the running process picks up the new binary.
-   `install.sh` starts the units but does not restart an already-running
-   service, so do it explicitly:
+3. **Restart manually only if you did not use `install.sh`** (e.g. you
+   copied the binary and unit files yourself):
 
    ```sh
+   sudo systemctl daemon-reload
    sudo systemctl restart pimonitor.service
    ```
 
