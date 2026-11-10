@@ -197,6 +197,11 @@ type Collector struct {
 	notifier *alert.Notifier
 
 	log *slog.Logger
+	// throttledFailures de-duplicates the throttled collector's failure
+	// log: vcgencmd failing for an environmental reason (e.g. the service
+	// user lacking access to /dev/vcio) fails identically on every fast
+	// tick, so it is logged at WARN once rather than on every poll.
+	throttledFailures failureLog
 
 	// fastInterval is cfg.FastInterval clamped to a safe positive minimum
 	// (see clampInterval), computed once at construction so Run's ticker
@@ -501,9 +506,7 @@ func (c *Collector) collectFastTickSamples(ctx context.Context) fastTickSamples 
 		c.log.Warn("temperature collection failed", "error", s.tempErr)
 	}
 	s.throttled, err = c.throttled.Collect(ctx)
-	if err != nil {
-		c.log.Warn("throttled state collection failed", "error", err)
-	}
+	c.throttledFailures.observe(c.log, "throttled state collection failed", err)
 	s.mem, s.swap, s.memErr = c.memory.Collect()
 	if s.memErr != nil {
 		c.log.Warn("memory collection failed", "error", s.memErr)

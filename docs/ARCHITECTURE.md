@@ -539,7 +539,9 @@ apt package cache (`apt-get update`) requires root while reading its result
   existing apt cache, plus the read-only `apt list --upgradable` command and the optional
   `vcgencmd measure_temp` / `vcgencmd measure_temp pmic` / `vcgencmd get_throttled` commands — all invoked with fixed
   argument lists (never user input interpolated into a shell command), and further
-  sandboxed via systemd unit hardening directives.
+  sandboxed via systemd unit hardening directives. Its only supplementary group is
+  `video` (`SupplementaryGroups=video`), which `vcgencmd` needs in order to open
+  `/dev/vcio` / `/dev/vchiq` on Raspberry Pi OS.
 - **`pimonitor-apt-update.timer`** runs as root, on a schedule (every 6h), and performs
   exactly one action: `apt-get update`. It is not reachable from the web-facing service
   and exposes no other capability.

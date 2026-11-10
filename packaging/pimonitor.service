@@ -8,6 +8,14 @@ Wants=network-online.target
 Type=simple
 User=pimonitor
 Group=pimonitor
+# vcgencmd (GPU/PMIC temperature, under-voltage/throttling state) talks to
+# the firmware through /dev/vcio and /dev/vchiq, which Raspberry Pi OS
+# ships as root:video, mode 0660. Without this group vcgencmd fails with
+# "VCHI initialization failed" (exit status 255). Set here rather than via
+# usermod in install.sh so manual installs of this unit get it as well.
+# The video group is a static base-passwd group on every Debian-family
+# system, so this does not fail on non-Pi hosts.
+SupplementaryGroups=video
 ExecStart=/usr/local/bin/pimonitor -config /etc/pimonitor/config.yaml
 Restart=on-failure
 RestartSec=5
@@ -46,7 +54,8 @@ CapabilityBoundingSet=
 # supported on Debian-family systems.
 #
 # NOTE: PrivateDevices is deliberately NOT set - `vcgencmd` needs
-# /dev/vchiq (or /dev/vcio) to read the GPU temperature. Enabling it would
+# /dev/vchiq (or /dev/vcio, see SupplementaryGroups=video above) to read
+# the GPU/PMIC temperature and the throttled state. Enabling it would
 # require paired DeviceAllow= rules and is out of scope. For the same
 # reason ProtectClock is NOT set: it implies DeviceAllow=char-rtc, and any
 # DeviceAllow= flips DevicePolicy into enforcing mode, which would silently

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -159,5 +160,69 @@ func TestNewVcgencmdRunner_DetectsBinaryOnPath(t *testing.T) {
 
 	if !r.detected || r.path != path {
 		t.Fatalf("newVcgencmdRunner() detected=%v path=%q, want detected=true path=%q", r.detected, r.path, path)
+	}
+}
+
+// TestVcgencmdRunner_Run_CommandFailsIncludesStderr covers issue #176: a
+// vcgencmd that cannot reach the firmware (e.g. the service user lacks
+// access to /dev/vcio) exits 255 and explains why only on stderr. The
+// returned error must carry that explanation, not just "exit status 255".
+func TestVcgencmdRunner_Run_CommandFailsIncludesStderr(t *testing.T) {
+	dir := t.TempDir()
+	path := writeFakeVcgencmd(t, dir, "fake-vcgencmd", `echo "VCHI initialization failed" >&2; exit 255`)
+	r := &vcgencmdRunner{detected: true, path: path}
+
+	_, err := r.run(context.Background(), "get_throttled")
+
+	if err == nil {
+		t.Fatal("expected error when vcgencmd exits 255")
+	}
+	want := "run vcgencmd get_throttled: exit status 255: VCHI initialization failed"
+	if err.Error() != want {
+		t.Fatalf("run() error = %q, want %q", err.Error(), want)
+	}
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) {
+		t.Fatalf("run() error = %v, want it to wrap *exec.ExitError", err)
+	}
+}
+
+func TestVcgencmdRunner_Run_CommandFailsWithoutStderr(t *testing.T) {
+	dir := t.TempDir()
+	path := writeFakeVcgencmd(t, dir, "fake-vcgencmd", "exit 1")
+	r := &vcgencmdRunner{detected: true, path: path}
+
+	_, err := r.run(context.Background(), "get_throttled")
+
+	want := "run vcgencmd get_throttled: exit status 1"
+	if err == nil || err.Error() != want {
+		t.Fatalf("run() error = %v, want %q", err, want)
+	}
+}
+
+func TestSanitizeVcgencmdStderr(t *testing.T) {
+	long := strings.Repeat("x", vcgencmdStderrMaxLen+50)
+	// "é" is two bytes; placing it across the cut point checks that
+	// truncation never splits a multi-byte rune.
+	straddling := strings.Repeat("a", vcgencmdStderrMaxLen-1) + "é" + "tail"
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{name: "empty", input: "", want: ""},
+		{name: "whitespace only", input: " \n\t", want: ""},
+		{name: "trims and joins lines", input: "  VCHI initialization failed\n  second line \n", want: "VCHI initialization failed second line"},
+		{name: "truncates long output", input: long, want: strings.Repeat("x", vcgencmdStderrMaxLen) + "..."},
+		{name: "truncates at rune boundary", input: straddling, want: strings.Repeat("a", vcgencmdStderrMaxLen-1) + "..."},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := sanitizeVcgencmdStderr([]byte(tt.input))
+
+			if got != tt.want {
+				t.Fatalf("sanitizeVcgencmdStderr(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
 	}
 }
