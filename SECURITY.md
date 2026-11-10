@@ -45,8 +45,9 @@ reporters and reviewers have context:
   requires root. Its only extra privilege is membership in the `video` group
   (`SupplementaryGroups=video` in `pimonitor.service`), which Raspberry Pi OS
   requires for opening the firmware mailbox devices `/dev/vcio` and
-  `/dev/vchiq` that `vcgencmd` uses. The group grants access to the GPU and
-  firmware interfaces, not to root.
+  `/dev/vchiq` that `vcgencmd` uses. The group grants access to GPU,
+  framebuffer, camera (V4L2) and firmware-mailbox devices (the mailbox also
+  accepts write-type property calls), but not to root.
 - **Only apt cache refresh runs as root**, via a separate, narrowly-scoped
   systemd timer/service (`pimonitor-apt-update.timer`) that runs exactly one
   command (`apt-get update`) on a schedule. This unit performs no other

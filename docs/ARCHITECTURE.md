@@ -549,7 +549,8 @@ apt package cache (`apt-get update`) requires root while reading its result
 This is why the two are separate systemd units rather than one privileged service, and
 why `install.sh` — the only component that needs elevated privileges — creates the
 unprivileged system user, installs both units, and enables/starts both, but never grants
-the main service any capability beyond what it needs to read already-world-readable state.
+the main service any capability beyond what it needs to read already-world-readable state,
+plus membership in the `video` group so `vcgencmd` can open `/dev/vcio` / `/dev/vchiq`.
 See [`SECURITY.md`](../SECURITY.md) for the full threat model and reporting process.
 
 **Build/release**: `make build-arm64` / `make build-arm` cross-compile

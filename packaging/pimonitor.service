@@ -32,9 +32,11 @@ RestartSec=5
 # /sys/class/thermal, /sys/devices/system/cpu/*/cpufreq, /sys/class/hwmon,
 # /etc/os-release, and the apt cache under
 # /var/lib/apt/lists/ (via `apt list --upgradable`), plus binds a TCP
-# listener - it needs no elevated privileges. Its only filesystem write
-# access is the state directory below, where it persists metric history
-# across restarts (data_dir in config.yaml, default /var/lib/pimonitor).
+# listener - it needs no elevated privileges. The one exception is the
+# video group (SupplementaryGroups= above) for vcgencmd's device access.
+# Its only filesystem write access is the state directory below, where it
+# persists metric history across restarts (data_dir in config.yaml,
+# default /var/lib/pimonitor).
 NoNewPrivileges=true
 ProtectSystem=strict
 # Creates /var/lib/pimonitor owned by the service user and, together with
