@@ -50,7 +50,7 @@ func TestAppJS_PiholeRenderedSeparatelyFromAptCount(t *testing.T) {
 	if !strings.Contains(src, "renderPihole(snap.pihole,") {
 		t.Errorf("expected app.js to render snap.pihole")
 	}
-	if !strings.Contains(src, "pihole.is_installed") {
+	if !strings.Contains(src, "pihole?.is_installed === true") {
 		t.Errorf("expected app.js to gate the Pi-hole section on is_installed")
 	}
 	if !strings.Contains(src, "pihole.is_update_available") {

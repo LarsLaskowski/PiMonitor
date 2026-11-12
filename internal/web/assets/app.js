@@ -309,7 +309,7 @@
     let age = pihole.cache_age_seconds || 0;
     const checkedAt = Date.parse(pihole.checked_at);
     const now = Date.parse(snapTimestamp);
-    if (!isNaN(checkedAt) && !isNaN(now) && now > checkedAt) {
+    if (!Number.isNaN(checkedAt) && !Number.isNaN(now) && now > checkedAt) {
       age += (now - checkedAt) / 1000;
     }
     return age;
@@ -322,7 +322,7 @@
   // whole section stays hidden on hosts without Pi-hole (and with an older
   // server that does not send the field at all).
   function renderPihole(pihole, snapTimestamp) {
-    const installed = !!(pihole && pihole.is_installed);
+    const installed = pihole?.is_installed === true;
     document.getElementById('pihole-section').classList.toggle('hidden', !installed);
     if (!installed) return;
 
