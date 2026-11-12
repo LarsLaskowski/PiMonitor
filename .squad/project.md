@@ -10,10 +10,6 @@ limits and sequences are written once, in the area documents (`docs/areas/README
 decision records; a copy here goes stale with the next change. `config-check.py` warns when this file grows past
 `PROJECT_MAX_WORDS` words (`.squad/tools/squad_settings.py`).
 
-No area documents exist yet: until an area is defined (`docs/areas/README.md`), the entries below link the
-section of [`ARCHITECTURE.md`](../docs/ARCHITECTURE.md), [`SECURITY.md`](../SECURITY.md) or
-[`API.md`](../docs/API.md) that states the behavior.
-
 ## Security areas
 
 A change that touches one of these lists it under *Security areas touched* in its plan, so Security reviews the
@@ -24,29 +20,29 @@ limits, patterns or sequences.
 
 - Privilege separation: `pimonitor.service` runs unprivileged (only the `video` group), only
   `pimonitor-apt-update.service`/`.timer` runs as root; `packaging/` units and `install.sh` —
-  [Privilege separation](../docs/ARCHITECTURE.md#privilege-separation-and-deployment),
+  [Deployment](../docs/areas/deployment.md),
   [Threat model](../SECURITY.md#threat-model--design-notes)
 - API key: read in `internal/config/config.go` (`api_key`, `PIMONITOR_API_KEY`, unset after reading, `-api-key`
   flag), compared in constant time by `withAPIKey` (`internal/httpapi/middleware.go`), kept by the dashboard in
-  `localStorage`; config file mode set by `install.sh` — [Authentication](../docs/API.md#authentication),
+  `localStorage`; config file mode set by `install.sh` — [Authentication](../docs/areas/http-api.md#authentication),
   [Threat model](../SECURITY.md#threat-model--design-notes)
 - Subprocesses: `exec.CommandContext` with fixed argument lists and an explicit minimal environment in
   `internal/collector/updates.go` (`apt list --upgradable`) and `internal/collector/vcgencmd.go` —
-  [Threat model](../SECURITY.md#threat-model--design-notes)
+  [Metrics](../docs/areas/metrics.md), [Threat model](../SECURITY.md#threat-model--design-notes)
 - HTTP surface: routes and middleware in `internal/httpapi` (security headers, gzip, no-store, `withMaxInFlight`,
-  optional TLS via `tls_cert`/`tls_key`) — [HTTP layer](../docs/ARCHITECTURE.md#http-layer-internalhttpapi),
-  [Rate limiting](../docs/API.md#rate-limiting)
+  optional TLS via `tls_cert`/`tls_key`) — [HTTP API](../docs/areas/http-api.md),
+  [Concurrency limit](../docs/areas/http-api.md#concurrency-limit)
 - Dashboard XSS: `internal/web/assets/app.js` builds DOM nodes without `.innerHTML`, guarded by
   `internal/web/xss_test.go`; CSP in `internal/httpapi` —
-  [Web dashboard](../docs/ARCHITECTURE.md#web-dashboard-internalweb)
+  [Dashboard](../docs/areas/dashboard.md)
 - Parsing of local input: `/proc`, `/sys`, `/etc/os-release`, `/etc/pihole/versions` and command output in
   `internal/collector`; the YAML config in `internal/config` —
-  [Metric collection](../docs/ARCHITECTURE.md#metric-collection-internalcollector),
-  [Configuration](../docs/ARCHITECTURE.md#configuration-internalconfig)
+  [Metrics](../docs/areas/metrics.md),
+  [Configuration](../docs/areas/configuration.md)
 - File writes: `<data_dir>/history.bin` (atomic write, bounded decode) in `internal/collector/persist.go` —
-  [History persistence](../docs/ARCHITECTURE.md#history-persistence-internalcollectorpersistgo)
+  [History](../docs/areas/history.md)
 - Outbound calls: webhook delivery (`text/template` bodies with the `json` helper, retries, per-webhook queues) in
-  `internal/alert/notify.go` — [Alert delivery](../docs/ARCHITECTURE.md#alert-delivery-internalalertnotifygo)
+  `internal/alert/notify.go` — [Notifications](../docs/areas/notifications.md)
 - Logging: `slog` calls across `internal/` and `cmd/pimonitor`; no call logs the API key, the notifier logs the
   configured webhook URL (`internal/alert/notify.go`), which can carry a token in its path — keep secrets out of
   new log fields (`.squad/stack.md`, *Logger arguments*)
@@ -57,19 +53,20 @@ Deliberate behavior that must not change without the Product Manager. One line e
 a link to its decision record where it was a real choice, and a link to the area document that states it.
 
 - The main service never needs root; only the apt-cache timer runs privileged —
-  [Privilege separation](../docs/ARCHITECTURE.md#privilege-separation-and-deployment)
+  [Deployment](../docs/areas/deployment.md)
 - `/api/v1/...` response shapes are stable; a shape change adds `/api/v2/...` — [API.md](../docs/API.md),
-  [REST API stability](../docs/CONTRIBUTING.md#rest-api-stability)
+  [Versioning](../docs/areas/http-api.md#versioning-and-stability)
 - A missing hardware source yields an empty/zero value and a logged warning, never a crash or a fabricated
-  reading — [Metric collection](../docs/ARCHITECTURE.md#metric-collection-internalcollector)
+  reading — [Metrics](../docs/areas/metrics.md); where the code falls short of this today is listed under *Open
+  questions* there and in [History](../docs/areas/history.md)
 - `gopkg.in/yaml.v3` is the only runtime dependency; `/proc`/`/sys` parsing stays hand-rolled —
   [Stability policy](../docs/CONTRIBUTING.md#stability-policy)
 - A hung or failing webhook never stalls collection, and `cleared` events bypass the rate limiter —
-  [Alert delivery](../docs/ARCHITECTURE.md#alert-delivery-internalalertnotifygo)
+  [Notifications](../docs/areas/notifications.md)
 - `history.bin` is written atomically, a corrupt file never stops startup, and a layout change bumps
-  `historyVersion` instead of migrating — [History persistence](../docs/ARCHITECTURE.md#history-persistence-internalcollectorpersistgo)
+  `historyVersion` instead of migrating — [History](../docs/areas/history.md)
 - `install.sh` upgrades in place and never overwrites an existing `/etc/pimonitor/config.yaml` —
-  [Updating](../README.md#updating)
+  [Deployment](../docs/areas/deployment.md)
 
 ## Integration surface
 

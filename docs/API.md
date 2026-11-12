@@ -58,7 +58,8 @@ deprecated `x-gzip` token is not treated as `gzip`.
 
 Responses from any endpoint behind `apiRoute` (every `/api/v1/...` route,
 plus `GET /metrics`) carry `Cache-Control: no-store` and a `Vary` naming
-`Authorization` and `X-Api-Key` alongside `Accept-Encoding`. Metric/alert/
+`Authorization` and `X-Api-Key`, plus `Accept-Encoding` when the response
+is compressed. Metric/alert/
 config snapshots — and the Prometheus rendering of the same snapshot — are
 point-in-time data with no reuse value, and when `api_key` is configured
 they are credential-protected, so a reverse proxy placed in front of
@@ -393,10 +394,11 @@ Notes:
   is answering, and a `404` would be indistinguishable from a misspelled
   path. What it returns instead depends on the field's type, exactly as in
   the full snapshot:
-  - The **array-valued** endpoints (`disks`, `network`) return `null` with
-    a `200`: `GET /api/v1/metrics/network` with `network_enabled: false`
-    (where the full snapshot omits the key entirely), and either of them
-    before the first collection tick completes.
+  - The **array-valued** endpoints (`disks`, `network`) return a `200`:
+    `GET /api/v1/metrics/network` returns `null` with `network_enabled: false`
+    (where the full snapshot omits the key entirely) and before the first
+    collection tick completes; `GET /api/v1/metrics/disks` returns `[]`
+    before the first tick and after a failed collection.
   - The **object-valued** endpoints degrade to zero values rather than
     `null` — `GET /api/v1/metrics/temperature` returns
     `{"zone": "", "celsius": 0}` on a host with no readable thermal zone,
