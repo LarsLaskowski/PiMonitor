@@ -18,3 +18,4 @@ are quoted in full.
 | 2026-11-12 16:08 | 6 Documentation | Orchestrator | written in 6 Implement |
 | 2026-11-12 16:08 | 7 Gate stamp | Orchestrator | PASS on 84c1ed2d8aae12683d5cc3ab6d1c2939e979ea55 (tier standard): Format check pass; Analyzer gate pass; Test with coverage pass; Coverage gate pass; decision-check.py pass; scope-check.py pass · figure-check.py 8 hit(s) |
 | 2026-11-12 16:10 | 8 Review | Reviewer | VERDICT: BLOCKING 1 \| NON-BLOCKING 0 on 84c1ed2d8aae12683d5cc3ab6d1c2939e979ea55; stale doc comment of errVcgencmdUnavailable in vcgencmd.go:18-21 (opus/medium · 71,820 tokens · 22 tool uses · 99 s · 42 in · 9,242 out · 1,013,488 cache read · 70,051 cache write · 368,980 weighted) |
+| 2026-11-12 16:11 | 8 Fix | Dev | Stale errVcgencmdUnavailable doc comment replaced; no other stale comments; vet/race tests pass (sonnet/medium · 2,242 tokens · 3 tool uses · 13 s · 8 in · 795 out · 296,755 cache read · 3,789 cache write · 38,395 weighted · continued) |
