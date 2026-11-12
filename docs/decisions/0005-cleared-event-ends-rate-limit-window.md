@@ -1,6 +1,6 @@
 # 0005: A cleared event ends the webhook rate-limit window
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-12
 - **Area:** Notifications
 - **Source:** Issue #199
