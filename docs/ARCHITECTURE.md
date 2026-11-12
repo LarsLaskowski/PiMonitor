@@ -237,9 +237,10 @@ therefore never held up by another: a webhook pointing at a dead host can only d
 events. `Notify` applies the severity filter inline (it is pure and cheap) and fans the
 event out onto the queue of every webhook it reaches.
 
-The per-`(metric, resource)` rate limiter coalesces repeated firings. Each successful delivery drops the entries
-whose window has already run out, so resources that come and go (removable media, container mounts) don't
-accumulate keys for the life of the process.
+The per-`(metric, resource)` rate limiter coalesces repeated firings; a `cleared` event ends the window of its
+pair ([decision 0005](decisions/0005-cleared-event-ends-rate-limit-window.md)). Each successful delivery of a
+`fired` event drops the entries whose window has already run out, so resources that come and go (removable media,
+container mounts) don't accumulate keys for the life of the process.
 
 Custom bodies are rendered with `text/template`, which does no escaping of its own. Rather than escaping
 behind the template author's back, the notifier registers a `json` template function (`templateFuncs`) that

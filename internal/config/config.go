@@ -57,10 +57,12 @@ type Alerts struct {
 	// NotifyRetryBackoffSeconds is the base delay before the first retry; it
 	// doubles on each subsequent attempt. Zero retries immediately.
 	NotifyRetryBackoffSeconds float64 `yaml:"notify_retry_backoff_seconds"`
-	// NotifyMinIntervalSeconds rate-limits deliveries per webhook: an event
-	// arriving within this window of the previous delivery to the same URL is
-	// dropped, so an alert flapping faster than the debounce can't flood a
-	// destination. Zero disables rate-limiting.
+	// NotifyMinIntervalSeconds rate-limits fired events per metric and
+	// resource, per webhook: a fired event less than this many seconds after
+	// the last delivered fired event of the same metric and resource to the
+	// same webhook is dropped. A cleared event is never rate-limited and ends
+	// the window, so the next fired event is delivered. Zero disables
+	// rate-limiting.
 	NotifyMinIntervalSeconds float64 `yaml:"notify_min_interval_seconds"`
 }
 
