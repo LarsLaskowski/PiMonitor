@@ -20,7 +20,8 @@ cells in `log.md`); steps 4–12 follow `squad-issue` with the changes listed af
    an outside author's agreement or the Product Manager's spec approval continues on its work branch
    (`.squad/orchestration.md`, *Outside authors*, *Spec approval*). Run
    `git fetch origin main --tags` (unshallowing a shallow clone as `squad-issue` step 1 says), create the branch off the latest `main` (or the branch the session
-   prescribes) and the work folder `specs/feature-<short-slug>/` (from an issue
+   prescribes, unless its pull request is merged: `squad-issue` step 1) and the work folder
+   `specs/feature-<short-slug>/` (from an issue
    `specs/feature-<number>-<short-slug>/`) with `log.md` from `specs/_template/log.md`; commit and push. Log
    as `squad-issue` step 1 says.
 2a. **Spec.** Launch `squad-lead` in mode `spec` with the issue text (or the user's description) and the work
@@ -36,7 +37,8 @@ cells in `log.md`); steps 4–12 follow `squad-issue` with the changes listed af
 
    **Spec challenge.** Launch `squad-devils-advocate` in mode `spec` with the issue text and the work folder,
    for every feature. Minor objections only: append them verbatim to `spec.md` as a *Challenge notes*
-   section; the Lead answers them while it plans. A major objection: continue `squad-lead` in mode `revise`
+   section (`squad-notes.py <folder> challenge --spec --agent-id <id>`); the Lead answers them while it plans. A
+   major objection: continue `squad-lead` in mode `revise`
    on the spec with all objections; it answers each in the spec's *Challenge* section and may narrow the
    scope, escalate or return `RESULT: NO CHANGE`. One round, no veto (*Loop limits*). An issue by an outside
    author: its spec is agreed on the issue now (*Outside authors*).

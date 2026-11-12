@@ -105,7 +105,8 @@ When a PR is related to an issue, use the `Closes #issuenumber` syntax so the is
 PR automatically and closes when the PR is merged.
 
 The PR's label decides its section in the generated release notes (`.github/release.yml`): `breaking-change`,
-`enhancement` or `feature`, `security`, `bug`; any other PR is listed under *Other changes*, and `ignore-for-release` leaves it out.
+`enhancement` or `feature`, `security`, `bug`; any other PR is listed under *Other changes*, and `ignore-for-release` leaves it out,
+as it does Dependabot's GitHub Actions updates (label `github_actions`).
 
 Follow the PR template in [`.github/pull_request_template.md`](../.github/pull_request_template.md).
 
@@ -136,8 +137,8 @@ is agreed as acceptance criteria before it is built, and the maintainers own tho
 Code-style rules are documented in [`AGENTS.md`](../AGENTS.md) and in
 [`.squad/stack.md`](../.squad/stack.md), and are binding for all contributions. Before opening a pull
 request, run the commands from `stack.md`: *Format*, *Build*, the *Analyzer gate* (no analyzer diagnostic
-of any severity in a changed file) and the *Coverage gate* (line coverage on new or changed production code
-and overall, thresholds in [`UNIT_TESTS.md`](UNIT_TESTS.md#code-coverage)). A pull request is
+of any severity in a changed file) and the *Coverage gate* (new or changed production code with the branch conditions
+its report records, line coverage overall, thresholds in [`UNIT_TESTS.md`](UNIT_TESTS.md#code-coverage)). A pull request is
 expected to arrive clean (see the process decisions in [`decisions/process.md`](decisions/process.md)).
 
 <!-- project:begin releases -->

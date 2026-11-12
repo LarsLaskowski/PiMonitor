@@ -225,6 +225,9 @@ VERDICT: BLOCKING 2 | NON-BLOCKING 1 on <sha>
 ```
 
 `APPROVE` only without any finding; with findings both counts, `BLOCKING 0` when only non-blocking ones remain.
+A non-blocking finding that only asks for what the plan already orders (it quotes the plan's sentence) is tagged
+`[NON-BLOCKING, plan]` and counted in a note after the count, `NON-BLOCKING 2 (1 plan)`: it goes to its owner without
+a Lead decision.
 `<sha>` is the code SHA you reviewed, copied from the output of `git rev-parse <the head you were given>` (all 40
 characters), never typed from memory: `squad-next.py` compares it with the gate stamp's.
 

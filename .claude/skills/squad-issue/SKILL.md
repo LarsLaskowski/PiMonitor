@@ -18,7 +18,9 @@ every Git and GitHub action yourself, including follow-up issues the Lead decide
   whatever your own checks find. Besides read-only checks you write only:
   - `log.md`, through `squad-log.py` (step 1), and `tasks.md` check marks (features);
   - in `plan.md` (for a feature also `spec.md`): the *Challenge notes* and *Security notes* you append
-    verbatim (*Plan challenge*), a tier raise (*Tiers*) and an area added to *Security areas touched*
+    verbatim (*Plan challenge*) with `python3 .squad/tools/squad-notes.py <folder> challenge|security --agent-id <id>`
+    (`--spec` for `spec.md`; `--stdin` with the report piped in outside Claude Code) and the exact edits such a
+    note states for that document, a tier raise (*Tiers*) and an area added to *Security areas touched*
     (*Unlisted security areas*);
   - the Lead's exact edits on tiers `docs` and `patch` (*Tiers*), a fix marked `verbatim` (*Verbatim
     documentation fixes*), *Format* on the files of the change (step 7), merge commits (*Merge conflicts*),
@@ -59,8 +61,9 @@ every Git and GitHub action yourself, including follow-up issues the Lead decide
    and report that. Run `git fetch origin main --tags` (in a shallow clone, `git rev-parse
    --is-shallow-repository` prints `true`: `git fetch --unshallow --tags origin`; a stamp that checks the decision
    records refuses a shallow clone), then start from a clean working tree on a new branch off the latest `main`, e.g.
-   `fix-issue-<number>-<short-slug>` (or the branch the session prescribes). Create `specs/issue-<number>/log.md`
-   from `specs/_template/log.md`, commit and push it.
+   `fix-issue-<number>-<short-slug>` (or the branch the session prescribes). A prescribed branch whose pull request
+   is already merged is not reused: start a new branch off `main` without a force-push and name it in the intake
+   row. Create `specs/issue-<number>/log.md` from `specs/_template/log.md`, commit and push it.
 
    **Several issues in one request.** By default each issue gets its own run, branch and pull request, one after
    another. Several may share one run: intake then starts with the lowest number (its work folder) and its row lists
@@ -68,7 +71,15 @@ every Git and GitHub action yourself, including follow-up issues the Lead decide
    user did not ask for one pull request, the others go back to runs of their own. A shared run's pull request
    carries one `Closes #<number>` per issue, and the working record goes to the first issue with a one-line pointer
    on each other. When the session prescribes a single branch but the issues
-   need separate pull requests, ask the user before step 2 of the second issue.
+   need separate pull requests, ask the user before step 2 of the second issue. `gate-stamp.py --verify` and
+   `squad-log.py` read the checked-out branch, `sonar-check.py pr` its `HEAD` unless `--head <sha>` is given: while one
+   run waits on its pull request and the next works on another branch in the same clone, run the waiting one's checks
+   and step-11 fixes in a worktree of its branch (`git worktree add ../<repository>-<number> <branch>`), and remove it
+   once that pull request is merged. Issues that change the same lines, or one that needs another's change, either
+   share one run or are stacked on purpose, decided at intake and named in the intake row: each branch starts from the
+   previous one and its pull request targets it, the last pull request repeats every `Closes #<number>` (one merged
+   into another branch closes nothing), and once the previous pull request is merged, `main` is merged into the next
+   branch and its pull request retargeted to `main` before its own merge.
 
    **Logging.** Only you write `log.md`, one row per step and per launch, always with
    `python3 .squad/tools/squad-log.py issue-<number> "<step>" "<member>" "<result>"` — never by hand.

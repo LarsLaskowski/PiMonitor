@@ -49,9 +49,10 @@ Steps 4–6 of a feature run per task group of `tasks.md`, in table order; group
 Lead's tasks) runs none of them. An orchestrator row of step 4 that says it skipped the step (`4 Skeleton skipped`: the
 plan adds no API after all) ends step 4 for its group, a row without a group for every group; the same holds for step
 5 (`5 Tests first skipped (G3)`), and an orchestrator coverage row of step 6 without a group (`6 Coverage gate (all
-groups)`) ends the coverage pass of every group implemented before it. A group whose every task row names only
-documentation files (Markdown, READMEs, in parentheses too) has no skeleton, no tests first and no coverage pass: the
-Dev writes its rows, the Tester its test documentation in mode coverage.
+groups)`) ends the coverage pass of every group implemented before it. `6 Implement skipped (G1)` ends step 6's
+implementation of the group it names (steps 4–5 left no production code to write); it needs the group in a feature.
+A group whose every task row names only documentation files (Markdown, READMEs, in parentheses too) has no skeleton,
+no tests first and no coverage pass: the Dev writes its rows, the Tester its test documentation in mode coverage.
 
 `--launch squad-<role> <mode>` prints that one launch — model, fresh or continued, the log command — for a launch the
 log cannot foresee (a CI failure or a review comment in step 11). `--stdin` reads the log from standard input after
@@ -147,6 +148,7 @@ CONTINUATION_CAP = 5
 CONTINUATION_TOKENS = 300_000
 SPEC_APPROVAL = getattr(settings, "SPEC_APPROVAL", "lead")
 LOG_TOOL = "python3 .squad/tools/squad-log.py"
+NOTES_TOOL = ".squad/tools/squad-notes.py"
 STDIN = " --stdin < log.md > log-updated.md"
 ISSUE_HANDOVER = "the issue text and the work folder"
 STAMP_TOOL = "python3 .squad/tools/gate-stamp.py"
@@ -158,7 +160,8 @@ RESULT_HINTS = {LEAD: "<its RESULT line>, then the result", ADVOCATE: "<its VERD
 # its agent file being current, and named by `squad-log.py` when a logged row carries none.
 VERDICT_FORMATS = {
     REVIEWER: "`VERDICT: APPROVE on <sha>` or `VERDICT: BLOCKING <n> | NON-BLOCKING <m> on <sha>` (<sha>: all 40 "
-              "characters of `git rev-parse` of the head it reviewed)",
+              "characters of `git rev-parse` of the head it reviewed; `NON-BLOCKING <m> (<k> plan)` when <k> of them "
+              "only ask for what the plan already orders)",
     ADVOCATE: "`VERDICT: NO OBJECTIONS` or `VERDICT: OBJECTIONS <n> major, <m> minor`",
     SECURITY: "`VERDICT: APPROVED` or `VERDICT: CHANGES_REQUIRED`",
 }
@@ -166,6 +169,11 @@ DECIDE_FORMAT = ("`RESULT: DECIDED — <option>`; on review findings `FIX: <each
                  "<each linked issue>` after the dash, `FIX:` in capitals whenever it orders a change")
 # A Lead decision that orders a change: `FIX:` in capitals, with its colon ("no FIX needed" orders none).
 FIX_ORDERED = re.compile(r"\bFIX:")
+# An orchestrator row of steps 4–6 that says it skipped the step (`4 Skeleton skipped`, `6 Implement skipped (G1)`).
+SKIPPED = re.compile(r"\bskip", re.I)
+# The non-blocking findings of a Reviewer's verdict line that only ask for what the plan already orders
+# (`NON-BLOCKING 2 (1 plan)`): their owner fixes them without a Lead decision (PlexToJellyfinSync#292).
+PLAN_FINDINGS = re.compile(r"NON-BLOCKING\s+\d+\s*\((\d+)\s+plan\b", re.I)
 # The tags a verbatim row names its findings by, as the Reviewer wrote them (`[NON-BLOCKING, verbatim]`).
 NONBLOCKING_TAG = re.compile(r"\[NON-BLOCKING, verbatim\]", re.I)
 BLOCKING_TAG = re.compile(r"\[BLOCKING, verbatim\]", re.I)
@@ -575,7 +583,8 @@ def spec_challenge(run, challenge):
     if minor and not major and not notes_settled(run, run.spec, {"2a"}, challenge[-1]):
         return heading("step 2a — minor spec objections") + [
             DO + "append the minor objections verbatim to spec.md as a *Challenge notes* section (the Lead answers them "
-            "while it plans); commit",
+            f"while it plans) with `python3 {NOTES_TOOL} {run.name} challenge --spec --agent-id <the Devil's Advocate's "
+            "id>`, and apply each exact edit of spec.md a note states (*Plan challenge*); commit",
             orchestrator_log(run, "2a Challenge notes", "minor objections appended verbatim to spec.md")]
     return None
 
@@ -682,7 +691,8 @@ def revision(run, challenge, reviews, security_due):
         missing = challenge[-1] if verdict is None else reviews[security.index(None)]
         return heading("steps 2–3 — route the verdicts") + no_verdict(missing) + [
             "  a major objection or CHANGES_REQUIRED: the Lead (mode revise) with all of them; minor objections only: "
-            "append them verbatim as *Challenge notes*; APPROVED with notes: append them as *Security notes*"]
+            "append them verbatim as *Challenge notes*; APPROVED with notes: append them as *Security notes* (both with "
+            f"{NOTES_TOOL})"]
     revisions = [row for row in run.of(LEAD, {run.plan_step, "2", "3"}) if re.search(r"revise|decide", row.step, re.I)
                  and not re.search("plan-check", row.step, re.I)]
     answered = [row for row in revisions if reviews and row.index > reviews[-1].index]
@@ -716,7 +726,9 @@ def confirmation(run, unconfirmed, verdict, challenge):
     if verdict[1] and not verdict[0] and challenge and not notes_settled(run, run.plan, later, challenge[-1]):
         return heading(f"step {run.plan_step} — minor objections only") + [
             DO + "append the minor objections verbatim to plan.md as *Challenge notes* (and Security's non-blocking "
-            "notes as *Security notes*); commit — no Lead launch",
+            f"notes as *Security notes*) with `python3 {NOTES_TOOL} {run.name} challenge|security --agent-id <the "
+            "member's id>`, and apply each exact edit of plan.md a note states (*Plan challenge*); commit — no Lead "
+            "launch",
             orchestrator_log(run, f"{run.plan_step} Challenge notes", "minor objections appended verbatim to plan.md")]
     return None
 
@@ -788,7 +800,7 @@ def group_rows(run, who, number, group, word=None):
 
 def skeleton_skipped(run, group):
     """True when the orchestrator logged step 4 as skipped for the group, or without a group for every group."""
-    return any(re.search(r"\bskip", f"{row.step} {row.result}", re.I) and (in_group(row, group) or not GROUP.search(row.step))
+    return any(SKIPPED.search(f"{row.step} {row.result}") and (in_group(row, group) or not GROUP.search(row.step))
                for row in run.of(ORCHESTRATOR, {"4"}))
 
 
@@ -797,7 +809,7 @@ def tests_first_ended(run, group):
     and names the group (`5 Tests first skipped (G3)`) or no group."""
     if group_rows(run, TESTER, "5", group):
         return True
-    return any(re.search(r"\bskip", f"{row.step} {row.result}", re.I) and (in_group(row, group) or not GROUP.search(row.step))
+    return any(SKIPPED.search(f"{row.step} {row.result}") and (in_group(row, group) or not GROUP.search(row.step))
                for row in run.of(ORCHESTRATOR, {"5"}))
 
 
@@ -813,6 +825,16 @@ def deferred_row(run, group):
     """The group's last step-5 Tester row that carries a `Deferred:` line (a later fix round may carry none), or None."""
     rows = [row for row in group_rows(run, TESTER, "5", group) if DEFERRED.search(row.result)]
     return rows[-1] if rows else None
+
+
+def implement_ended(run, group):
+    """True when the group's implementation is over: a Dev implement row of step 6, or an orchestrator row of step 6
+    that says it skipped the implementation and names the group (`6 Implement skipped (G1)`: steps 4–5 left nothing to
+    write, PlexToJellyfinSync#292); unlike steps 4 and 5, a row without a group ends only a run without groups."""
+    if group_rows(run, DEV, "6", group, word="implement"):
+        return True
+    return any(SKIPPED.search(f"{row.step} {row.result}") and (not group or GROUP.search(row.step))
+               for row in group_rows(run, ORCHESTRATOR, "6", group, word="implement"))
 
 
 def coverage_ended(run, group):
@@ -895,10 +917,12 @@ def group_step(run, group, skeleton, docs_only=False):
                 run, TESTER, "coverage", f"6 Coverage{tag}", f"{rows}, the tests of *Tests per criterion*, "
                 f"{BASE_HANDOVER}")
         return None
-    if not group_rows(run, DEV, "6", group, word="implement"):
+    if not implement_ended(run, group):
         return heading(f"step 6 — Implement{tag}") + launch(
             run, DEV, "implement", f"6 Implement{tag}", f"{rows}, the test names (the deferred ones marked), "
-            f"{BASE_HANDOVER}")
+            f"{BASE_HANDOVER}") + [
+            "  Not due when steps 4 and 5 left the group no production code to write (the skeleton was the whole "
+            "change): " + orchestrator_log(run, f"6 Implement skipped{tag}", "skipped — <what steps 4–5 did>").strip()]
     if not coverage_ended(run, group):
         return coverage_pass(run, tag, rows, deferred_tests(run, group))
     return None
@@ -1205,9 +1229,18 @@ def review(run):
     if stale:
         return stale
     fixed_blocking, fixed_nonblocking = verbatim_findings(run, max(r.index for r in rows))
-    blocking = sum(v[0] for v in verdicts) - fixed_blocking
-    nonblocking = sum(v[1] for v in verdicts) - fixed_nonblocking
+    planned = sum(plan_ordered(row) for row in rows)
+    blocking = sum(v[0] for v in verdicts) - fixed_blocking + planned
+    nonblocking = sum(v[1] for v in verdicts) - fixed_nonblocking - planned
     return review_outcome(run, rows, max(blocking, 0), max(nonblocking, 0))
+
+
+def plan_ordered(row):
+    """The non-blocking findings a Reviewer's verdict line marks as asked for by the plan (`NON-BLOCKING 2 (1 plan)`):
+    they go to their owner with the round's fixes, as blocking ones do, without a Lead decision."""
+    found = REVIEW.search(row.result) if row.who == REVIEWER else None
+    plan = PLAN_FINDINGS.search(row.result[found.start():].split("\n", 1)[0]) if found else None
+    return int(plan.group(1)) if plan else 0
 
 
 def unmatched_review(run, stamp_index, rows):
@@ -1304,7 +1337,8 @@ def review_outcome(run, rows, blocking, nonblocking):
             owner_fixes(run, "8", "the Lead's decide row") + verbatim
     return heading("step 8 — blocking findings to their owner, then steps 6–7 and a mandatory delta round") + launch(
         run, DEV, "fix", run.step_cell("8", "Fix"), "the blocking findings on code and documentation (and the "
-        "non-blocking fixes the Lead ordered), the head SHA", purpose="code and documentation") + launch(
+        "non-blocking fixes the Lead ordered or the plan already orders), the head SHA",
+        purpose="code and documentation") + launch(
         run, TESTER, "coverage", run.step_cell("8", FIX_TESTS), "the blocking findings on tests, the head SHA",
         purpose="tests") + verbatim
 

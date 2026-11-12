@@ -310,6 +310,12 @@ def pull_request_source(number):
     return PullRequestSource(repository, number, token)
 
 
+def printable(text):
+    """The text with every control character escaped (`\\n`, `\\x1b`, `\\u2028`): a file name of a fork pull request
+    may hold a newline, and a line it starts with `::` would run as a GitHub Actions workflow command (#361)."""
+    return "".join(char if char.isprintable() or char == " " else repr(char)[1:-1] for char in text)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--tier", choices=["docs", "patch", "tests", "trivial", "standard", "security"])
@@ -332,7 +338,7 @@ def main():
         print(f"WARNING: {BASE_REF} is not an ancestor of HEAD: fetch it (git fetch origin main) and merge it, or "
               "the changed files below may include changes of the base branch")
     for error in errors:
-        print(f"ERROR: {error}")
+        print(f"ERROR: {printable(error)}")
     print(f"\nChecked {len(files)} changed files: {'PASS' if not errors else 'FAIL'}")
     return 0 if not errors else 1
 
