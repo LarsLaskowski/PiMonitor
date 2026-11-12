@@ -450,3 +450,75 @@ func TestTemperatureCollector_Collect_RedetectsAfterZoneVanishes(t *testing.T) {
 		t.Fatalf("temp = %+v, want zone=soc_thermal celsius=55.0", temp)
 	}
 }
+
+// TestTemperatureCollector_CollectGPU_NoVcgencmd_AC2 pins the missing-vcgencmd
+// error of the GPU reading (logged once by the collector, issue #197) and that
+// a nil runner stays a silent, disabled reading.
+func TestTemperatureCollector_CollectGPU_NoVcgencmd_AC2(t *testing.T) {
+	now := time.Unix(1_700_000_000, 0)
+
+	t.Run("AC2 runner without vcgencmd", func(t *testing.T) {
+		c := &TemperatureCollector{vcg: &vcgencmdRunner{now: func() time.Time { return now }, lastDetect: now}}
+
+		gpu, err := c.CollectGPU(context.Background())
+
+		if !errors.Is(err, errVcgencmdUnavailable) {
+			t.Fatalf("CollectGPU error = %v, want errVcgencmdUnavailable", err)
+		}
+		if gpu != nil {
+			t.Fatalf("CollectGPU = %+v, want nil", gpu)
+		}
+	})
+
+	t.Run("AC2 runner without vcgencmd for PMIC", func(t *testing.T) {
+		c := &TemperatureCollector{vcg: &vcgencmdRunner{now: func() time.Time { return now }, lastDetect: now}}
+
+		pmic, err := c.CollectPMIC(context.Background())
+
+		if !errors.Is(err, errVcgencmdUnavailable) {
+			t.Fatalf("CollectPMIC error = %v, want errVcgencmdUnavailable", err)
+		}
+		if pmic != nil {
+			t.Fatalf("CollectPMIC = %+v, want nil", pmic)
+		}
+		if c.pmicUnsupported != nil {
+			t.Fatalf("pmicUnsupported = %v, want a missing vcgencmd not to latch", c.pmicUnsupported)
+		}
+	})
+
+	t.Run("AC2 nil runner disables both readings", func(t *testing.T) {
+		c := &TemperatureCollector{}
+
+		gpu, gpuErr := c.CollectGPU(context.Background())
+		pmic, pmicErr := c.CollectPMIC(context.Background())
+
+		if gpu != nil || gpuErr != nil || pmic != nil || pmicErr != nil {
+			t.Fatalf("nil runner: gpu=(%+v, %v) pmic=(%+v, %v), want (nil, nil) for both", gpu, gpuErr, pmic, pmicErr)
+		}
+	})
+}
+
+// TestTemperatureCollector_CollectGPUAndPMIC_WithoutThermalZone_AC3 pins that
+// the vcgencmd readings do not depend on a readable thermal zone.
+func TestTemperatureCollector_CollectGPUAndPMIC_WithoutThermalZone_AC3(t *testing.T) {
+	path := pmicAwareVcgencmd(t, t.TempDir(), "  echo \"temp=52.1'C\"")
+	c := &TemperatureCollector{
+		zoneGlob: filepath.Join(t.TempDir(), "thermal_zone*"),
+		now:      time.Now,
+		vcg:      &vcgencmdRunner{detected: true, path: path},
+	}
+
+	_, zoneErr := c.Collect()
+	gpu, gpuErr := c.CollectGPU(context.Background())
+	pmic, pmicErr := c.CollectPMIC(context.Background())
+
+	if zoneErr == nil {
+		t.Fatal("Collect error = nil, want an error without a thermal zone")
+	}
+	if gpuErr != nil || gpu == nil || diffFloat(gpu.Celsius, 42.8) > 0.001 {
+		t.Fatalf("CollectGPU = (%+v, %v), want 42.8 C and no error", gpu, gpuErr)
+	}
+	if pmicErr != nil || pmic == nil || diffFloat(pmic.Celsius, 52.1) > 0.001 {
+		t.Fatalf("CollectPMIC = (%+v, %v), want 52.1 C and no error", pmic, pmicErr)
+	}
+}

@@ -2,6 +2,7 @@ package collector
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 )
@@ -89,10 +90,10 @@ func TestParseThrottled_Malformed(t *testing.T) {
 	}
 }
 
-func TestThrottledCollector_Collect_NoVcgencmd(t *testing.T) {
+func TestThrottledCollector_Collect_NoVcgencmd_AC2(t *testing.T) {
 	// A collector whose vcg runner has never found vcgencmd (and whose
-	// re-detection window has not elapsed) must report no reading rather
-	// than failing, so the throttled object is simply omitted off-Pi.
+	// re-detection window has not elapsed) reports no reading and the
+	// missing-vcgencmd error, so the collector can log it once (issue #197).
 	now := time.Unix(1_700_000_000, 0)
 	c := &ThrottledCollector{
 		vcg: &vcgencmdRunner{
@@ -101,8 +102,8 @@ func TestThrottledCollector_Collect_NoVcgencmd(t *testing.T) {
 		},
 	}
 	got, err := c.Collect(context.Background())
-	if err != nil {
-		t.Fatalf("Collect: %v", err)
+	if !errors.Is(err, errVcgencmdUnavailable) {
+		t.Fatalf("Collect error = %v, want errVcgencmdUnavailable", err)
 	}
 	if got != nil {
 		t.Fatalf("expected no throttled reading without vcgencmd, got %+v", got)

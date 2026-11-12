@@ -72,12 +72,14 @@ func TestCPUFreqCollector_Collect_SortedByCoreIndex(t *testing.T) {
 	}
 }
 
-func TestCPUFreqCollector_Collect_NoDriver(t *testing.T) {
+func TestCPUFreqCollector_Collect_NoDriver_AC2(t *testing.T) {
 	root := t.TempDir()
-	c := &CPUFreqCollector{glob: filepath.Join(root, "cpu[0-9]*", "cpufreq")}
+	glob := filepath.Join(root, "cpu[0-9]*", "cpufreq")
+	c := &CPUFreqCollector{glob: glob}
 	freqs, err := c.Collect()
-	if err != nil {
-		t.Fatalf("Collect: %v", err)
+	wantErr := "no cpufreq directories found matching " + glob
+	if err == nil || err.Error() != wantErr {
+		t.Fatalf("Collect error = %v, want %q", err, wantErr)
 	}
 	if len(freqs) != 0 {
 		t.Fatalf("expected no readings without a cpufreq driver, got %+v", freqs)

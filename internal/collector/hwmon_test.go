@@ -133,13 +133,15 @@ func TestReadHwmonSensors_NoChipName(t *testing.T) {
 	}
 }
 
-func TestReadHwmonSensors_NoHwmonDirectory(t *testing.T) {
+func TestReadHwmonSensors_NoHwmonDirectory_AC2(t *testing.T) {
 	root := t.TempDir()
+	glob := filepath.Join(root, "hwmon*")
 
-	got, err := readHwmonSensors(filepath.Join(root, "hwmon*"))
+	got, err := readHwmonSensors(glob)
 
-	if err != nil {
-		t.Fatalf("readHwmonSensors should not error when no hwmon directory exists, got %v", err)
+	wantErr := "no hwmon chips found matching " + glob
+	if err == nil || err.Error() != wantErr {
+		t.Fatalf("readHwmonSensors error = %v, want %q", err, wantErr)
 	}
 	if len(got) != 0 {
 		t.Fatalf("expected no sensors, got %d: %+v", len(got), got)
