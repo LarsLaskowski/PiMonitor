@@ -138,5 +138,5 @@ None yet.
   `temperature` series of zeros). `AGENTS.md` and `.squad/project.md` rule out a fabricated reading for a missing
   source. Should a failed tick add no point instead?
 - On shutdown the final write is skipped when a slow-tick write is still running, so the file then holds the state
-  of that earlier write. `ARCHITECTURE.md` (*History persistence*) says a clean stop loses at most the points since
-  the last fast tick. Should the final write wait for the running one and then write?
+  of that earlier write and the points collected since are lost. Should the final write wait for the running one and
+  then write?

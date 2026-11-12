@@ -186,5 +186,3 @@ None yet.
   negative interval. Should every number option reject NaN and infinity?
 - A fractional value for an integer option is accepted and truncated (`processes_top_n: 2.5` becomes `2`). Should it be
   rejected?
-- `ARCHITECTURE.md` (*Configuration*) says `-version` works "even against an otherwise-invalid config file"; the code
-  skips only value validation, so a missing file, a syntax error or an unknown key still fails `-version -config …`.
