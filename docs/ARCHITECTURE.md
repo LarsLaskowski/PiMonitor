@@ -222,7 +222,11 @@ event out onto the queue of every webhook it reaches.
 Per-webhook behavior: a severity filter (`min_level`), an optional
 `text/template`-rendered body (defaulting to a fixed JSON payload when unset), retry with
 exponential backoff up to `notify_max_retries`, and a per-`(metric, resource)`
-rate limiter (`notify_min_interval_seconds`) that coalesces repeated firings.
+rate limiter (`notify_min_interval_seconds`) that coalesces repeated firings. Each
+successful delivery drops the entries whose window has already run out, so the state
+holds at most the keys delivered within one window of the latest delivery, and resources
+that come and go (removable media, container mounts) don't accumulate keys for the life
+of the process.
 
 `text/template` does no escaping of its own, so a custom template whose body is JSON must
 use the `json` template function (registered in `templateFuncs`) around every interpolated

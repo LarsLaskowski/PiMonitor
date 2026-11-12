@@ -683,3 +683,64 @@ func TestNotifier_RateLimitStateIsPerWebhook(t *testing.T) {
 	waitForRequest(t, ch1)
 	waitForRequest(t, ch2)
 }
+
+// diskEvent is a crit "fired" transition for one mountpoint.
+func diskEvent(mountpoint string, at time.Time) Event {
+	return Event{Metric: "disk", Resource: mountpoint, Kind: KindFired, From: LevelOK, To: LevelCrit, Value: 97, At: at}
+}
+
+// Rate-limit state must not grow with every resource that ever alerted: once
+// an entry's window is over it can no longer suppress anything, so it is
+// dropped on the next successful delivery. This is what keeps a host whose
+// mountpoints churn (containers, removable media) from accumulating keys for
+// the life of the process.
+func TestNotifierRecordSent_PrunesExpiredEntries(t *testing.T) {
+	n := &Notifier{minInterval: time.Minute}
+	w := &webhookWorker{lastSent: make(map[string]time.Time)}
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	// 100 short-lived mountpoints each alert once.
+	for i := 0; i < 100; i++ {
+		n.recordSent(w, diskEvent(fmt.Sprintf("/media/usb%d", i), base.Add(time.Duration(i)*time.Second)))
+	}
+	if got := len(w.lastSent); got > 61 {
+		t.Fatalf("after 100 deliveries 1s apart, %d entries tracked, want at most the 61 still within the 60s window", got)
+	}
+
+	// Long after every window has run out, one more delivery leaves only
+	// its own entry behind.
+	n.recordSent(w, diskEvent("/", base.Add(time.Hour)))
+	if got := len(w.lastSent); got != 1 {
+		t.Fatalf("%d entries tracked after every window expired, want 1", got)
+	}
+}
+
+// Pruning must change no rate-limit decision: an entry still inside its
+// window survives a delivery for another resource and keeps suppressing
+// repeat firings, and an entry exactly minInterval old is both prunable and
+// no longer limiting.
+func TestNotifierRecordSent_KeepsEntriesInsideWindow(t *testing.T) {
+	n := &Notifier{minInterval: time.Minute}
+	w := &webhookWorker{lastSent: make(map[string]time.Time)}
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	n.recordSent(w, diskEvent("/old", base))
+	n.recordSent(w, diskEvent("/recent", base.Add(30*time.Second)))
+
+	// One minute after /old: its window is over, /recent's is not.
+	now := base.Add(time.Minute)
+	if n.rateLimited(w, diskEvent("/old", now)) {
+		t.Fatal("/old rate-limited exactly minInterval after its delivery, want delivered")
+	}
+	n.recordSent(w, diskEvent("/other", now))
+
+	if _, ok := w.lastSent[rateLimitKey(diskEvent("/old", now))]; ok {
+		t.Error("expired /old entry was not pruned")
+	}
+	if !n.rateLimited(w, diskEvent("/recent", now)) {
+		t.Error("/recent no longer rate-limited 30s into its 60s window after pruning")
+	}
+	if !n.rateLimited(w, diskEvent("/other", now.Add(time.Second))) {
+		t.Error("/other not rate-limited 1s after its own delivery")
+	}
+}
