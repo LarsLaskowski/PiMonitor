@@ -35,6 +35,7 @@ Every optional source — thermal zone, the GPU and PMIC temperature readings, `
 sensors, cpufreq and Pi-hole — logs its failures with the log-once rule (option 3), each reading under its own
 message, so a missing `vcgencmd` is reported once by each of the three readings that need it. The sources a
 running Linux host always has (`/proc/stat`, `/proc/meminfo`, `/proc/mounts`, …) keep logging every failure.
+`updates` (apt) and process collection keep logging every failure too, since they are not hardware sources.
 
 ## Consequences
 
