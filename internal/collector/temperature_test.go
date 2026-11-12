@@ -119,18 +119,20 @@ func TestTemperatureCollector_Collect(t *testing.T) {
 	writeThermalZone(t, root, "thermal_zone0", "cpu-thermal", "50000")
 
 	c := &TemperatureCollector{zonePath: filepath.Join(root, "thermal_zone0"), zoneType: "cpu-thermal"}
-	temp, gpuTemp, pmicTemp, err := c.Collect(context.Background())
+	temp, err := c.Collect()
 	if err != nil {
 		t.Fatalf("Collect: %v", err)
 	}
 	if diffFloat(temp.Celsius, 50.0) > 0.001 {
 		t.Fatalf("Celsius = %v, want 50.0", temp.Celsius)
 	}
-	if gpuTemp != nil {
-		t.Fatalf("expected no GPU temp when vcgencmd is not configured, got %+v", gpuTemp)
+	gpuTemp, gpuErr := c.CollectGPU(context.Background())
+	if gpuErr != nil || gpuTemp != nil {
+		t.Fatalf("CollectGPU = %+v, %v; want nil, nil when vcgencmd is not configured", gpuTemp, gpuErr)
 	}
-	if pmicTemp != nil {
-		t.Fatalf("expected no PMIC temp when vcgencmd is not configured, got %+v", pmicTemp)
+	pmicTemp, pmicErr := c.CollectPMIC(context.Background())
+	if pmicErr != nil || pmicTemp != nil {
+		t.Fatalf("CollectPMIC = %+v, %v; want nil, nil when vcgencmd is not configured", pmicTemp, pmicErr)
 	}
 }
 
@@ -145,12 +147,16 @@ func TestTemperatureCollector_Collect_WithGPUTemp(t *testing.T) {
 		zoneType: "cpu-thermal",
 		vcg:      &vcgencmdRunner{detected: true, path: path},
 	}
-	temp, gpuTemp, _, err := c.Collect(context.Background())
+	temp, err := c.Collect()
 	if err != nil {
 		t.Fatalf("Collect: %v", err)
 	}
 	if diffFloat(temp.Celsius, 50.0) > 0.001 {
 		t.Fatalf("Celsius = %v, want 50.0", temp.Celsius)
+	}
+	gpuTemp, err := c.CollectGPU(context.Background())
+	if err != nil {
+		t.Fatalf("CollectGPU: %v", err)
 	}
 	if gpuTemp == nil || diffFloat(gpuTemp.Celsius, 42.8) > 0.001 {
 		t.Fatalf("gpuTemp = %+v, want Celsius=42.8", gpuTemp)
@@ -228,12 +234,23 @@ func assertPMICCollect(t *testing.T, pmicScript string, wantPMIC bool, wantPMICC
 		zoneType: "cpu-thermal",
 		vcg:      &vcgencmdRunner{detected: true, path: path},
 	}
-	temp, gpuTemp, pmicTemp, err := c.Collect(context.Background())
+	temp, err := c.Collect()
 	if err != nil {
 		t.Fatalf("Collect: %v", err)
 	}
 	if diffFloat(temp.Celsius, 50.0) > 0.001 {
 		t.Fatalf("Celsius = %v, want 50.0", temp.Celsius)
+	}
+	gpuTemp, err := c.CollectGPU(context.Background())
+	if err != nil {
+		t.Fatalf("CollectGPU: %v", err)
+	}
+	pmicTemp, pmicErr := c.CollectPMIC(context.Background())
+	if wantPMIC && pmicErr != nil {
+		t.Fatalf("CollectPMIC: %v", pmicErr)
+	}
+	if !wantPMIC && pmicErr == nil {
+		t.Fatal("CollectPMIC: expected an error when the PMIC reading is unavailable")
 	}
 	if gpuTemp == nil || diffFloat(gpuTemp.Celsius, 42.8) > 0.001 {
 		t.Fatalf("gpuTemp = %+v, want Celsius=42.8 (the die reading must survive whatever the PMIC invocation did)", gpuTemp)
@@ -270,16 +287,16 @@ func TestTemperatureCollector_Collect_PMICUnsupportedLatches(t *testing.T) {
 
 	const ticks = 3
 	for i := 0; i < ticks; i++ {
-		_, _, pmicTemp, err := c.Collect(context.Background())
-		if err != nil {
-			t.Fatalf("Collect #%d: %v", i, err)
+		pmicTemp, err := c.CollectPMIC(context.Background())
+		if !errors.Is(err, errVcgencmdUnsupportedOutput) {
+			t.Fatalf("CollectPMIC #%d: err = %v, want errVcgencmdUnsupportedOutput", i, err)
 		}
 		if pmicTemp != nil {
-			t.Fatalf("Collect #%d: pmicTemp = %+v, want nil", i, pmicTemp)
+			t.Fatalf("CollectPMIC #%d: pmicTemp = %+v, want nil", i, pmicTemp)
 		}
 	}
 
-	if !c.pmicUnsupported {
+	if c.pmicUnsupported == nil {
 		t.Fatal("expected pmicUnsupported to latch true after an unsupported-output response")
 	}
 
@@ -309,12 +326,12 @@ func TestTemperatureCollector_Collect_PMICTransientFailureKeepsRetrying(t *testi
 	}
 
 	for i := 0; i < 2; i++ {
-		if _, _, _, err := c.Collect(context.Background()); err != nil {
-			t.Fatalf("Collect #%d: %v", i, err)
+		if _, err := c.CollectPMIC(context.Background()); err == nil || errors.Is(err, errVcgencmdUnsupportedOutput) {
+			t.Fatalf("CollectPMIC #%d: err = %v, want a transient error that is not errVcgencmdUnsupportedOutput", i, err)
 		}
 	}
 
-	if c.pmicUnsupported {
+	if c.pmicUnsupported != nil {
 		t.Fatal("a failed exec must not latch pmicUnsupported: the same board may still have a PMIC sensor")
 	}
 }
@@ -330,24 +347,26 @@ func TestTemperatureCollector_Collect_VcgencmdExecFails(t *testing.T) {
 		zoneType: "cpu-thermal",
 		vcg:      &vcgencmdRunner{detected: true, path: path},
 	}
-	temp, gpuTemp, pmicTemp, err := c.Collect(context.Background())
+	temp, err := c.Collect()
 	if err != nil {
 		t.Fatalf("Collect: %v", err)
 	}
 	if diffFloat(temp.Celsius, 50.0) > 0.001 {
 		t.Fatalf("Celsius = %v, want 50.0", temp.Celsius)
 	}
-	if gpuTemp != nil {
-		t.Fatalf("expected no GPU temp when vcgencmd exec fails, got %+v", gpuTemp)
+	gpuTemp, gpuErr := c.CollectGPU(context.Background())
+	if gpuErr == nil || gpuTemp != nil {
+		t.Fatalf("CollectGPU = %+v, %v; want nil reading and an error when vcgencmd exec fails", gpuTemp, gpuErr)
 	}
-	if pmicTemp != nil {
-		t.Fatalf("expected no PMIC temp when vcgencmd exec fails, got %+v", pmicTemp)
+	pmicTemp, pmicErr := c.CollectPMIC(context.Background())
+	if pmicErr == nil || pmicTemp != nil {
+		t.Fatalf("CollectPMIC = %+v, %v; want nil reading and an error when vcgencmd exec fails", pmicTemp, pmicErr)
 	}
 }
 
 func TestTemperatureCollector_Collect_NoZoneDetected(t *testing.T) {
 	c := &TemperatureCollector{}
-	if _, _, _, err := c.Collect(context.Background()); err == nil {
+	if _, err := c.Collect(); err == nil {
 		t.Fatal("expected error when no thermal zone was detected")
 	}
 }
@@ -364,7 +383,7 @@ func TestTemperatureCollector_Collect_RedetectsZone(t *testing.T) {
 	}
 
 	// No zone exists yet: Collect must fail.
-	if _, _, _, err := c.Collect(context.Background()); err == nil {
+	if _, err := c.Collect(); err == nil {
 		t.Fatal("expected error when no thermal zone exists yet")
 	}
 
@@ -373,13 +392,13 @@ func TestTemperatureCollector_Collect_RedetectsZone(t *testing.T) {
 
 	// Still within the throttle window: re-detection is suppressed.
 	now = now.Add(detectRetryInterval - time.Second)
-	if _, _, _, err := c.Collect(context.Background()); err == nil {
+	if _, err := c.Collect(); err == nil {
 		t.Fatal("expected re-detection to be throttled within detectRetryInterval")
 	}
 
 	// Past the throttle window: the same collector now picks up the zone.
 	now = now.Add(2 * time.Second)
-	temp, _, _, err := c.Collect(context.Background())
+	temp, err := c.Collect()
 	if err != nil {
 		t.Fatalf("Collect after zone appeared: %v", err)
 	}
@@ -401,7 +420,7 @@ func TestTemperatureCollector_Collect_RedetectsAfterZoneVanishes(t *testing.T) {
 
 	// A zone exists at first and is cached by Collect.
 	writeThermalZone(t, root, "thermal_zone0", "cpu-thermal", "40000")
-	if temp, _, _, err := c.Collect(context.Background()); err != nil {
+	if temp, err := c.Collect(); err != nil {
 		t.Fatalf("initial Collect: %v", err)
 	} else if temp.Zone != "cpu-thermal" {
 		t.Fatalf("initial zone = %q, want cpu-thermal", temp.Zone)
@@ -417,13 +436,13 @@ func TestTemperatureCollector_Collect_RedetectsAfterZoneVanishes(t *testing.T) {
 	// Within the throttle window the collector cannot re-detect yet, so the
 	// stale path keeps failing (documents that throttling covers this path too).
 	now = now.Add(detectRetryInterval - time.Second)
-	if _, _, _, err := c.Collect(context.Background()); err == nil {
+	if _, err := c.Collect(); err == nil {
 		t.Fatal("expected error while re-detection is throttled after the zone vanished")
 	}
 
 	// Past the window the same collector recovers onto the new zone.
 	now = now.Add(2 * time.Second)
-	temp, _, _, err := c.Collect(context.Background())
+	temp, err := c.Collect()
 	if err != nil {
 		t.Fatalf("Collect after zone moved: %v", err)
 	}

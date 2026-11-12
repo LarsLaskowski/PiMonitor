@@ -506,7 +506,9 @@ func (c *Collector) collectFastTickSamples(ctx context.Context) fastTickSamples 
 	if err != nil {
 		c.log.Warn("load average collection failed", "error", err)
 	}
-	s.temp, s.gpuTemp, s.pmicTemp, s.tempErr = c.temp.Collect(ctx)
+	s.temp, s.tempErr = c.temp.Collect()
+	s.gpuTemp, _ = c.temp.CollectGPU(ctx)   // skeleton: errors observed in implementation
+	s.pmicTemp, _ = c.temp.CollectPMIC(ctx) // skeleton: errors observed in implementation
 	if s.tempErr != nil {
 		c.log.Warn("temperature collection failed", "error", s.tempErr)
 	}
