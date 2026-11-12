@@ -596,4 +596,6 @@ reachable from this code) on every push/PR plus a weekly schedule, so a newly-pu
 against an unchanged codebase is surfaced without waiting for the next commit.
 Actions are pinned to commit SHAs (not floating tags) so a compromised or rewritten action
 release can't silently change what CI executes; `.github/dependabot.yml` keeps those pins
-and `go.mod` dependencies current.
+and `go.mod` dependencies current. The GoReleaser binary the release workflow runs is pinned
+too, via the action's `version:` input in `release.yml`. Dependabot does not track that
+input, so it is raised by hand (validate `.goreleaser.yaml` with `goreleaser check` first).
