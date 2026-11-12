@@ -202,6 +202,15 @@ output and caches (see *Concurrency* in `.squad/stack.md` for what this stack sh
 and `squad-security`, because they are read-only and the reviewer builds in a scratch copy. Members
 experiment only in a scratch `git worktree`, never in the working tree (`team.md`, *Shared rules*).
 
+## An artifact the Product Manager cannot build
+
+When a manual check of step 9 needs an artifact the Product Manager cannot build (*Criteria verified only in CI*), the
+orchestrator builds it from the branch head and hands it over; the log row names the artifact and its commit. A
+container image in a cloud session without a running Docker daemon: start one with `dockerd --iptables=false
+--bridge=none &`, build with `docker build --network host --provenance=false --sbom=false --build-arg
+HTTPS_PROXY="$HTTPS_PROXY" -f <Dockerfile> -t <name>:pr .`, and hand over `docker save <name>:pr -o <name>-pr.tar`
+(loaded on the target with `docker load -i`); stop the daemon afterwards.
+
 ## Verbatim documentation fixes
 
 A review finding — blocking or non-blocking — whose fix the reviewer states verbatim (file, the sentence as it

@@ -200,6 +200,7 @@ STAMP = r"\d{4}-\d{2}-\d{2}(?: \d{2}:\d{2})?"
 ROW = re.compile(rf"^\| (?P<date>{STAMP}) \| (?P<step>(?:[^|\\]|\\\|)*) \| (?P<member>(?:[^|\\]|\\\|)*) \| "
                  r"(?P<result>.*) \|\s*$")
 MIN_TOKENS = 1000
+VERDICT_QUOTE = 80  # characters of a result a verdict warning quotes
 STEP_NUMBER = re.compile(r"^\s*(\d+)")
 ROUND_OF_SAME_MODE = re.compile(r"\b(?:fix|delta|revis)", re.I)
 SPECS_PREFIX = "specs/"
@@ -260,17 +261,22 @@ def squad_next():
     return _SQUAD_NEXT[0]
 
 
-def verdict_warning(member, step, result):
-    """A warning when the row of a member whose verdict `squad-next.py` reads carries no verdict line it can read,
-    naming the exact line and how to correct the row; None otherwise."""
+def verdict_warning(member, step, row):
+    """A warning when the written row of a member whose verdict `squad-next.py` reads carries no verdict line it can
+    read, naming the exact line, the start of the result it read and how to correct the row; None otherwise. The row
+    as written is checked, the cell `squad-next.py` reads back, not the argument (PlexToJellyfinSync#302)."""
     if is_not_launch(member):
         return None
+    found = ROW.match(row)
+    result = found.group("result") if found else row
     missing = squad_next().verdict_problem(member_agent(member), result)
     if missing is None:
         return None
-    return (f"WARNING: the row of {member} carries no verdict line squad-next.py can read; it needs {missing}. When the "
-            f"report states it, correct the row without a new launch: --replace-last \"{member}\" --step \"{step}\" "
-            "--new-result \"<the verdict line>, then the result\"")
+    start = result if len(result) <= VERDICT_QUOTE else result[:VERDICT_QUOTE] + "…"
+    return (f"WARNING: the row of {member} carries no verdict line squad-next.py can read; it needs {missing}. The "
+            f"result as written starts \"{start}\" (a backtick or `$` inside double quotes is run by the shell). When "
+            f"the report states the line, correct the row without a new launch: --replace-last \"{member}\" --step "
+            f"\"{step}\" --new-result \"<the verdict line>, then the result\"")
 
 
 def escape_controls(text):
@@ -1144,8 +1150,9 @@ def row_command(parser, path, args, launch):
                 cap_warning(path, args.member, origin=args.continued_from)] if args.continued else []
     for warning in filter(None, warnings):
         print(warning)
-    print(append_row(path, args.step, args.member, args.result, launch=launch))
-    warning = verdict_warning(args.member, args.step, args.result)
+    row = append_row(path, args.step, args.member, args.result, launch=launch)
+    print(row)
+    warning = verdict_warning(args.member, args.step, row)
     if warning:
         print(warning)
     return 0
@@ -1163,7 +1170,7 @@ def new_result_command(parser, path, args):
         print(f"No row of {args.replace_last}{where} in {args.folder}")
         return 1
     print(row)
-    warning = verdict_warning(args.replace_last, ROW.match(row).group("step"), args.new_result)
+    warning = verdict_warning(args.replace_last, ROW.match(row).group("step"), row)
     if warning:
         print(warning)
     return 0

@@ -42,7 +42,7 @@ Please provide a summary of the tests affected by this work and any unique strat
 - [ ] I have added or updated [Unit Tests](../docs/UNIT_TESTS.md) for the change.
 - [ ] I have tested my changes.
 - [ ] I have run *Format* and *Build* from [`.squad/stack.md`](../.squad/stack.md), and the *Analyzer gate* reports no diagnostic in a changed file.
-- [ ] The *Coverage gate* in `.squad/stack.md` passes (line coverage on new or changed production code and overall).
+- [ ] The *Coverage gate* in `.squad/stack.md` passes (new or changed production code with the branch conditions its report records, line coverage overall).
 - [ ] I have updated the project documentation ([`README.md`](../README.md), [`ARCHITECTURE.md`](../docs/ARCHITECTURE.md)) and the [area document](../docs/areas/README.md) of every changed behavior to reflect my changes.
 - [ ] Each decision with lasting weight has its [decision record](../docs/decisions/README.md), committed with the change.
 - [ ] I have read the [CONTRIBUTING](../docs/CONTRIBUTING.md) documentation and followed the project's code style guidelines.

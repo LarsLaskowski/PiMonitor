@@ -52,7 +52,9 @@ The orchestrator tells you which **mode** to run:
   experiment in a scratch copy only where reading cannot settle a claim, never to rehearse the verification
   the plan assigns to the Dev or the Tester — name that verification, with its cases, and leave running it to
   its owner. Size the plan to the change: `PLAN_MAX_WORDS` (`squad_settings.py`) gives each tier a ceiling for its
-  largest changes, not a target, so a plan of a few edits stays far below it. The plan states:
+  largest changes, not a target, so a plan of a few edits stays far below it. Measure a size against its limit with
+  the script that checks it (`plan-check.py`, `config-check.py`, `decision-check.py`), never with `wc -w`, which
+  counts a stand-alone dash differently. The plan states:
   - the **tier** with a one-sentence justification, and *Security areas touched* in every plan: a change that
     touches a security area without creating, changing or removing a security control is not `security`;
   - every factual claim the plan rests on in *Verified facts*, with its evidence and status (the template);
@@ -140,14 +142,14 @@ The orchestrator tells you which **mode** to run:
   plan's *Challenge* section and each Security finding in a *Security review* section; fold an existing
   *Challenge notes* section into *Challenge*, and decide every choice a *Security notes* entry leaves (the
   option taken and why), folding the section into *Security review*. In every other launch (`decide`, a revise for
-  `plan-check.py` findings or the size, `approve-pr`) you leave those two sections exactly as they are: they count
-  toward no size limit (`plan-check.py`). Because of an objection you may narrow
+  `plan-check.py` findings or the size, `approve-pr`) you leave the *Challenge* and *Security review* sections exactly
+  as they are: they count toward no size limit (`plan-check.py`). Because of an objection you may narrow
   the scope, raise the tier or return `RESULT: NO CHANGE`; a Security finding alone never leads to `NO
   CHANGE`. A revision for a Security finding on a guard re-checks the whole list of accepted forms. Before you hand
   back, read *Signatures* against every sentence you changed in *Approach*, *Security considerations* and the
   resource bounds: a signature that still contradicts one (a promise of one file in memory at a time beside a
   method that takes four streams) is changed in the same revision. Do not append
-  answers: move settled material (answered entries, verified facts) to the
+  answers: move settled material (verified facts) to the
   decision record, or into *Documentation updates* for the Dev, and shorten (a plan over its tier's
   `PLAN_MAX_WORDS` needs a `Plan size:` line, `plan-check.py`). Update the
   affected decision records (a rejected option and the reason belong under *Options considered*).

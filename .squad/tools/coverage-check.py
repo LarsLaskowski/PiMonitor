@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
-"""Coverage gate for the squad: line coverage of new/changed production lines (like SonarQube's
-"coverage on new code") and overall line coverage, merged from all coverage reports
+"""Coverage gate for the squad: coverage of new/changed production lines (like SonarQube's "coverage on new code":
+covered lines plus covered branch conditions over coverable lines plus conditions, the conditions read from a
+Cobertura `condition-coverage` or an lcov `BRDA` record; a Go coverprofile has none, and COVERAGE_CONDITIONS = False in
+`squad_settings.py` counts lines only) and overall line coverage, merged from all coverage reports
 (one per test project) of the latest test run; *Test with coverage* clears the results directory first. A report
 older than the last change of a tracked production or test file is refused: a merge, a formatter or an edit since
 the test run has moved the lines it counts.
@@ -119,11 +121,11 @@ def add_hit(hits, path, number, count):
     lines[number] = max(lines.get(number, 0), count)
 
 
-def load_cobertura(report):
+def cobertura_classes(report):
+    """(repo-relative path, class element) of every class of a Cobertura report."""
     # Local report from the repo's own test run; the tool stays stdlib-only, so no defusedxml.
     root = ET.parse(report).getroot()  # noqa: S314  # nosec B314
     sources = [s.text.rstrip("/\\") for s in root.iter("source") if s.text]
-    hits = {}
     for cls in root.iter("class"):
         filename = cls.get("filename")
         for src in sources:
@@ -131,10 +133,56 @@ def load_cobertura(report):
             if os.path.exists(candidate):
                 filename = candidate
                 break
-        path = repo_path(filename)
+        yield repo_path(filename), cls
+
+
+def load_cobertura(report):
+    hits = {}
+    for path, cls in cobertura_classes(report):
         for ln in cls.iter("line"):
             add_hit(hits, path, int(ln.get("number")), int(ln.get("hits")))
     return hits
+
+
+CONDITION_COVERAGE = re.compile(r"\((\d+)/(\d+)\)")
+
+
+def add_conditions(conditions, path, number, covered, total):
+    lines = conditions.setdefault(path, {})
+    known = lines.get(number, (0, 0))
+    lines[number] = (max(known[0], covered), max(known[1], total))
+
+
+def cobertura_conditions(report):
+    """{path: {line: (covered, total)}} of the branch conditions (`condition-coverage="50% (1/2)"`)."""
+    conditions = {}
+    for path, cls in cobertura_classes(report):
+        for ln in cls.iter("line"):
+            found = CONDITION_COVERAGE.search(ln.get("condition-coverage") or "")
+            if found:
+                add_conditions(conditions, path, int(ln.get("number")), int(found.group(1)), int(found.group(2)))
+    return conditions
+
+
+def lcov_conditions(report):
+    """{path: {line: (covered, total)}} of the branches (`BRDA:<line>,<block>,<branch>,<taken>`, `-` never run)."""
+    counts, path = {}, None
+    with open(report, encoding="utf-8") as handle:
+        for raw in handle:
+            line = raw.strip()
+            if line.startswith("SF:"):
+                path = repo_path(line[3:])
+            elif line.startswith("BRDA:") and path:
+                parts = line[5:].split(",")
+                key = (path, int(parts[0]))
+                covered, total = counts.get(key, (0, 0))
+                counts[key] = (covered + (parts[3] not in ("-", "0")), total + 1)
+            elif line == "end_of_record":
+                path = None
+    conditions = {}
+    for (name, number), (covered, total) in counts.items():
+        add_conditions(conditions, name, number, covered, total)
+    return conditions
 
 
 def load_lcov(report):
@@ -178,6 +226,7 @@ def load_go(report):
 
 
 LOADERS = {"cobertura": load_cobertura, "lcov": load_lcov, "go": load_go}
+CONDITION_LOADERS = {"cobertura": cobertura_conditions, "lcov": lcov_conditions}
 
 
 def merged_hits():
@@ -192,6 +241,20 @@ def merged_hits():
                     add_hit(hits, path, number, count)
     print(f"Coverage reports merged: {merged}")
     return hits
+
+
+def merged_conditions():
+    """The branch conditions of every report, merged like the hits; none with COVERAGE_CONDITIONS = False."""
+    conditions = {}
+    if not getattr(settings, "COVERAGE_CONDITIONS", True):
+        return conditions
+    for report_format, pattern in report_sources():
+        loader = CONDITION_LOADERS.get(report_format)
+        for report in run_reports(pattern) if loader else []:
+            for path, lines in loader(report).items():
+                for number, (covered, total) in lines.items():
+                    add_conditions(conditions, path, number, covered, total)
+    return conditions
 
 
 def tracked_files(pathspecs, *options):
@@ -220,19 +283,32 @@ def overall_coverage(hits):
     return (total_hit / total * 100 if total else 100.0), total_hit, total
 
 
-def new_code_coverage(hits):
-    """Print the changed production files and returns (percent, hit lines, coverable lines)."""
-    covered = coverable = 0
-    print("Changed production files (coverable changed lines):")
+def file_coverage(lines, file_hits, file_conditions):
+    """([hit lines, coverable lines, covered conditions, conditions], its rate and counts, what it leaves uncovered)
+    of a file's changed lines, the two texts for the gate's report line."""
+    relevant = [n for n in lines if n in file_hits]
+    hit = sum(1 for n in relevant if file_hits[n] > 0)
+    branches = [file_conditions[n] for n in relevant if n in file_conditions]
+    met, possible = sum(c for c, _ in branches), sum(t for _, t in branches)
+    missed = sorted(n for n in relevant if file_hits[n] == 0)
+    partial = sorted(n for n in relevant if n in file_conditions and file_conditions[n][0] < file_conditions[n][1])
+    rate = f"{(hit + met) / (len(relevant) + possible) * 100:5.1f}%" if relevant else "  n/a "
+    summary = f"{rate}  {hit}/{len(relevant)}" + (f" + {met}/{possible} conditions" if possible else "")
+    gaps = (f"  uncovered: {missed}" if missed else "") + (f"  conditions not covered: {partial}" if partial else "")
+    return [hit, len(relevant), met, possible], summary, gaps
+
+
+def new_code_coverage(hits, conditions=None):
+    """Print the changed production files and return (percent, hit lines, coverable lines, covered conditions,
+    conditions): the percent of lines and branch conditions together, as SonarQube computes coverage on new code."""
+    totals = [0, 0, 0, 0]  # hit lines, coverable lines, covered conditions, conditions
+    print("Changed production files (coverable changed lines, branch conditions on them):")
     for path, lines in sorted(changed_lines().items()):
-        file_hits = hits.get(path, {})
-        relevant = [n for n in lines if n in file_hits]
-        hit = sum(1 for n in relevant if file_hits[n] > 0)
-        covered, coverable = covered + hit, coverable + len(relevant)
-        missed = sorted(n for n in relevant if file_hits[n] == 0)
-        rate = f"{hit / len(relevant) * 100:5.1f}%" if relevant else "  n/a "
-        print(f"  {rate}  {hit}/{len(relevant)}  {path}" + (f"  uncovered: {missed}" if missed else ""))
-    return (covered / coverable * 100 if coverable else 100.0), covered, coverable
+        counts, summary, gaps = file_coverage(lines, hits.get(path, {}), (conditions or {}).get(path, {}))
+        totals = [total + count for total, count in zip(totals, counts, strict=True)]
+        print(f"  {summary}  {path}{gaps}")
+    covered, coverable = totals[0] + totals[2], totals[1] + totals[3]
+    return (covered / coverable * 100 if coverable else 100.0), *totals
 
 
 def warn_untracked():
@@ -257,9 +333,10 @@ def main():
     hits = merged_hits()
     overall, total_hit, total = overall_coverage(hits)
     changed = changed_lines()
-    new_code, covered, coverable = new_code_coverage(hits)
+    new_code, covered, coverable, met, possible = new_code_coverage(hits, merged_conditions())
 
-    print(f"\nNew/changed code: {new_code:.1f}% ({covered}/{coverable} lines)")
+    branches = f", {met}/{possible} conditions" if possible else ""
+    print(f"\nNew/changed code: {new_code:.1f}% ({covered}/{coverable} lines{branches})")
     print(f"Overall:          {overall:.1f}% ({total_hit}/{total} lines)")
     gated = bool(changed) or bool(changed_test_files())
     if not gated:

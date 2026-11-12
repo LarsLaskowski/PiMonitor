@@ -8,8 +8,8 @@ GitHub action and records every step and launch in `log.md` (`squad-issue`, step
 ones the skills use.
 
 The orchestrator's own procedures are in [`orchestration.md`](orchestration.md), which the members need not read;
-*Outside authors*, *Squad lessons*, *Draft until green*, *Merge conflicts*, *Verbatim documentation fixes* and
-*Unlisted security areas*, named here, are its sections.
+*Outside authors*, *Squad lessons*, *Draft until green*, *Merge conflicts*, *Verbatim documentation fixes*, *An
+artifact the Product Manager cannot build* and *Unlisted security areas*, named here, are its sections.
 
 ## Bug or feature
 
@@ -146,7 +146,10 @@ check is worked in step 11.
 A criterion tested by hand on a build before the PR approval (step 9) — a Product Manager's manual test of the
 change, say — names in the plan the build it runs on: a local build or publish of the branch head, with the
 command the project's documentation gives, or the CI-built artifact, for which the plan asks for an *Early draft
-PR* (without one, no CI build of the change exists before step 10).
+PR* (without one, no CI build of the change exists before step 10). When the plan asks the Product Manager to build
+the artifact (an image for the target host, say), the spec or plan first asks whether they can build it there, and
+the plan names the fallback: who builds it otherwise and how it reaches the target (`orchestration.md`, *An artifact
+the Product Manager cannot build*).
 
 ### Operator environments and documented procedures
 
@@ -268,11 +271,17 @@ again. Each objection is ranked `major` (the plan would build the wrong thing or
 `minor`, so the orchestrator routes without judgment:
 
 - **Only minor objections** (when step 3 runs: and Security approved): no Lead launch; the orchestrator
-  appends them verbatim to `plan.md` as *Challenge notes* (bookkeeping, like `log.md`). Dev and Tester follow them
+  appends them verbatim to `plan.md` as *Challenge notes* (bookkeeping, like `log.md`), with `squad-notes.py`, which
+  copies them from the member's report, never retyped. Dev and Tester follow them
   or report a deviation; the Reviewer checks them in round 1.
 - **Non-blocking findings of Security's `APPROVED` plan review** go verbatim into a *Security notes* section
   the same way — except a note that leaves the plan a choice ("document it, or reject"): the Lead decides it
   in mode `revise` before the skeleton, in one launch with any major objection.
+- **A note or minor objection whose fix is an exact edit of the challenged document itself** (`plan.md`,
+  `spec.md`: the sentence as it stands and as it should read) is applied by the orchestrator when it appends the
+  note, the way of *Verbatim documentation fixes* (`orchestration.md`; `specs/` only, logged, no launch): Dev and
+  Tester may not edit those documents, so nobody else would. A fix that needs judgment, or one that changes an
+  acceptance criterion, is routed as above.
 - **A major objection:** the Lead, in mode `revise` with all objections, answers each one in the plan's
   *Challenge* section, the minor ones included.
 
@@ -368,6 +377,8 @@ the Lead first (*Loop limits*, New scope on the open PR).
 Fixed in the same change or opened as a linked GitHub issue now — never deferred to "a later change".
 
 - A non-blocking finding with a verbatim documentation fix goes the way of *Verbatim documentation fixes*.
+- A non-blocking finding that only asks for what the approved plan already orders (the Reviewer quotes the plan's
+  sentence and tags it `plan`) goes to the sentence's owner with the round's fixes, without a Lead decision.
 - Every other non-blocking finding — the Reviewer's or Security's, one that touches code, or one the
   orchestrator would turn into a follow-up issue — is decided by the Lead in step 8, in mode `decide` (one
   launch for all of a round's findings), before that round's fix round: a fix it orders goes to its owner
