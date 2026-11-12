@@ -188,8 +188,9 @@ such as openHAB that poll single values.
   (no hwmon chip directory; only with `hwmon_enabled`, nothing is logged when it is off), `cpu_frequency` (no cpufreq
   directory) and `pihole`. A missing `vcgencmd` is reported once by each of the three readings that need it
   (`gpu_temperature`, `pmic_temperature`, `throttled`). A board without a PMIC sensor logs one warning for
-  `pmic_temperature` and no recovery line. A `vcgencmd` exec failure message carries at most 200 bytes of the
-  command's own output, on one line.
+  `pmic_temperature` and no recovery line. A `vcgencmd` failure or unparsable-output message carries at most 200
+  bytes of the command's own output (counted before quoting, plus `...` when cut), on one line
+  ([0002](../decisions/0002-bound-vcgencmd-output-in-errors.md)).
 - Not logged at all: a single mountpoint whose `statfs` fails or hangs, a single hwmon channel or cpufreq core that
   cannot be read, cpufreq directories present but no core readable, hwmon chips present but no channel readable, a
   single unreadable process, and system identity values that cannot be determined.
@@ -200,6 +201,7 @@ such as openHAB that poll single values.
 ## Related decisions
 
 - [0001: Optional metric sources log their failures once](../decisions/0001-optional-sources-log-failures-once.md)
+- [0002: Bound vcgencmd output in error texts, not the read](../decisions/0002-bound-vcgencmd-output-in-errors.md)
 
 ## Not here
 

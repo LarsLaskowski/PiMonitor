@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -121,14 +122,15 @@ func (r *vcgencmdRunner) run(ctx context.Context, subcommand string, args ...str
 	return strings.TrimSpace(string(out)), nil
 }
 
-// vcgencmdDetailMaxLen bounds how much of vcgencmd's failure output is
-// carried into an error message, so a misbehaving binary cannot bloat every
-// log line.
+// vcgencmdDetailMaxLen bounds how much of vcgencmd's output is carried into
+// an error message, whether the call failed or succeeded with output the
+// parsers cannot read, so a misbehaving binary cannot bloat every log line.
 const vcgencmdDetailMaxLen = 200
 
-// sanitizeVcgencmdDetail turns vcgencmd's raw failure output (stderr, or
-// stdout when stderr is empty) into a single,
-// length-bounded line suitable for an error message: surrounding whitespace
+// sanitizeVcgencmdDetail turns raw vcgencmd output into a single,
+// length-bounded line suitable for an error message. It is used for the
+// failure output of a call (stderr, or stdout when stderr is empty) and for
+// successful but unparsable output quoted by the parsers: surrounding whitespace
 // is trimmed, internal whitespace runs (including newlines) collapse to one
 // space, and anything beyond vcgencmdDetailMaxLen bytes is cut at a rune
 // boundary and marked with an ellipsis.
@@ -142,4 +144,16 @@ func sanitizeVcgencmdDetail(raw []byte) string {
 		cut--
 	}
 	return s[:cut] + "..."
+}
+
+// numParseCause returns the underlying cause (strconv.ErrSyntax or
+// strconv.ErrRange) of a *strconv.NumError and err unchanged otherwise. A
+// NumError quotes the whole input it failed to parse, so wrapping it would
+// carry unbounded vcgencmd output into the message a second time.
+func numParseCause(err error) error {
+	var numErr *strconv.NumError
+	if errors.As(err, &numErr) {
+		return numErr.Err
+	}
+	return err
 }

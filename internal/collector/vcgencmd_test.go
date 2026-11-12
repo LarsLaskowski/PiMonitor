@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -254,6 +255,27 @@ func TestSanitizeVcgencmdDetail(t *testing.T) {
 
 			if got != tt.want {
 				t.Fatalf("sanitizeVcgencmdDetail(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestNumParseCause(t *testing.T) {
+	other := errors.New("not a number error")
+	tests := []struct {
+		name string
+		err  error
+		want error
+	}{
+		{"syntax NumError yields ErrSyntax", &strconv.NumError{Func: "ParseFloat", Num: "x", Err: strconv.ErrSyntax}, strconv.ErrSyntax},
+		{"range NumError yields ErrRange", &strconv.NumError{Func: "ParseUint", Num: "9", Err: strconv.ErrRange}, strconv.ErrRange},
+		{"wrapped NumError yields its cause", fmt.Errorf("wrap: %w", &strconv.NumError{Func: "ParseUint", Num: "9", Err: strconv.ErrRange}), strconv.ErrRange},
+		{"other error is returned unchanged", other, other},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := numParseCause(tt.err); got != tt.want {
+				t.Errorf("numParseCause(%v) = %v, want %v", tt.err, got, tt.want)
 			}
 		})
 	}

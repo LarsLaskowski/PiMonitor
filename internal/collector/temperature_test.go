@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -520,5 +521,104 @@ func TestTemperatureCollector_CollectGPUAndPMIC_WithoutThermalZone_AC3(t *testin
 	}
 	if pmicErr != nil || pmic == nil || diffFloat(pmic.Celsius, 52.1) > 0.001 {
 		t.Fatalf("CollectPMIC = (%+v, %v), want 52.1 C and no error", pmic, pmicErr)
+	}
+}
+
+// TestParseVcgencmdTemp_ErrorText pins the exact text of the parse errors:
+// the quoted output is bounded to one line of at most vcgencmdDetailMaxLen
+// bytes and appears once (the strconv cause is reduced to its reason).
+func TestParseVcgencmdTemp_ErrorText(t *testing.T) {
+	const unsupported = "vcgencmd: output is not a temperature reading: "
+	tests := []struct {
+		name    string
+		output  string
+		want    string
+		wantIs  error
+		wantNum error
+	}{
+		{
+			name:   "AC1 long output is bounded",
+			output: strings.Repeat("x", 250),
+			want:   unsupported + "unexpected vcgencmd output: " + strconv.Quote(strings.Repeat("x", 200)+"..."),
+		},
+		{
+			name:   "AC1 multi-line output on one line",
+			output: "error=1\nerror_msg=x",
+			want:   unsupported + `unexpected vcgencmd output: "error=1 error_msg=x"`,
+		},
+		{
+			name:   "AC1 short output unchanged",
+			output: "garbage output",
+			want:   unsupported + `unexpected vcgencmd output: "garbage output"`,
+		},
+		{
+			name:    "AC2 long unparsable number is bounded",
+			output:  "temp=" + strings.Repeat("x", 250),
+			want:    unsupported + "parse vcgencmd temp " + strconv.Quote("temp="+strings.Repeat("x", 195)+"...") + ": invalid syntax",
+			wantNum: strconv.ErrSyntax,
+		},
+		{
+			name:    "AC2 out-of-range number",
+			output:  "temp=1e999'C",
+			want:    unsupported + `parse vcgencmd temp "temp=1e999'C": value out of range`,
+			wantNum: strconv.ErrRange,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := parseVcgencmdTemp(tt.output)
+			if err == nil {
+				t.Fatalf("parseVcgencmdTemp(%q) error = nil, want %q", tt.output, tt.want)
+			}
+			if err.Error() != tt.want {
+				t.Errorf("error text = %q, want %q", err.Error(), tt.want)
+			}
+			if !errors.Is(err, errVcgencmdUnsupportedOutput) {
+				t.Errorf("errors.Is(err, errVcgencmdUnsupportedOutput) = false, err = %v", err)
+			}
+			if tt.wantNum != nil && !errors.Is(err, tt.wantNum) {
+				t.Errorf("errors.Is(err, %v) = false, err = %v", tt.wantNum, err)
+			}
+		})
+	}
+}
+
+// TestTemperatureCollector_CollectPMIC_LongOutputBounded_AC5 checks the
+// bounded text end to end through a fake vcgencmd and that the latched error
+// is returned again without running the script a second time.
+func TestTemperatureCollector_CollectPMIC_LongOutputBounded_AC5(t *testing.T) {
+	dir := t.TempDir()
+	countFile := filepath.Join(dir, "invocations")
+	// Shell builtins only: the child runs with an empty environment.
+	path := writeFakeVcgencmd(t, dir, "fake-vcgencmd", `echo "$@" >> `+countFile+`
+i=0
+while [ "$i" -lt 5000 ]; do
+  printf x
+  i=$((i+1))
+done
+echo`)
+	c := &TemperatureCollector{vcg: &vcgencmdRunner{detected: true, path: path}}
+
+	want := "vcgencmd: output is not a temperature reading: unexpected vcgencmd output: " +
+		strconv.Quote(strings.Repeat("x", 200)+"...")
+
+	_, err1 := c.CollectPMIC(context.Background())
+	if err1 == nil || err1.Error() != want {
+		t.Fatalf("first CollectPMIC error = %v, want %q", err1, want)
+	}
+	if !errors.Is(err1, errVcgencmdUnsupportedOutput) {
+		t.Errorf("first error does not wrap errVcgencmdUnsupportedOutput: %v", err1)
+	}
+	_, err2 := c.CollectPMIC(context.Background())
+	if err2 == nil || err2.Error() != want {
+		t.Fatalf("second CollectPMIC error = %v, want the same latched %q", err2, want)
+	}
+
+	logged, err := os.ReadFile(countFile)
+	if err != nil {
+		t.Fatalf("read invocation log: %v", err)
+	}
+	if n := len(strings.Split(strings.TrimSpace(string(logged)), "\n")); n != 1 {
+		t.Errorf("fake vcgencmd ran %d times across 2 calls, want 1:\n%s", n, logged)
 	}
 }

@@ -244,13 +244,13 @@ func parseVcgencmdTemp(output string) (float64, error) {
 	output = strings.TrimSpace(output)
 	const prefix = "temp="
 	if !strings.HasPrefix(output, prefix) {
-		return 0, fmt.Errorf("%w: unexpected vcgencmd output: %q", errVcgencmdUnsupportedOutput, output)
+		return 0, fmt.Errorf("%w: unexpected vcgencmd output: %q", errVcgencmdUnsupportedOutput, sanitizeVcgencmdDetail([]byte(output)))
 	}
 	rest := strings.TrimPrefix(output, prefix)
 	rest = strings.TrimSuffix(rest, "'C")
 	celsius, err := strconv.ParseFloat(rest, 64)
 	if err != nil {
-		return 0, fmt.Errorf("%w: parse vcgencmd temp %q: %w", errVcgencmdUnsupportedOutput, output, err)
+		return 0, fmt.Errorf("%w: parse vcgencmd temp %q: %w", errVcgencmdUnsupportedOutput, sanitizeVcgencmdDetail([]byte(output)), numParseCause(err))
 	}
 	return celsius, nil
 }

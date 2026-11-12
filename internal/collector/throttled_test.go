@@ -3,6 +3,8 @@ package collector
 import (
 	"context"
 	"errors"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 )
@@ -161,5 +163,54 @@ func TestThrottledCollector_Collect_NilRunner(t *testing.T) {
 	}
 	if got != nil {
 		t.Fatalf("expected no throttled reading with nil vcg runner, got %+v", got)
+	}
+}
+
+// TestParseThrottled_ErrorText pins the exact text of the parse errors: the
+// quoted output is bounded to one line of at most vcgencmdDetailMaxLen bytes
+// and appears once (the strconv cause is reduced to its reason).
+func TestParseThrottled_ErrorText(t *testing.T) {
+	tests := []struct {
+		name    string
+		output  string
+		want    string
+		wantNum error
+	}{
+		{
+			name:   "AC3 long output is bounded",
+			output: strings.Repeat("x", 250),
+			want:   "unexpected vcgencmd get_throttled output: " + strconv.Quote(strings.Repeat("x", 200)+"..."),
+		},
+		{
+			name:   "AC3 multi-line output on one line",
+			output: "foo\nbar",
+			want:   `unexpected vcgencmd get_throttled output: "foo bar"`,
+		},
+		{
+			name:    "AC4 long unparsable bitmask is bounded",
+			output:  "throttled=" + strings.Repeat("z", 250),
+			want:    "parse throttled bitmask " + strconv.Quote(strings.Repeat("z", 200)+"...") + ": invalid syntax",
+			wantNum: strconv.ErrSyntax,
+		},
+		{
+			name:    "AC4 out-of-range bitmask",
+			output:  "throttled=0x" + strings.Repeat("f", 300),
+			want:    "parse throttled bitmask " + strconv.Quote("0x"+strings.Repeat("f", 198)+"...") + ": value out of range",
+			wantNum: strconv.ErrRange,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := parseThrottled(tt.output)
+			if err == nil {
+				t.Fatalf("parseThrottled(%q) error = nil, want %q", tt.output, tt.want)
+			}
+			if err.Error() != tt.want {
+				t.Errorf("error text = %q, want %q", err.Error(), tt.want)
+			}
+			if tt.wantNum != nil && !errors.Is(err, tt.wantNum) {
+				t.Errorf("errors.Is(err, %v) = false, err = %v", tt.wantNum, err)
+			}
+		})
 	}
 }
