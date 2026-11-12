@@ -12,3 +12,4 @@ are quoted in full.
 | 2026-11-12 23:34 | 5 Tests first | Tester | Added TestNotifier_ClearedEndsRateLimitWindow (6 subtests); verified compiles and 5 of 6 fail on current code (AC4 pins bypass and passes). Deferred: none (sonnet/medium · 87,797 tokens · 7 tool uses · 34 s · 8 in · 3,835 out · 226,130 cache read · 86,737 cache write · 150,217 weighted) |
 | 2026-11-12 23:35 | 6 Implement | Dev | Fix in dispatch (cleared deletes lastSent key, recordSent only after delivered fired); comments and docs updated; all tests, coverage and analyzer gates pass. (sonnet/medium · 86,783 tokens · 8 tool uses · 75 s · 14 in · 5,083 out · 518,520 cache read · 36,657 cache write · 123,102 weighted) |
 | 2026-11-12 23:36 | 6 Coverage skipped | Orchestrator | skipped — gate passes (new/changed 100%, overall 90.0%), no deferred tests, Dev reports no uncovered lines |
+| 2026-11-12 23:36 | 6 Documentation | Orchestrator | written in 6 Implement |
