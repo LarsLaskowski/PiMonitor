@@ -423,6 +423,10 @@ span service restarts and reboots; points older than the configured window
 are dropped on restore. With persistence disabled, history is in-memory
 only and starts empty after every restart.
 
+A scalar series has no point for a tick whose reading failed, so the series
+may differ in length or be empty (`temperature` on a host without a thermal
+zone); the shape is unchanged and every scalar key is always present.
+
 ```json
 {
   "cpu_percent": [{ "t": "2026-07-12T18:00:00Z", "v": 10.2 }],

@@ -112,7 +112,7 @@ is running: it does not wait to see whether `pimonitor.service` stays up (check 
 - Log lines go to standard error as `key=value` text (`time`, `level`, `msg`, then fields), filtered by `log_level`;
   under systemd they end up in the journal (`journalctl -u pimonitor`).
 - `SIGTERM` or `SIGINT` (`systemctl stop`, `systemctl restart`) shuts down gracefully: the server stops accepting
-  connections and in-flight requests may finish, then the process waits for the collector's last history snapshot
+  connections and in-flight requests may finish, then the process waits for a history write still running and then for the final one
   ([History](history.md)); both together are bounded by 10 s. The process then exits with status 0, or with status 1
   if the HTTP server did not finish within the 10 s.
 - `pimonitor -version` prints the installed version without starting the service.

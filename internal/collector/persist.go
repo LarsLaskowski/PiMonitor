@@ -373,6 +373,23 @@ func (c *Collector) persistHistory() {
 	}()
 }
 
+// flushHistory is the final write at shutdown. Unlike persistHistory it does
+// not skip when a write is running: it waits for that write to finish, then
+// encodes the current history and writes it on the calling goroutine, so the
+// last rename is the newest state. The wait is bounded by the process's
+// shutdown deadline in cmd/pimonitor/main.go. Failures are logged.
+func (c *Collector) flushHistory() {
+	if c.cfg.PersistPath == "" {
+		return
+	}
+	c.persisting <- struct{}{}
+	defer func() { <-c.persisting }()
+
+	if err := c.writeFile(c.cfg.PersistPath, encodeHistory(c.History())); err != nil {
+		c.log.Warn("could not persist metric history", "path", c.cfg.PersistPath, "error", err)
+	}
+}
+
 // loadHistory restores metric history from cfg.PersistPath, if present,
 // dropping points older than the configured history window. A missing file
 // is normal (first start); an unreadable or corrupt one is logged and

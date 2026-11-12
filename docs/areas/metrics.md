@@ -196,7 +196,8 @@ such as openHAB that poll single values.
   single unreadable process, and system identity values that cannot be determined.
 - No reading is invented: a value the source did not deliver is reported as 0, empty or absent, as stated per
   metric above. `GET /api/v1/metrics` cannot tell a 0 caused by a failure from a real 0; see
-  [`API.md`](../API.md#get-apiv1metrics).
+  [`API.md`](../API.md#get-apiv1metrics). The history records no point for such a tick
+  ([History](history.md#recording)).
 
 ## Related decisions
 

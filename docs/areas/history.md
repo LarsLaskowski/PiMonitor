@@ -23,9 +23,14 @@ it; the operator relies on the file rules.
 
 ### Recording
 
-- Every fast tick adds one point to every scalar series, timestamped with the tick's `timestamp`. The point is added
-  even when the tick has no reading for the metric; its value is then the 0 the snapshot carries (for example
-  `temperature` on a host without a thermal zone, or `cpu_percent` on the first tick after start).
+- Every fast tick adds a point, timestamped with the tick's `timestamp`, to each scalar series whose metric was
+  read in that tick. A failed collection adds no point to the series it feeds, while the other series of the tick
+  still get theirs, and the snapshot keeps its 0 for the metric ([Metrics](metrics.md#limits-and-errors)):
+  `cpu_percent` when the CPU statistics cannot be read, `load1`, `load5` and `load15` when the load average
+  cannot, `temperature` when there is no CPU thermal zone or it cannot be read, `memory_used_percent` and
+  `swap_used_percent` when `/proc/meminfo` cannot. A host without a thermal zone therefore has an empty
+  `temperature` series, and series can differ in length. `cpu_percent` on the first tick after start is not a
+  failure and is still recorded as 0.
 - A per-device series gets a point only on ticks whose snapshot lists that device. Its series is created the first
   time the device appears. So there is no network history while `network_enabled` is off, and no disk I/O or
   network point on the first tick after start.
@@ -54,11 +59,14 @@ it; the operator relies on the file rules.
   off the file is neither read nor written, and an existing one is left untouched.
 - The history is written after every slow tick that follows start-up (not after the one run at start), so the
   first write happens `updates_check_minutes` after start. It is written once more on a clean shutdown.
+- The final write on shutdown does not skip when a slow-tick write is still running: it waits for that write to
+  finish and then writes the history as it is at that moment, so the file holds the latest state.
 - A write captures the history as it is at that moment, then runs in the background, so collection never waits for
   the disk. A write that falls due while the previous one is still running is skipped, not queued.
-- On shutdown the process waits for the pending write only until the shutdown deadline it shares with the HTTP
-  server's graceful shutdown ([HTTP API](http-api.md)); a write still running then is abandoned, and the atomic
-  replacement below keeps the previous file intact.
+- On shutdown the process waits for the running write and the final one only until the shutdown deadline it shares
+  with the HTTP server's graceful shutdown ([HTTP API](http-api.md)); a write still running then is abandoned
+  (the process logs that the final history write did not finish), and the atomic replacement below keeps the
+  previous file intact.
 - An unclean stop (crash, power cut) loses the points recorded since the last completed write, at most about
   `updates_check_minutes` of them.
 
@@ -120,7 +128,8 @@ The format is `PIMH` version 1. All integers are little-endian.
 
 ## Related decisions
 
-None yet.
+- [0003](../decisions/0003-failed-reading-leaves-history-gap.md): a failed reading leaves a gap in the history.
+- [0004](../decisions/0004-final-history-write-waits.md): the final history write waits for a running write.
 
 ## Not here
 
@@ -131,12 +140,3 @@ None yet.
 - Defaults and valid ranges of `history_window_minutes`, `poll_interval_seconds`, `updates_check_minutes`,
   `history_persist_enabled` and `data_dir`: [Configuration](configuration.md).
 - The service's data directory, its creation and write permission under systemd: [Deployment](deployment.md).
-
-## Open questions
-
-- A scalar series records 0 when the metric's collection failed in that tick (a host without a thermal zone gets a
-  `temperature` series of zeros). `AGENTS.md` and `.squad/project.md` rule out a fabricated reading for a missing
-  source. Should a failed tick add no point instead?
-- On shutdown the final write is skipped when a slow-tick write is still running, so the file then holds the state
-  of that earlier write and the points collected since are lost. Should the final write wait for the running one and
-  then write?

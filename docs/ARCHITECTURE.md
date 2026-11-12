@@ -80,7 +80,7 @@ together the following collaborators before starting anything:
 
 The collector and the HTTP server then run as two goroutines under a shared
 `signal.NotifyContext(SIGINT, SIGTERM)`. On shutdown, `server.Shutdown` gets a grace period, and `main` waits for
-the collector's own shutdown path (which hands off one final history write, see
+the collector's own shutdown path (which waits for a running history write and then writes the final state itself, see
 [History persistence](#history-persistence-internalcollectorpersistgo)) to finish — bounded by the same shutdown
 context, so a stuck write cannot hang the process indefinitely. The deadline and exit statuses are in
 [Deployment](areas/deployment.md#process-lifecycle).
@@ -155,21 +155,22 @@ When persistence is enabled, the collector periodically snapshots all history bu
 small hand-rolled binary encoding, and decoding enforces hard limits before it
 allocates anything, so a corrupt or malicious file cannot trigger an oversized allocation.
 
-- **Written on the slow tick and on clean shutdown.** `Run`'s `ctx.Done()` branch requests one final write and
-  then waits for every write still in flight. Because a write is skipped while an earlier one is still running (see
-  below), the file a clean stop leaves behind holds either the final state or, when a slow-tick write was still in
-  flight, that earlier write's state; [History](areas/history.md#persistence-when-it-is-written) states what is
-  lost in each case.
+- **Written on the slow tick and on clean shutdown.** `Run`'s `ctx.Done()` branch calls `flushHistory`, which
+  waits for a slow-tick write still running and then encodes and writes the latest state on the collector's own
+  goroutine, so the file a clean stop leaves behind holds the final state unless the shutdown deadline abandons
+  the write (see [decision 0004](decisions/0004-final-history-write-waits.md) and
+  [History](areas/history.md#persistence-when-it-is-written)).
 - **Written asynchronously**: `persistHistory` snapshots `Collector.History()` on the
-  calling goroutine (a consistent point-in-time view), then hands the encode-and-write off
+  calling goroutine (a consistent point-in-time view), then hands the write off
   to a background goroutine tracked by `Collector.persistWG`. On a Pi the atomic write's
   `fsync` can stall the SD card for hundreds of milliseconds, and `Run`'s `time.Ticker`
   drops rather than queues any fast tick that falls due meanwhile — running the write
   inline on the tick goroutine would silently punch a hole in the very history being
   persisted. A buffered try-lock (`Collector.persisting`) skips — rather than queues — a
   write while a previous one is still in flight, since the next write carries newer data
-  anyway. The wait on shutdown is bounded by `cmd/pimonitor/main.go`'s shutdown context (it selects on
-  `collDone` vs. `shutdownCtx.Done()`), so a stuck fsync cannot hang the process.
+  anyway. The wait on shutdown is bounded by `cmd/pimonitor/main.go`'s shutdown context (`awaitCollector` selects on
+  `collDone` vs. `shutdownCtx.Done()` and `run` logs a warning at the deadline), so a stuck fsync cannot hang the
+  process.
 - **Written atomically**: `writeFileAtomic` writes to a temp file in the same directory, flushes it, then renames
   it over the target path — a crash mid-write can never leave a partially written history file behind. The
   directory is synced afterwards so the rename itself survives a power cut; that sync is best-effort, since the file

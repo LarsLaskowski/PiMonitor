@@ -106,9 +106,8 @@ func run(args []string) error {
 		}
 		// Wait for the collector to finish its final history flush before
 		// the process exits.
-		select {
-		case <-collDone:
-		case <-shutdownCtx.Done():
+		if !awaitCollector(shutdownCtx, collDone) {
+			log.Warn("final history write did not finish within the shutdown grace period")
 		}
 		return nil
 	case err := <-serveErr:
@@ -119,7 +118,12 @@ func run(args []string) error {
 // awaitCollector blocks until done is closed or ctx is done and reports
 // whether done was closed first.
 func awaitCollector(ctx context.Context, done <-chan struct{}) bool {
-	return false
+	select {
+	case <-done:
+		return true
+	case <-ctx.Done():
+		return false
+	}
 }
 
 // serverConfig maps the resolved configuration to httpapi.Config, factored
