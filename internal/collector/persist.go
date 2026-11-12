@@ -284,6 +284,10 @@ func decodeHistoryPoints(raw []byte, n uint32) []HistoryPoint {
 // writeFileAtomic writes data to path via a temp file in the same
 // directory plus rename, so a crash mid-write never leaves a partially
 // written history file behind, and creates the parent directory if needed.
+// After the rename it fsyncs the parent directory: the rename is a change
+// to the directory, and on most Linux filesystems a power cut before that
+// directory entry reaches disk can undo it even though the file contents
+// were already synced.
 func writeFileAtomic(path string, data []byte) error {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o750); err != nil {
@@ -311,7 +315,30 @@ func writeFileAtomic(path string, data []byte) error {
 		_ = os.Remove(name)
 		return err
 	}
+	// The new file is already in place at this point; a failed directory
+	// sync only weakens its crash durability, and some platforms cannot
+	// fsync a directory at all. The history file is disposable derived
+	// state, so that is not worth failing the write over.
+	_ = syncDir(dir)
 	return nil
+}
+
+// syncDir is the directory fsync writeFileAtomic runs after its rename;
+// a package variable so tests can observe the call.
+var syncDir = syncDirectory
+
+// syncDirectory fsyncs the directory dir, making a preceding rename into it
+// durable.
+func syncDirectory(dir string) error {
+	d, err := os.Open(dir)
+	if err != nil {
+		return err
+	}
+	syncErr := d.Sync()
+	if err := d.Close(); err != nil && syncErr == nil {
+		return err
+	}
+	return syncErr
 }
 
 // persistHistory snapshots the current metric history and writes it to
