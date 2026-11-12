@@ -329,9 +329,11 @@ Notes:
     the release branch (`master`) `is_update_available` is `true` when
     `installed_version` and `latest_version` differ; on any other branch the
     installed and latest commit hashes are compared instead, so an update
-    there can share the installed version number. An empty or missing
-    `latest_version` (Pi-hole's remote check failed) never counts as an
-    update. The top-level `is_update_available` is `true` when any
+    there can share the installed version number. A value Pi-hole could not
+    determine (it writes the literal `null`, e.g. when its remote check
+    failed or was rate-limited, and always for the latest version on
+    non-master branches) is treated as unknown: `latest_version` is then
+    omitted, and an unknown value never counts as an update. The top-level `is_update_available` is `true` when any
     component has one.
   - PiMonitor only reads `/etc/pihole/versions`, which Pi-hole's own update
     checker rewrites once a day (cron) and after every reboot or `pihole -up`.

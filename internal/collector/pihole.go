@@ -46,6 +46,7 @@ var piholeComponents = []struct {
 
 // parsePiholeVersions parses the KEY=VALUE contents of /etc/pihole/versions
 // into one PiholeComponent per component that has an installed version.
+// A value of "null" is treated as empty (unknown).
 // It returns an error when no Core version is present, because without it
 // the file cannot be from a working Pi-hole installation.
 func parsePiholeVersions(content string) ([]PiholeComponent, error) {
@@ -60,7 +61,16 @@ func parsePiholeVersions(content string) ([]PiholeComponent, error) {
 		if !ok {
 			continue
 		}
-		values[strings.TrimSpace(key)] = strings.Trim(strings.TrimSpace(value), `"'`)
+		value = strings.Trim(strings.TrimSpace(value), `"'`)
+		// Pi-hole's updatecheck.sh writes the literal "null" whenever it
+		// cannot determine a value: a failed or rate-limited GitHub request,
+		// a git error, and always for GITHUB_*_VERSION on non-master
+		// branches. Treat it as unknown so it is never shown as a version
+		// or counted as an update.
+		if value == "null" {
+			value = ""
+		}
+		values[strings.TrimSpace(key)] = value
 	}
 	if err := scanner.Err(); err != nil {
 		return nil, fmt.Errorf("parse pihole versions: %w", err)

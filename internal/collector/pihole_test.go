@@ -96,23 +96,25 @@ func TestParsePiholeVersions_UpdatesAvailable(t *testing.T) {
 }
 
 func TestParsePiholeVersions_DevelopmentBranchComparesHashes(t *testing.T) {
-	content := `CORE_VERSION=v6.5
+	// updatecheck.sh always writes GITHUB_*_VERSION=null on non-master
+	// branches.
+	content := `CORE_VERSION=v6.5-3-gaaaaaaaa
 CORE_BRANCH=development
 CORE_HASH=aaaaaaaa
-GITHUB_CORE_VERSION=v6.5
+GITHUB_CORE_VERSION=null
 GITHUB_CORE_HASH=bbbbbbbb
 FTL_VERSION=v6.8
 FTL_BRANCH=development
 FTL_HASH=cccccccc
-GITHUB_FTL_VERSION=v6.9
+GITHUB_FTL_VERSION=null
 GITHUB_FTL_HASH=cccccccc
 `
 	components, err := parsePiholeVersions(content)
 	if err != nil {
 		t.Fatalf("parsePiholeVersions: %v", err)
 	}
-	if c := findPiholeComponent(t, components, "core"); !c.UpdateAvailable {
-		t.Errorf("core = %+v, want update (hashes differ on a non-master branch)", c)
+	if c := findPiholeComponent(t, components, "core"); !c.UpdateAvailable || c.LatestVersion != "" {
+		t.Errorf("core = %+v, want update (hashes differ on a non-master branch) and no \"null\" latest version", c)
 	}
 	if c := findPiholeComponent(t, components, "ftl"); c.UpdateAvailable {
 		t.Errorf("ftl = %+v, want no update (hashes equal on a non-master branch)", c)
@@ -139,6 +141,79 @@ GITHUB_FTL_HASH=
 		if c.UpdateAvailable {
 			t.Errorf("%s = %+v, want no update when the latest value is unknown", c.Name, c)
 		}
+	}
+}
+
+// TestParsePiholeVersions_NullMeansUnknown covers the literal "null" that
+// Pi-hole's updatecheck.sh writes when a lookup fails (offline, GitHub
+// rate limit, git error): it must never be reported as a version or as an
+// update.
+func TestParsePiholeVersions_NullMeansUnknown(t *testing.T) {
+	cases := []struct {
+		name    string
+		content string
+	}{
+		{
+			name: "master, remote check failed",
+			content: `CORE_VERSION=v6.5
+CORE_BRANCH=master
+CORE_HASH=f503a65d
+GITHUB_CORE_VERSION=null
+GITHUB_CORE_HASH=null
+FTL_VERSION=v6.8
+FTL_BRANCH=master
+FTL_HASH=29c8b13f
+GITHUB_FTL_VERSION=null
+GITHUB_FTL_HASH=null
+`,
+		},
+		{
+			name: "development, remote hash failed",
+			content: `CORE_VERSION=v6.5-3-gaaaaaaaa
+CORE_BRANCH=development
+CORE_HASH=aaaaaaaa
+GITHUB_CORE_VERSION=null
+GITHUB_CORE_HASH=null
+`,
+		},
+		{
+			name: "development, local hash failed",
+			content: `CORE_VERSION=v6.5-3-gaaaaaaaa
+CORE_BRANCH=development
+CORE_HASH=null
+GITHUB_CORE_VERSION=null
+GITHUB_CORE_HASH=bbbbbbbb
+`,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			components, err := parsePiholeVersions(tc.content)
+			if err != nil {
+				t.Fatalf("parsePiholeVersions: %v", err)
+			}
+			for _, c := range components {
+				if c.UpdateAvailable {
+					t.Errorf("%s = %+v, want no update when a value is \"null\"", c.Name, c)
+				}
+				if c.LatestVersion != "" {
+					t.Errorf("%s LatestVersion = %q, want \"null\" reported as empty", c.Name, c.LatestVersion)
+				}
+			}
+		})
+	}
+}
+
+func TestParsePiholeVersions_NullLocalVersionSkipsComponent(t *testing.T) {
+	components, err := parsePiholeVersions("CORE_VERSION=v6.5\nWEB_VERSION=null\n")
+	if err != nil {
+		t.Fatalf("parsePiholeVersions: %v", err)
+	}
+	if len(components) != 1 || components[0].Name != "core" {
+		t.Fatalf("components = %+v, want only core (web version unknown)", components)
+	}
+	if _, err := parsePiholeVersions("CORE_VERSION=null\n"); err == nil {
+		t.Fatal("expected an error for CORE_VERSION=null")
 	}
 }
 
