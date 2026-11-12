@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -602,4 +603,48 @@ func TestCollector_Run_FinalWriteWaitsForRunningWrite(t *testing.T) {
 			}
 		}
 	})
+}
+
+func TestCollector_FlushHistory_WriteFailureIsLoggedAndLockReleased(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "history.bin")
+	log, buf := newCapturingLogger()
+	c := New(Config{
+		FastInterval:    time.Second,
+		SlowInterval:    time.Minute,
+		HistoryCapacity: 10,
+		PersistPath:     path,
+		HistoryWindow:   time.Hour,
+	}, log)
+
+	wantErr := errors.New("disk full")
+	var calls int32
+	c.writeFile = func(string, []byte) error {
+		atomic.AddInt32(&calls, 1)
+		return wantErr
+	}
+
+	done := make(chan struct{})
+	go func() {
+		c.flushHistory()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("flushHistory did not return after a failed write")
+	}
+
+	if got := atomic.LoadInt32(&calls); got != 1 {
+		t.Errorf("write function invoked %d times, want 1", got)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "could not persist metric history") || !strings.Contains(out, "disk full") {
+		t.Errorf("log = %q, want the persist warning carrying the write error", out)
+	}
+	select {
+	case c.persisting <- struct{}{}:
+		<-c.persisting
+	default:
+		t.Error("persisting slot still held after a failed flush, want it released")
+	}
 }
