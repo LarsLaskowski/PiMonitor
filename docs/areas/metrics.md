@@ -143,8 +143,8 @@ such as openHAB that poll single values.
 ### Pi-hole updates
 
 - Pi-hole counts as installed when `/usr/bin/pihole-FTL` and `/etc/pihole/versions` both exist and the file's
-  `CORE_VERSION` has a major number of 6 or higher (a version that does not start with a number counts as
-  installed). When either file does not exist, or the major number is below 6, `pihole` reports
+  `CORE_VERSION` has a major number of 6 or higher (one leading `v` is ignored; a version that then does not start
+  with a digit counts as installed). When either file does not exist, or the major number is below 6, `pihole` reports
   `is_installed: false`, `is_update_available: false` and `checked_at`. Pi-hole is never contacted and no command
   is run.
 - At most the first **64 KiB** of the versions file are read. Lines are `KEY=VALUE`; surrounding quotes are removed
@@ -217,6 +217,4 @@ None yet.
   condition. Is the dependency intended?
 - A `/proc/stat` `cpu` line with exactly seven counters passes the parser's length check and then indexes past the
   end of the line, which crashes the process. Real kernels print at least eight counters, but this contradicts
-  "never a crash" for malformed input. Should the check require nine fields?
-- `README.md` says pseudo filesystems are "excluded by default", but the excluded type list is fixed and cannot be
-  configured. Should the README drop "by default"?
+  "never a crash" for malformed input. Tracked in LarsLaskowski/PiMonitor#195.

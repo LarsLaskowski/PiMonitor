@@ -396,8 +396,8 @@ Notes:
   the full snapshot:
   - The **array-valued** endpoints (`disks`, `network`) return a `200`:
     `GET /api/v1/metrics/network` returns `null` with `network_enabled: false`
-    (where the full snapshot omits the key entirely) and before the first
-    collection tick completes; `GET /api/v1/metrics/disks` returns `[]`
+    (where the full snapshot omits the key entirely), until the second
+    collection tick has completed, and after a failed collection; `GET /api/v1/metrics/disks` returns `[]`
     before the first tick and after a failed collection.
   - The **object-valued** endpoints degrade to zero values rather than
     `null` — `GET /api/v1/metrics/temperature` returns

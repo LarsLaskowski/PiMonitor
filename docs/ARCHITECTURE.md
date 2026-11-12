@@ -172,8 +172,8 @@ allocates anything, so a corrupt or malicious file cannot trigger an oversized a
   `collDone` vs. `shutdownCtx.Done()`), so a stuck fsync cannot hang the process.
 - **Written atomically**: `writeFileAtomic` writes to a temp file in the same directory, flushes it, then renames
   it over the target path — a crash mid-write can never leave a partially written history file behind. The
-  directory sync that follows is best-effort, since the file is already in place and some platforms cannot sync a
-  directory at all.
+  directory is synced afterwards so the rename itself survives a power cut; that sync is best-effort, since the file
+  is already in place and some platforms cannot sync a directory at all.
 - **Read on startup** (`loadHistory`): a missing, unreadable or corrupt file never stops the service from
   starting — history is a convenience, so the collector starts with empty history instead.
 - **Versioned, not migrated**: unknown series kinds are skipped on decode (forward
@@ -505,7 +505,8 @@ apt package cache (`apt-get update`) requires root while reading its result
 
 This is why the two are separate systemd units rather than one privileged service, and
 why `install.sh` — the only component that needs elevated privileges — creates the
-unprivileged system user, installs both units, and enables/starts both, but never grants
+unprivileged system user, installs the three unit files, and enables/starts `pimonitor.service` and
+`pimonitor-apt-update.timer`, but never grants
 the main service any capability beyond what it needs to read already-world-readable state,
 plus membership in the `video` group for `vcgencmd`.
 See [`SECURITY.md`](../SECURITY.md) for the full threat model and reporting process.

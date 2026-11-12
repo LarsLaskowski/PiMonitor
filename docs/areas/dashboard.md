@@ -51,7 +51,7 @@ client of the [HTTP API](http-api.md) like any third-party integration and has n
   its window and fetch the full one instead.
 - After 10 consecutive incremental history polls the next poll fetches the full window regardless, so a history
   that the server replaced rather than extended (a restart restoring a persisted window, a clock step) is picked up
-  within ten history polls.
+  within eleven history polls.
 - The local window is trimmed to `history_window_minutes`, measured back from the newest point held (the Pi's
   clock); a device left with no points is dropped.
 

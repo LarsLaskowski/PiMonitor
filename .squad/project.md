@@ -78,14 +78,15 @@ change with it. For anything else the diff adds, grep the whole repository — `
 - the struct field and `Default()` in `internal/config/config.go`, plus `Validate()` if it has a valid range
 - `serverConfig()` / `clientConfig()` in `cmd/pimonitor/main.go` if the value must reach the HTTP layer
 - `docs/API.md` if `clientConfig()` exposes it through `GET /api/v1/config` (a documented v1 response shape)
-- `packaging/pimonitor.example.yaml`
+- `packaging/pimonitor.example.yaml` and the option's row in `docs/areas/configuration.md`
 - the Configuration section of `README.md` if it is an option worth highlighting there
 - the tests in `internal/config/config_test.go` that pin defaults and validation
 
 **A new HTTP route** touches:
 - its entry in `routeTable` (or `metricsSubResources`) in `internal/httpapi/routes.go`, from which `New()` registers it,
   `routeBucket()` classifies it and `newServerStats()` creates its `by_route` counter
-- the `by_route` key list and example in `docs/API.md`
+- the `by_route` key list and example in `docs/API.md`, and the route table in
+  `docs/areas/http-api.md`
 - if its entry sets `api: true` (the `apiRoute` chain), it inherits `withNoStore`, `withMaxInFlight`, `withGzip` and `withAPIKey`: the
   Authentication, Compression, Caching and Rate limiting sections of `docs/API.md`, the concurrency-limit
   sentence in `SECURITY.md` and the `defaultMaxInFlight`/`inFlight` comments in `server.go` must still match
@@ -93,7 +94,7 @@ change with it. For anything else the diff adds, grep the whole repository — `
 
 **A new or changed collector field** touches:
 - `Snapshot` in `internal/collector/types.go` and the JSON shape in `docs/API.md` (a v1 shape change is a new API
-  version)
+  version), and its source, unit and failure behavior in `docs/areas/metrics.md`
 - `internal/collector/persist.go` if the series is persisted (a layout change bumps `historyVersion`)
 - `internal/alert` if a threshold applies to it
 - `internal/httpapi/prometheus.go` and the `GET /metrics` section of `docs/API.md` if it is exported there
