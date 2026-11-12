@@ -69,14 +69,14 @@ func parseThrottled(output string) (Throttled, error) {
 	output = strings.TrimSpace(output)
 	const prefix = "throttled="
 	if !strings.HasPrefix(output, prefix) {
-		return Throttled{}, fmt.Errorf("unexpected vcgencmd get_throttled output: %q", output)
+		return Throttled{}, fmt.Errorf("unexpected vcgencmd get_throttled output: %q", sanitizeVcgencmdDetail([]byte(output)))
 	}
 	raw := strings.TrimPrefix(output, prefix)
 
 	// Base 0 lets strconv infer the base from the "0x" prefix vcgencmd emits.
 	bits, err := strconv.ParseUint(raw, 0, 64)
 	if err != nil {
-		return Throttled{}, fmt.Errorf("parse throttled bitmask %q: %w", raw, err)
+		return Throttled{}, fmt.Errorf("parse throttled bitmask %q: %w", sanitizeVcgencmdDetail([]byte(raw)), numParseCause(err))
 	}
 
 	isSet := func(bit uint) bool { return bits&(1<<bit) != 0 }
