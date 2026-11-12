@@ -75,7 +75,7 @@ make lint    # golangci-lint run
 ```
 
 For detailed rules on how tests should be structured, named, and what is required for new
-code, see [`TESTS.md`](TESTS.md) — tests are **mandatory** for new or changed behavior,
+code, see [`UNIT_TESTS.md`](UNIT_TESTS.md) — tests are **mandatory** for new or changed behavior,
 not optional.
 
 ### Submitting a pull request
@@ -112,7 +112,7 @@ a red build.
   size and dependency surface small on constrained hardware. Adding a new dependency
   needs a clear justification, not just convenience.
 - Every metric parser under `internal/collector` must be unit-testable against fixture
-  strings, independent of real `/proc`/`/sys` access — see [`TESTS.md`](TESTS.md).
+  strings, independent of real `/proc`/`/sys` access — see [`UNIT_TESTS.md`](UNIT_TESTS.md).
 - `internal/web/assets/app.js` must never assign non-empty content to `.innerHTML`;
   build DOM nodes with `document.createElement` + `textContent` instead. This is enforced
   by `internal/web/xss_test.go`, not just a style preference — see

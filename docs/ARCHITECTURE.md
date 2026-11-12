@@ -3,7 +3,7 @@
 This document describes how PiMonitor is put together and, where the reasoning is
 recoverable from the code, comments, or existing docs, *why* it looks the way it does.
 It complements [`README.md`](../README.md) (features, build, install), [`CONTRIBUTING.md`](CONTRIBUTING.md)
-(workflow), [`TESTS.md`](TESTS.md) (test conventions), [`API.md`](API.md)
+(workflow), [`UNIT_TESTS.md`](UNIT_TESTS.md) (test conventions), [`API.md`](API.md)
 (REST API contract), and [`SECURITY.md`](../SECURITY.md) (threat model) rather than
 repeating them.
 
@@ -68,7 +68,7 @@ by the same shutdown context, so a stuck flush cannot hang the process indefinit
 `memory.go`, ...) with a `Collect()` method that reads `/proc`/`/sys` (or shells out to
 `vcgencmd`/`apt` where no `/proc`/`/sys` source exists) and returns a typed value plus an
 error. Every one of these parsers is built to be unit-testable against fixture strings
-rather than real `/proc`/`/sys` access — see [`TESTS.md`](TESTS.md).
+rather than real `/proc`/`/sys` access — see [`UNIT_TESTS.md`](UNIT_TESTS.md).
 
 **Two independent tickers** drive collection, both started immediately on `Run` and then
 on their own interval:

@@ -159,7 +159,7 @@ func TestHandleHistory_GzipWhenAccepted(t *testing.T) {
 // that block on a channel the test controls, then asserts that exactly one
 // additional request is rejected with 503 and a Retry-After header. Uses
 // explicit channel synchronization rather than time.Sleep so the test is
-// deterministic (see docs/TESTS.md's guidance on concurrent code).
+// deterministic (see docs/UNIT_TESTS.md's guidance on concurrent code).
 func TestWithMaxInFlight_RejectsBeyondLimit(t *testing.T) {
 	const limit = 3
 	s := &Server{inFlight: make(chan struct{}, limit)}

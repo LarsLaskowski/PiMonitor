@@ -7,7 +7,7 @@ import (
 
 // appJS returns the embedded dashboard script for the source-scanning
 // guards below. A JS test framework is deliberately not part of this
-// repository (see docs/TESTS.md), so scanning the committed source is the
+// repository (see docs/UNIT_TESTS.md), so scanning the committed source is the
 // only way to guard client-side behavior that Go tests can't execute.
 func appJS(t *testing.T) string {
 	t.Helper()
