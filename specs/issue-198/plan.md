@@ -179,3 +179,25 @@ All by the Dev, against the code as built:
   of this change.
 - Environment: no reported hardware; a failing `/proc` source is simulated by fixture paths. Real Pi hardware is
   not needed: the thermal-zone case is covered by the fixture.
+
+## Security notes
+
+## Security plan review: issue #198 (mode `plan`)
+
+I reviewed `/home/user/PiMonitor/specs/issue-198/plan.md` against these files:
+- `/home/user/PiMonitor/internal/collector/persist.go` (encoder and decoder at lines 150-282, `writeFileAtomic` at 291-324, `persistHistory` at 355-374)
+- `/home/user/PiMonitor/internal/collector/collector.go` (lines 248-256 and `Run` at 327-369)
+- `/home/user/PiMonitor/cmd/pimonitor/main.go` (lines 81-117)
+- `/home/user/PiMonitor/docs/areas/history.md`
+
+**Tier and areas:** `standard` is correct. No security control is created, changed or removed: the decode limits (`maxSeries`, `maxKeyLen`, `maxPointsPerSeries`), the atomic temp-file-plus-rename write, the file and directory modes and the API key handling are all untouched. The listed security area (file writes, `history.bin`) is the only one touched. The one new log line has fixed text and no external data, and the existing warning logs only the path and the error.
+
+**Checks, all passing:**
+1. **Write ordering and the rename race.** `persistHistory` is called only from `Run` (grep: `collector.go:359` and `:366`), so once `ctx.Done()` fires no other write can start. The running write releases the try-lock only after `writeFile` returns (`persist.go:368-370`, defers run in reverse order). So the planned blocking send in `flushHistory` acquires the lock only after the earlier rename has completed. The final rename is therefore always the last one, and an older snapshot cannot overwrite the newer one. The plan encodes `c.History()` after taking the lock, so the final state is the latest.
+2. **Stalled write.** If a write never finishes, the collector goroutine stays blocked, but `main` still returns at the 10 s `shutdownCtx` deadline (`main.go:102-112`, kept through `awaitCollector`, AC5). The atomic write leaves the old file intact and at most one `history.bin.tmp-*` file behind, as `history.md` lines 59-60 and 67 already document. No new resource or file growth.
+3. **Empty series on disk.** A series with 0 points encodes as `points=0` and decodes through `take(0)` without error (`persist.go:263-271`). An empty `temperature` or `cpu_percent` series round-trips with no format change.
+4. **Measurements.** The plan claims no library or measured behavior: the bound comes from Go `select`/channel semantics and the existing deadline. No measurement is needed.
+
+**Non-blocking finding (fix now):** after the change, the `persistWG` comment at `collector.go:248-249` ("tracks in-flight persistHistory writes so Run's ctx.Done() …") describes a wait that `Run` no longer does. The Dev should reword it in the same edit that rewrites the `Run` comment. Proposed text: "persistWG tracks in-flight persistHistory writes; tests wait on it to observe a background write's completion." If no test waits on it either, the Dev should remove the field and its `Add`/`Done` calls instead.
+
+No blocking findings.
