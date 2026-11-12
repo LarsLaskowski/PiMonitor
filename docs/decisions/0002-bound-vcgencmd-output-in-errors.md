@@ -1,6 +1,6 @@
 # 0002: Bound vcgencmd output in error texts, not the read
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-12
 - **Area:** Metrics
 - **Source:** Issue #205
