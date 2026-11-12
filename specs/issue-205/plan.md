@@ -152,3 +152,14 @@ and is logged once; no reading is invented; the exec path and its environment ar
   `hwmon.go:139`, `cpufreq.go:92`, `temperature.go:71`) read `/proc`/`/sys`, whose contents the kernel bounds; not
   `vcgencmd` output, not this issue.
 - Capping the stdout read: option 2, rejected in 0002.
+
+## Challenge notes
+
+Devil's Advocate, minor objections (no major):
+
+1. **Dev:** update the doc comments of `vcgencmdDetailMaxLen` and `sanitizeVcgencmdDetail` (`vcgencmd.go:124-134`). They say the helper is for vcgencmd's failure output (stderr, or stdout when stderr is empty); after this change it also bounds successful but unparsable output quoted into parse errors, and the comments must say so.
+2. **Tester:** for AC5 build the fake with the existing helper `writeFakeVcgencmd` (`testhelpers_test.go:74`), point a `vcgencmdRunner{detected: true, path: path}` at it and count runs the way `fakeVcgencmdCollector` does (`collector_test.go:347-359`, `echo "$@" >> countFile`). Assert that the second `CollectPMIC` call returns the same error text and that the script ran only once.
+
+## Security notes
+
+Security: approved, no findings.
