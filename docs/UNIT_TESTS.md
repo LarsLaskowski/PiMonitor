@@ -50,7 +50,8 @@ not be merged; see the checklist in [`.github/pull_request_template.md`](../.git
    hardware. Every collector is designed specifically so it *doesn't need one* — see
    [Why fixtures, not real `/proc`/`/sys`](#why-fixtures-not-real-procsys) below. When a
    fix is only verifiable on real Pi hardware, say so explicitly in the PR instead of
-   claiming coverage that doesn't exist (see the `fix-issue` skill).
+   claiming coverage that doesn't exist; in a squad run, a check on real Pi hardware is a manual test the plan
+   names with the build it runs on (`.squad/routing.md`, *Criteria verified only in CI*).
 
 5. **Load tests**
 
@@ -81,7 +82,7 @@ not be merged; see the checklist in [`.github/pull_request_template.md`](../.git
 | Mocking | No mocking framework. Fixtures (temp files via `t.TempDir()`, in-memory fixture strings) and small hand-written fakes (e.g. `fakeMetrics` in `httpapi`) instead |
 | HTTP testing | `net/http/httptest` (`httptest.NewRecorder`, `httptest.NewRequest`) |
 | Race/coverage | `go test ./... -race -cover` (CI); `-race` is not run by `make test` locally, run it explicitly when touching concurrent code (`collector`, `alert`) |
-| Lint | `golangci-lint run` (`make lint`): golangci-lint's default linters, no committed config; use the version CI pins |
+| Lint | `golangci-lint run` (`make lint`): golangci-lint's default linters plus `gocognit`, configured in `.golangci.yml`; use the version CI pins. The squad runs it through the *Analyzer gate* (`.squad/stack.md`) |
 
 Do not introduce a third-party test framework, assertion library (e.g. `testify`), or
 mocking library — the project standardizes on the standard library `testing` package and
@@ -126,6 +127,14 @@ func TestAPIKey_RequiredWhenConfigured(t *testing.T)
 When there's exactly one obvious scenario for a subject, the bare `Test<Subject>` form
 (no underscore/scenario suffix) is fine — don't force a scenario suffix that adds no
 information.
+
+## Criterion ids
+
+A test written for an acceptance criterion of a squad plan or spec carries the criterion's id at the start of its
+subtest name, `t.Run("AC3 empty input returns error", …)`, or as the last part of the test function's name,
+`TestParseProcStat_EmptyInput_AC3`, so that `.squad/tools/plan-check.py --matrix` finds it by id after a rename or
+a split; a test that asserts several criteria carries each id. The id comes in addition to the
+`Test<Subject>_<Scenario>` naming above, not instead of it.
 
 ## Arranging your tests
 
@@ -198,6 +207,19 @@ Each table entry's `name` should describe the scenario, not just repeat the fiel
 mutated, and should be specific enough that a failing subtest name alone tells you what
 broke (`go test -run TestValidate/negative_poll_interval` should be a meaningful
 sub-selector).
+
+## Leak, error-text and timing tests
+
+- Leak tests (a secret such as the API key must not appear in an error or log): keep the sentinel out of subtest
+  names — `t.TempDir()` embeds the sanitized subtest name in the path, and an error that legitimately shows the
+  path then contains the sentinel. Strip the file path from the error text before the leak check.
+- Where the plan fixes an error format, assert the exact text instead of forbidding substrings; a forbidden
+  substring must not overlap text the format requires.
+- No real network and no real clock (inject a clock or pass explicit timestamps, see *Testing concurrent/stateful
+  code* below). A time bound that cannot be tested as a count (allocations, iterations) is the one exception:
+  measure two durations in the same test (the base input and a multiple of it) and assert their **ratio**, never an
+  absolute duration; set the limit to at least three times the highest ratio measured, with the coverage
+  instrumentation of *Test with coverage* included.
 
 ## Prefer helper functions over shared fixtures with hidden state
 
@@ -282,22 +304,28 @@ When adding a test for this kind of code:
 
 ## Code coverage
 
-Coverage is collected in CI via `go test ./... -race -cover`. Run the same command
-locally before opening a PR that adds new logic, and make sure the new code path is
-actually exercised — a `-cover` run reporting an untouched new function is a signal the
-PR is missing a test, not something to ignore.
+**Threshold: at least 80 % line coverage on new or changed production code, and at least 80 % overall** —
+the same measure as SonarQube's "coverage on new code". Both values are set in `.squad/tools/squad_settings.py`
+(`COVERAGE_THRESHOLD`, `COVERAGE_OVERALL_THRESHOLD`); the overall one may start lower in a repository adopted
+with a coverage debt and is only ever raised. Check it locally before a push with *Test with coverage*
+(`go test ./... -race -coverprofile=coverage.out`) and the *Coverage gate* from
+[`.squad/stack.md`](../.squad/stack.md); make sure the new code path is actually exercised — an untouched new
+function in the report is a missing test, not something to ignore. Lines that genuinely cannot be covered by a
+unit test (for example `main` wiring) need an explicit, recorded decision.
 
 The separate `sonarqube` CI job (see [`ARCHITECTURE.md`](ARCHITECTURE.md)) re-runs the
-suite with `go test ./... -coverprofile=coverage.out` and uploads that profile to
-SonarCloud alongside the source analysis, configured by `sonar-project.properties` at the
-repo root. There is no additional local tooling for this — it only runs in CI.
+suite with `go test ./... -race -coverprofile=coverage.out` and uploads that profile to
+SonarQube Cloud alongside the source analysis, configured by `sonar-project.properties` at the
+repo root; the dashboard assets (`internal/web/assets/`) and the squad tooling (`.squad/`, `.claude/`) are
+excluded from its coverage measure.
 
 ## Checklist for new tests
 
+- [ ] New production code has accompanying unit tests — mandatory, not optional.
 - [ ] Test file colocated with the code under test, `<file>_test.go` next to `<file>.go`,
       same package.
 - [ ] Test function named `Test<Subject>_<Scenario>` (or bare `Test<Subject>` when there
-      is only one obvious scenario).
+      is only one obvious scenario); a test for a squad acceptance criterion carries its id (*Criterion ids*).
 - [ ] Arrange / Act / Assert, separated by blank lines, no section comments.
 - [ ] Every failure message states what was computed and what was expected
       (`got`/`want` phrasing for values).
@@ -308,4 +336,6 @@ repo root. There is no additional local tooling for this — it only runs in CI.
       parameter so tests can substitute a `t.TempDir()` fixture instead of a real
       `/proc`/`/sys` path.
 - [ ] No third-party test/assertion/mocking library introduced.
-- [ ] `go test ./... -race -cover` and `golangci-lint run` pass locally.
+- [ ] Passes with `-race`; no real network or clock (a time bound only as a ratio of two durations).
+- [ ] *Format*, the *Analyzer gate* and the *Coverage gate* (at least 80 % on new/changed production code and
+      overall) from `.squad/stack.md` pass.

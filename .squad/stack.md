@@ -6,14 +6,21 @@ profile and owned by this repository: keep it true when the build changes.
 
 ## Toolchain
 
-- Go `{{TODO: version from go.mod}}` (module `{{TODO: module path}}`).
-- `gofmt` as the formatter, `go vet` and **golangci-lint** `{{TODO: v2.x}}` (configured in `.golangci.yml`) as the
+- Go `1.27.4` (module `github.com/larslaskowski/pimonitor`); the `go` directive tracks a supported Go release
+  (`docs/CONTRIBUTING.md`, *Machine setup*).
+- `gofmt` as the formatter, `go vet` and **golangci-lint** `v2.15.0` (configured in `.golangci.yml`) as the
   analyzers, `govulncheck` (a `tool` dependency in `go.mod`) for known vulnerabilities.
 - The SessionStart hook `.claude/hooks/session-start.sh` runs `go mod download` in remote sessions.
 
 ## Layout
 
-- Production code: `{{TODO: cmd/…, internal/…}}`.
+- Production code: `cmd/pimonitor` (the binary), `internal/collector`, `internal/alert`, `internal/httpapi`,
+  `internal/web` (with the embedded dashboard assets under `internal/web/assets/`: vanilla HTML/CSS/JS, no build
+  step and no JS test framework) and `internal/config`.
+- Packaging: `packaging/` (`install.sh`, `download-latest.sh`, the systemd units, `pimonitor.example.yaml`); releases
+  are built by GoReleaser (`.goreleaser.yaml`, `.github/workflows/release.yml`).
+- `Makefile`: `make build` (native, `bin/pimonitor`), `make build-arm64`, `make build-arm` (`GOARM=6`), `make run`
+  (against `packaging/pimonitor.example.yaml`), `make test`, `make lint`.
 - Tests: colocated `_test.go` files next to the code they cover, one per source file under test
   (`foo.go` → `foo_test.go`).
 
@@ -32,7 +39,7 @@ profile and owned by this repository: keep it true when the build changes.
 | *Coverage gate* | `python3 .squad/tools/coverage-check.py` |
 | *Analyzer gate* | `python3 .squad/tools/analyzer-check.py` |
 | *Sonar gate* | `python3 .squad/tools/sonar-check.py pr <number>` (step 11, on the draft pull request once its CI has finished; see *Sonar gate* below) |
-| *Image build check* | `docker build -f {{TODO: Dockerfile, or "none" when the repository builds no image}} .` where Docker runs; otherwise the reproduction under *Image build check* below (`.squad/routing.md`, *Criteria verified only in CI*) |
+| *Image build check* | none (the repository builds no image); a change to `go.mod`, `go.sum` or an embedded file still runs the reproduction under *Image build check* below, which checks the same module pinning for the GoReleaser build |
 
 ## Analyzer gate
 
@@ -66,6 +73,10 @@ squad lesson.
 
 ## Image build check
 
+PiMonitor builds no container image (no Dockerfile); the release binaries are built by GoReleaser from the
+module as committed, so the reproduction below still applies to a change of `go.mod`, `go.sum` or an embedded file
+(`internal/web/assets/`, `//go:embed`).
+
 The Dockerfile copies `go.mod` and `go.sum` first, runs `go mod download`, then copies the sources and builds
 without network. Where Docker runs, build the image. Where it does not (the sandbox), reproduce that order:
 `go mod download`, then `GOFLAGS=-mod=readonly GOPROXY=off go build ./...` — a module the build needs that
@@ -88,7 +99,14 @@ SonarQube Cloud reads `sonar.coverage.exclusions` in `sonar-project.properties`.
 - Errors are returned and wrapped with context (`fmt.Errorf("…: %w", err)`), never ignored; no `panic` in
   library code.
 - `context.Context` is the first parameter of anything that does I/O or can block, and is honored.
-- {{TODO: project-specific conventions}}
+- Prefer the standard library; `gopkg.in/yaml.v3` is the only accepted runtime dependency (`AGENTS.md`, *Code
+  style*).
+- A collector takes its source path (`/proc`, `/sys`, a command's output) as a field or parameter so tests can point
+  it at a fixture; a missing source yields an empty/zero value and a logged warning, never a crash.
+- `exec.Command` with fixed argument lists only.
+- Cross-compilation: CI builds `./cmd/pimonitor` for `linux/arm64`, `linux/arm` (`GOARM=6`), `darwin/arm64` and
+  `windows/amd64` with `CGO_ENABLED=0`; platform-specific code is split into `_linux.go`/`_other.go` files
+  (`kernel_*.go`, `statfs_*.go`) so every target builds.
 
 ## Logger arguments
 
@@ -142,6 +160,8 @@ time so results are attributable.
 
 ## Known pitfalls
 
+- `make test` runs `go test ./...` without `-race`; the squad's *Test* and *Test with coverage* add it, and CI runs
+  with it.
 - `golangci-lint` must be on the PATH; the version in CI (`.github/workflows/ci.yml`) is the reference.
   It refuses to run ("the Go language version used to build golangci-lint is lower than the targeted Go
   version") when it was built with an older Go than `go.mod` targets — install a release built with a
