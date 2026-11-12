@@ -1,6 +1,6 @@
 # 0004: The final history write waits for the running one
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-12
 - **Area:** History
 - **Source:** Issue #198

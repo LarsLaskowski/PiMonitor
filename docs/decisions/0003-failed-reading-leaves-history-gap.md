@@ -1,6 +1,6 @@
 # 0003: A failed reading leaves a gap in the history
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-12
 - **Area:** History
 - **Source:** Issue #198

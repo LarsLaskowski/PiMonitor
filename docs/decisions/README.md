@@ -64,6 +64,6 @@ once in the [area document](../areas/README.md) of the record's area, and the re
 | ---- | ----- | ------ | ---- |
 | [0001](0001-optional-sources-log-failures-once.md) | Optional metric sources log their failures once | Accepted | 2026-11-12 |
 | [0002](0002-bound-vcgencmd-output-in-errors.md) | Bound vcgencmd output in error texts, not the read | Accepted | 2026-11-12 |
-| [0003](0003-failed-reading-leaves-history-gap.md) | A failed reading leaves a gap in the history | Proposed | 2026-11-12 |
-| [0004](0004-final-history-write-waits.md) | The final history write waits for the running one | Proposed | 2026-11-12 |
+| [0003](0003-failed-reading-leaves-history-gap.md) | A failed reading leaves a gap in the history | Accepted | 2026-11-12 |
+| [0004](0004-final-history-write-waits.md) | The final history write waits for the running one | Accepted | 2026-11-12 |
 <!-- project:end index -->
