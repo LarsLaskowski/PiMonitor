@@ -2,6 +2,7 @@ package collector
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"sync/atomic"
@@ -432,5 +433,94 @@ func TestCollector_Run_ShutdownWaitsForFinalFlush(t *testing.T) {
 	c2.loadHistory()
 	if len(c2.History().MemoryUsedPercent) == 0 {
 		t.Fatal("expected history persisted on shutdown to contain points")
+	}
+}
+
+// writeFileAtomic must fsync the parent directory after the rename, so the
+// new directory entry is durable and not only the file contents. At the time
+// of the sync the renamed file must already be in place and no temp file may
+// be left behind.
+func TestWriteFileAtomic_SyncsParentDirAfterRename(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "state")
+	path := filepath.Join(dir, "history.bin")
+
+	var synced []string
+	orig := syncDir
+	t.Cleanup(func() { syncDir = orig })
+	syncDir = func(d string) error {
+		synced = append(synced, d)
+		got, err := os.ReadFile(path)
+		if err != nil {
+			t.Errorf("history file not in place when directory is synced: %v", err)
+		} else if string(got) != "payload" {
+			t.Errorf("history file content at sync time = %q, want %q", got, "payload")
+		}
+		entries, err := os.ReadDir(d)
+		if err != nil {
+			t.Fatalf("ReadDir: %v", err)
+		}
+		if len(entries) != 1 {
+			t.Errorf("directory holds %d entries at sync time, want only the renamed file", len(entries))
+		}
+		return orig(d)
+	}
+
+	if err := writeFileAtomic(path, []byte("payload")); err != nil {
+		t.Fatalf("writeFileAtomic: %v", err)
+	}
+	if len(synced) != 1 || synced[0] != dir {
+		t.Fatalf("syncDir calls = %q, want exactly [%q]", synced, dir)
+	}
+}
+
+// A directory fsync that fails (unsupported on the platform, or an I/O
+// error after the rename already succeeded) must not fail the write: the
+// file is in place, only its crash durability is weaker.
+func TestWriteFileAtomic_IgnoresDirSyncError(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "history.bin")
+
+	orig := syncDir
+	t.Cleanup(func() { syncDir = orig })
+	syncDir = func(string) error { return errors.New("fsync not supported") }
+
+	if err := writeFileAtomic(path, []byte("payload")); err != nil {
+		t.Fatalf("writeFileAtomic = %v, want nil despite a failed directory sync", err)
+	}
+	if got, err := os.ReadFile(path); err != nil || string(got) != "payload" {
+		t.Fatalf("ReadFile = %q, %v; want %q", got, err, "payload")
+	}
+}
+
+// A failed write never reaches the directory sync: there is no rename to
+// make durable.
+func TestWriteFileAtomic_NoDirSyncOnFailedWrite(t *testing.T) {
+	// A regular file as the parent makes MkdirAll fail.
+	parent := filepath.Join(t.TempDir(), "not-a-dir")
+	if err := os.WriteFile(parent, nil, 0o600); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	orig := syncDir
+	t.Cleanup(func() { syncDir = orig })
+	called := false
+	syncDir = func(string) error { called = true; return nil }
+
+	if err := writeFileAtomic(filepath.Join(parent, "history.bin"), []byte("payload")); err == nil {
+		t.Fatal("writeFileAtomic = nil, want an error when the parent is not a directory")
+	}
+	if called {
+		t.Fatal("syncDir called after a failed write")
+	}
+}
+
+func TestSyncDirectory_ExistingDir(t *testing.T) {
+	if err := syncDirectory(t.TempDir()); err != nil {
+		t.Fatalf("syncDirectory = %v, want nil", err)
+	}
+}
+
+func TestSyncDirectory_MissingDir(t *testing.T) {
+	if err := syncDirectory(filepath.Join(t.TempDir(), "missing")); err == nil {
+		t.Fatal("syncDirectory = nil, want an error for a missing directory")
 	}
 }

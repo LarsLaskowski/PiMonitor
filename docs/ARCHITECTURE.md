@@ -155,7 +155,9 @@ points per series so a corrupt or malicious file cannot trigger an oversized all
   `shutdownCtx.Done()`), so a stuck fsync cannot hang the process.
 - **Written atomically**: `writeFileAtomic` writes to a temp file in the same directory,
   `fsync`s it, then renames it over the target path — a crash mid-write can never leave a
-  partially written history file behind.
+  partially written history file behind. It then `fsync`s the parent directory so the
+  rename itself survives a power cut; a failure there is ignored, since the file is
+  already in place and some platforms cannot sync a directory at all.
 - **Read on startup** (`loadHistory`): a missing file is normal (first start) and silent;
   a present-but-corrupt or unreadable file is logged and ignored, and the collector simply
   starts with empty history rather than failing to start. Restored points older than
@@ -287,7 +289,9 @@ the request.
   `X-Frame-Options: DENY`, and `Referrer-Policy: no-referrer` on every response. The CSP
   can be this strict specifically because the dashboard is fully self-contained — all
   scripts/styles are same-origin embedded files and the favicon is a `data:` URI, hence
-  the narrow `img-src 'self' data:'` allowance.
+  the narrow `img-src 'self' data:` allowance. `base-uri 'none'` and `form-action 'self'`
+  are set explicitly because neither falls back to `default-src`; `object-src 'none'`
+  rules out plugin content outright.
 - **`withLogging`**: via a `statusRecorder` wrapper that captures the status code a
   downstream handler wrote (not otherwise exposed by `http.ResponseWriter`), always
   records the request in `serverStats` (`serverstats.go`) — total count, response status
