@@ -2,7 +2,6 @@ package collector
 
 import (
 	"bufio"
-	"errors"
 	"fmt"
 	"os"
 	"sort"
@@ -98,15 +97,11 @@ func NewWirelessCollector() *WirelessCollector {
 // (the common case, including Raspberry Pi OS) regardless of whether
 // wireless hardware exists - a host with none just sees an empty file body
 // after the two header lines. A minimal kernel without that support has no
-// /proc/net/wireless at all, so a missing file is not treated as a
-// collection error either - it degrades to an empty slice like any other
-// optional, hardware-dependent metric.
+// /proc/net/wireless at all: that is an error (the collector logs it once)
+// and the result is nil, so the snapshot omits the field.
 func (c *WirelessCollector) Collect() ([]Wireless, error) {
 	data, err := os.ReadFile(c.path)
 	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return nil, nil
-		}
 		return nil, fmt.Errorf("read %s: %w", c.path, err)
 	}
 	return parseWireless(string(data))

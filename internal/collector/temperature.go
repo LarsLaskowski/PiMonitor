@@ -174,7 +174,14 @@ func (c *TemperatureCollector) Collect() (Temperature, error) {
 // whether or not a thermal zone exists. A nil runner disables the reading
 // ((nil, nil)); a missing vcgencmd or a failed or unparsable call is an error.
 func (c *TemperatureCollector) CollectGPU(ctx context.Context) (*GPUTemperature, error) {
-	return nil, errors.New("not implemented")
+	if c.vcg == nil {
+		return nil, nil
+	}
+	gpuC, err := c.readVcgencmdTemp(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &GPUTemperature{Celsius: gpuC}, nil
 }
 
 // CollectPMIC returns the PMIC temperature from `vcgencmd measure_temp pmic`,
@@ -183,7 +190,25 @@ func (c *TemperatureCollector) CollectGPU(ctx context.Context) (*GPUTemperature,
 // temperature, every later call returns that same error without running
 // vcgencmd.
 func (c *TemperatureCollector) CollectPMIC(ctx context.Context) (*PMICTemperature, error) {
-	return nil, errors.New("not implemented")
+	if c.vcg == nil {
+		return nil, nil
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.pmicUnsupported != nil {
+		return nil, c.pmicUnsupported
+	}
+	pmicC, err := c.readVcgencmdTemp(ctx, "pmic")
+	if err != nil {
+		if errors.Is(err, errVcgencmdUnsupportedOutput) {
+			// vcgencmd ran and answered, just not with a PMIC reading:
+			// this board has no PMIC sensor, which cannot change at
+			// runtime. Stop asking and keep reporting the same error.
+			c.pmicUnsupported = err
+		}
+		return nil, err
+	}
+	return &PMICTemperature{Celsius: pmicC}, nil
 }
 
 // readVcgencmdTemp runs `vcgencmd measure_temp [args...]` (via the shared

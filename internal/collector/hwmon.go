@@ -35,8 +35,8 @@ func NewHwmonCollector() *HwmonCollector {
 
 // Collect returns every hwmon temperature channel found, sorted by chip
 // directory then channel index. A host with no hwmon directory at all
-// (off-Pi, or no hwmon driver loaded) is not an error - it degrades to an
-// empty list, like WirelessCollector does for hardware it can't find.
+// (off-Pi, or no hwmon driver loaded) is an error (the collector logs it
+// once) with a nil list. A chip without readable channels is skipped.
 func (c *HwmonCollector) Collect() ([]TemperatureSensor, error) {
 	return readHwmonSensors(c.glob)
 }
@@ -45,6 +45,9 @@ func readHwmonSensors(glob string) ([]TemperatureSensor, error) {
 	chipDirs, err := filepath.Glob(glob)
 	if err != nil {
 		return nil, fmt.Errorf("glob %s: %w", glob, err)
+	}
+	if len(chipDirs) == 0 {
+		return nil, fmt.Errorf("no hwmon chips found matching %s", glob)
 	}
 	sort.Strings(chipDirs)
 

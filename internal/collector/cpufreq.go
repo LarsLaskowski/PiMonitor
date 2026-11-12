@@ -31,7 +31,8 @@ func NewCPUFreqCollector() *CPUFreqCollector {
 }
 
 // Collect returns one reading per core with a readable cpufreq directory,
-// sorted by core index. A core that is offline, or whose driver does not
+// sorted by core index. No cpufreq directory at all is an error (the
+// collector logs it once). A core that is offline, or whose driver does not
 // expose scaling_cur_freq/scaling_governor, is silently skipped rather than
 // failing the whole call - cpufreq availability varies across Pi models and
 // kernels.
@@ -39,6 +40,10 @@ func (c *CPUFreqCollector) Collect() ([]CPUCoreFrequency, error) {
 	dirs, err := filepath.Glob(c.glob)
 	if err != nil {
 		return nil, fmt.Errorf("glob %s: %w", c.glob, err)
+	}
+
+	if len(dirs) == 0 {
+		return nil, fmt.Errorf("no cpufreq directories found matching %s", c.glob)
 	}
 
 	var freqs []CPUCoreFrequency

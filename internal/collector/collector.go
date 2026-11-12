@@ -206,6 +206,11 @@ type Collector struct {
 	// piholeFailures does the same for the Pi-hole collector: an unreadable
 	// /etc/pihole/versions fails identically on every slow tick.
 	piholeFailures failureLog
+	// The remaining optional sources use the same log-once rule, one
+	// failureLog each, so a missing thermal zone, vcgencmd, wireless file,
+	// hwmon chip or cpufreq directory is reported once (docs/decisions/0001).
+	tempFailures, gpuTempFailures, pmicTempFailures  failureLog
+	wirelessFailures, hwmonFailures, cpuFreqFailures failureLog
 
 	// fastInterval is cfg.FastInterval clamped to a safe positive minimum
 	// (see clampInterval), computed once at construction so Run's ticker
@@ -496,22 +501,19 @@ func (c *Collector) collectFastTickSamples(ctx context.Context) fastTickSamples 
 	if s.cpuErr != nil {
 		c.log.Warn("cpu collection failed", "error", s.cpuErr)
 	}
-	var cpuFreqErr error
-	s.cpuFreq, cpuFreqErr = c.cpuFreq.Collect()
-	if cpuFreqErr != nil {
-		c.log.Warn("cpu frequency collection failed", "error", cpuFreqErr)
-	}
 	var err error
+	s.cpuFreq, err = c.cpuFreq.Collect()
+	c.cpuFreqFailures.observe(c.log, "cpu frequency collection failed", err)
 	s.load, err = c.loadAvg.Collect()
 	if err != nil {
 		c.log.Warn("load average collection failed", "error", err)
 	}
 	s.temp, s.tempErr = c.temp.Collect()
-	s.gpuTemp, _ = c.temp.CollectGPU(ctx)   // skeleton: errors observed in implementation
-	s.pmicTemp, _ = c.temp.CollectPMIC(ctx) // skeleton: errors observed in implementation
-	if s.tempErr != nil {
-		c.log.Warn("temperature collection failed", "error", s.tempErr)
-	}
+	c.tempFailures.observe(c.log, "temperature collection failed", s.tempErr)
+	s.gpuTemp, err = c.temp.CollectGPU(ctx)
+	c.gpuTempFailures.observe(c.log, "gpu temperature collection failed", err)
+	s.pmicTemp, err = c.temp.CollectPMIC(ctx)
+	c.pmicTempFailures.observe(c.log, "pmic temperature collection failed", err)
 	s.throttled, err = c.throttled.Collect(ctx)
 	c.throttledFailures.observe(c.log, "throttled state collection failed", err)
 	s.mem, s.swap, s.memErr = c.memory.Collect()
@@ -533,14 +535,10 @@ func (c *Collector) collectFastTickSamples(ctx context.Context) fastTickSamples 
 		}
 	}
 	s.wireless, err = c.wireless.Collect()
-	if err != nil {
-		c.log.Warn("wireless collection failed", "error", err)
-	}
+	c.wirelessFailures.observe(c.log, "wireless collection failed", err)
 	if c.cfg.HwmonEnabled {
 		s.sensors, err = c.hwmon.Collect()
-		if err != nil {
-			c.log.Warn("hwmon sensor collection failed", "error", err)
-		}
+		c.hwmonFailures.observe(c.log, "hwmon sensor collection failed", err)
 	}
 	s.uptimeSecs, err = c.uptime.Collect()
 	if err != nil {
