@@ -1,0 +1,36 @@
+name: Fork scope
+
+# A pull request from a fork changes the product only: the squad, the agent
+# instructions and the template parts of the marked files arrive through
+# adopt-template, never from an outside contribution (docs/CONTRIBUTING.md,
+# Contributions from outside).
+#
+# pull_request_target runs this file and scope-check.py as they are on main, so
+# a fork cannot weaken the check in its own pull request. The fork is never
+# checked out: scope-check.py reads the changed files and their text through the
+# GitHub API (--pull-request), with a read-only token. Never add a step that
+# checks out the pull request's code or runs anything from it.
+on:
+  pull_request_target:
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  scope:
+    name: Scope of a fork pull request
+    if: ${{ github.event.pull_request.head.repo.fork }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out main (the check)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Scope check
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: python3 .squad/tools/scope-check.py --no-specs --pull-request "$PR_NUMBER"

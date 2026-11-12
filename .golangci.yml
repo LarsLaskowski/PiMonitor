@@ -1,0 +1,33 @@
+version: "2"
+
+linters:
+  enable:
+    # Stand-in for SonarQube go:S3776 (cognitive complexity above 15), so the finding shows up in the
+    # analyzer gate instead of only after the pull request is open.
+    - gocognit
+  settings:
+    gocognit:
+      min-complexity: 15
+  # gocognit also counts the bare `if err != nil` check, which SonarQube ignores. Where that alone pushes
+  # an existing function over the limit, add a named exclusion here and record the reason in
+  # `.squad/project.md` (*Analyzer exclusions*).
+  exclusions:
+    rules:
+      # Test files are not analyzed by SonarQube (`sonar.exclusions` in sonar-project.properties), so the
+      # stand-in for go:S3776 does not apply to them either.
+      - path: _test\.go
+        linters: [gocognit]
+      # SonarQube reports no go:S3776 for these collectors (15 or less by its count); gocognit also counts
+      # constructs SonarQube does not, such as error checks and nesting inside closures, which puts them over 15.
+      - path: internal/collector/diskio\.go
+        text: "cognitive complexity \\d+ of func `\\(\\*DiskIOCollector\\)\\.Collect`"
+        linters: [gocognit]
+      - path: internal/collector/network\.go
+        text: "cognitive complexity \\d+ of func `\\(\\*NetworkCollector\\)\\.Collect`"
+        linters: [gocognit]
+      - path: internal/collector/pihole\.go
+        text: "cognitive complexity \\d+ of func `\\(\\*PiholeCollector\\)\\.Collect`"
+        linters: [gocognit]
+      - path: internal/collector/process\.go
+        text: "cognitive complexity \\d+ of func `\\(\\*ProcessCollector\\)\\.Collect`"
+        linters: [gocognit]

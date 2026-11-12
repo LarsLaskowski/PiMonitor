@@ -1,5 +1,5 @@
 // The tests in this file bind a real TCP socket rather than following
-// docs/TESTS.md's httptest.NewRecorder()/s.Handler().ServeHTTP(...)
+// docs/UNIT_TESTS.md's httptest.NewRecorder()/s.Handler().ServeHTTP(...)
 // convention, because that convention has no way to exercise which of
 // ListenAndServe/ListenAndServeTLS actually gets called — the branch under
 // test here is the network-level choice itself, not request routing or

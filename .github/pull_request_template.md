@@ -2,8 +2,6 @@
 Thanks for filing a pull request! Before you submit, please read the following:
 
 Search open/closed issues before submitting. Someone may have pushed the same thing before!
-
-Provide a summary of your changes in the title field above.
 -->
 
 # Pull Request
@@ -22,7 +20,7 @@ Is this a breaking change, chore, fix, feature, etc?
 * List and link relevant issues here, for example: Closes #123
 -->
 
-## 👩‍💻 Reviewer Notes
+## 💬 Reviewer Notes
 
 <!---
 Provide some notes for reviewers to help them provide targeted feedback and testing.
@@ -34,26 +32,27 @@ Are there particular areas of the code the reviewer should focus on?
 ## 📑 Test Plan
 
 <!---
-Please provide a summary of the tests affected by this work and any unique strategies
-employed in testing the features/fixes. See docs/TESTS.md for this project's test
-conventions — tests are mandatory for new or changed behavior.
+Please provide a summary of the tests affected by this work and any unique strategies employed in testing the features/fixes.
 -->
 
 ## ✅ Checklist
 
-### General
-
 <!--- Review the list and put an x in the boxes that apply. -->
 
-- [ ] I have added/updated [tests](../docs/TESTS.md) for my changes (`go test ./... -race -cover` passes locally).
-- [ ] `go vet ./...` and `golangci-lint run` are clean.
+- [ ] I have added or updated [Unit Tests](../docs/UNIT_TESTS.md) for the change.
 - [ ] I have tested my changes.
+- [ ] I have run *Format* and *Build* from [`.squad/stack.md`](../.squad/stack.md), and the *Analyzer gate* reports no diagnostic in a changed file.
+- [ ] The *Coverage gate* in `.squad/stack.md` passes (line coverage on new or changed production code and overall).
+- [ ] I have updated the project documentation ([`README.md`](../README.md), [`ARCHITECTURE.md`](../docs/ARCHITECTURE.md)) and the [area document](../docs/areas/README.md) of every changed behavior to reflect my changes.
+- [ ] Each decision with lasting weight has its [decision record](../docs/decisions/README.md), committed with the change.
 - [ ] I have read the [CONTRIBUTING](../docs/CONTRIBUTING.md) documentation and followed the project's code style guidelines.
-- [ ] I have updated [`ARCHITECTURE.md`](../docs/ARCHITECTURE.md) if this changes a documented design decision.
+- [ ] New dependencies, if any, were added the way *Dependencies* in `.squad/stack.md` prescribes.
+<!-- project:begin checklist -->
+- [ ] Reviewer Notes name the touched routes, config keys, collectors or packaging files, and a smoke test on a Pi
+      (or what only real hardware can verify).
 
 ### REST API / configuration / packaging
 
-<!--- Review the list and put an x in the boxes that apply. -->
 <!--- Remove this section if not applicable. -->
 
 - [ ] I have updated [`docs/API.md`](../docs/API.md) to reflect a REST API change.
@@ -64,10 +63,10 @@ conventions — tests are mandatory for new or changed behavior.
 - [ ] I have updated `packaging/install.sh` or the systemd units if this changes
       installation/packaging, and kept the unprivileged/privileged service split intact
       (see [`SECURITY.md`](../SECURITY.md)).
+<!-- project:end checklist -->
 
 ## ⏭ Next Steps
 
 <!---
-If there is relevant follow-up work to this PR, please list any existing issues or
-provide brief descriptions of what you would like to do next.
+If there is relevant follow-up work to this PR, please list any existing issues or provide brief descriptions of what you would like to do next.
 -->

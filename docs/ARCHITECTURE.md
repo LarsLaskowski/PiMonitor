@@ -1,9 +1,10 @@
 # Architecture
 
+<!-- project:begin architecture -->
 This document describes how PiMonitor is put together and, where the reasoning is
 recoverable from the code, comments, or existing docs, *why* it looks the way it does.
 It complements [`README.md`](../README.md) (features, build, install), [`CONTRIBUTING.md`](CONTRIBUTING.md)
-(workflow), [`TESTS.md`](TESTS.md) (test conventions), [`API.md`](API.md)
+(workflow), [`UNIT_TESTS.md`](UNIT_TESTS.md) (test conventions), [`API.md`](API.md)
 (REST API contract), and [`SECURITY.md`](../SECURITY.md) (threat model) rather than
 repeating them.
 
@@ -44,7 +45,7 @@ see [Privilege separation](#privilege-separation-and-deployment) below and
 together the following collaborators before starting anything:
 
 1. `config.Load` — resolves `Config` from built-in defaults, an optional YAML file, and
-   CLI flags (see [Configuration](#configuration)).
+   CLI flags (see [Configuration](#configuration-internalconfig)).
 2. `alert.NewNotifier` — builds the webhook notifier from `cfg.Alerts`; returns `nil` with
    no error when no webhooks are configured, so the rest of the code can treat a `nil`
    `*Notifier` as "notifications disabled" without a separate feature flag.
@@ -57,7 +58,7 @@ together the following collaborators before starting anything:
 The collector and the HTTP server then run as two goroutines under a shared
 `signal.NotifyContext(SIGINT, SIGTERM)`. On shutdown, `server.Shutdown` is given a 10s
 grace period, and `main` waits for the collector's own shutdown path (which performs one
-final history flush, see [History persistence](#history-persistence)) to finish — bounded
+final history flush, see [History persistence](#history-persistence-internalcollectorpersistgo)) to finish — bounded
 by the same shutdown context, so a stuck flush cannot hang the process indefinitely.
 
 ## Metric collection (`internal/collector`)
@@ -68,7 +69,7 @@ by the same shutdown context, so a stuck flush cannot hang the process indefinit
 `memory.go`, ...) with a `Collect()` method that reads `/proc`/`/sys` (or shells out to
 `vcgencmd`/`apt` where no `/proc`/`/sys` source exists) and returns a typed value plus an
 error. Every one of these parsers is built to be unit-testable against fixture strings
-rather than real `/proc`/`/sys` access — see [`TESTS.md`](TESTS.md).
+rather than real `/proc`/`/sys` access — see [`UNIT_TESTS.md`](UNIT_TESTS.md).
 
 **Two independent tickers** drive collection, both started immediately on `Run` and then
 on their own interval:
@@ -599,3 +600,21 @@ release can't silently change what CI executes; `.github/dependabot.yml` keeps t
 and `go.mod` dependencies current. The GoReleaser binary the release workflow runs is pinned
 too, via the action's `version:` input in `release.yml`. Dependabot does not track that
 input, so it is raised by hand (validate `.goreleaser.yaml` with `goreleaser check` first).
+<!-- project:end architecture -->
+
+## Development process
+
+This repository is developed with Claude Code: `AGENTS.md` holds the rules every AI coding agent reads, the
+skills live under `.claude/skills/` and the squad roles under `.claude/agents/`. Every pull request is reviewed
+before it is opened by the read-only reviewer in `.claude/agents/squad-reviewer.md`. The squad skills
+(`squad-issue`, `squad-spec`) wrap that review in a bounded pipeline described in
+[`.squad/routing.md`](../.squad/routing.md): a Lead plans, picks the tier that decides how much of the pipeline
+runs and owns every decision; a Devil's Advocate challenges a feature's spec and, when routing says so, the
+plan; Security reviews the plan when a security area is touched; tests come first, the gates run before the
+review, and every loop limit ends in a Lead decision — only one the Lead cannot make reaches the human. The stack's commands live in
+[`.squad/stack.md`](../.squad/stack.md), the project's guarantees and attack surface in
+[`.squad/project.md`](../.squad/project.md).
+
+The reasoning behind individual choices is kept out of this document and recorded instead as decision
+records in [`docs/decisions/`](decisions/README.md); this document describes how the system works and
+links a record where a guarantee or flow is the result of one.
