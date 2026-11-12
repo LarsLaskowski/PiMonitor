@@ -285,7 +285,9 @@ the request.
   `X-Frame-Options: DENY`, and `Referrer-Policy: no-referrer` on every response. The CSP
   can be this strict specifically because the dashboard is fully self-contained — all
   scripts/styles are same-origin embedded files and the favicon is a `data:` URI, hence
-  the narrow `img-src 'self' data:'` allowance.
+  the narrow `img-src 'self' data:` allowance. `base-uri 'none'` and `form-action 'self'`
+  are set explicitly because neither falls back to `default-src`; `object-src 'none'`
+  rules out plugin content outright.
 - **`withLogging`**: via a `statusRecorder` wrapper that captures the status code a
   downstream handler wrote (not otherwise exposed by `http.ResponseWriter`), always
   records the request in `serverStats` (`serverstats.go`) — total count, response status

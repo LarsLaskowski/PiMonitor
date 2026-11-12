@@ -40,11 +40,17 @@ func (s *Server) withLogging(next http.Handler) http.Handler {
 // URI (hence the data: allowance for img-src). frame-ancestors 'none' plus
 // X-Frame-Options DENY prevent the dashboard from being framed
 // (clickjacking); the latter covers older browsers without CSP2 support.
+// base-uri and form-action do not fall back to default-src, so they are set
+// explicitly: base-uri 'none' stops injected markup from re-pointing every
+// relative URL via a <base> tag, and form-action 'self' keeps a form from
+// posting to another origin. object-src 'none' rules out plugin content
+// outright instead of relying on the default-src fallback.
 func (s *Server) withSecurityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h := w.Header()
 		h.Set("Content-Security-Policy",
-			"default-src 'self'; img-src 'self' data:; script-src 'self'; style-src 'self'; frame-ancestors 'none'")
+			"default-src 'self'; img-src 'self' data:; script-src 'self'; style-src 'self'; frame-ancestors 'none'; "+
+				"base-uri 'none'; form-action 'self'; object-src 'none'")
 		h.Set("X-Content-Type-Options", "nosniff")
 		h.Set("X-Frame-Options", "DENY")
 		h.Set("Referrer-Policy", "no-referrer")
