@@ -1,40 +1,42 @@
 ---
 name: Bug report
-about: Report a problem with PiMonitor
-title: "[Bug] "
+about: Report a problem
+title: ""
 labels: bug
 assignees: ''
+
 ---
 
-## Description
+**Describe the bug**
+A clear and concise description of what went wrong.
 
-A clear and concise description of the bug.
-
-## Steps to Reproduce
-
+**To Reproduce**
+Steps to reproduce the behavior:
 1. ...
 2. ...
-3. ...
 
-## Expected Behavior
+**Expected behavior**
+A clear and concise description of what you expected to happen.
 
-What you expected to happen.
+<!-- project:begin environment -->
+**Environment**
+ - Version / image tag: [e.g. `1.2.2` or `latest`]
+ - Deployment method: [e.g. `docker run`, Docker Compose, binary, package]
+ - Versions of systems it talks to: [e.g. server or API versions]
+ - Host OS: [e.g. Debian 12]
 
-## Actual Behavior
+**Configuration**
+ - Relevant non-default settings (redact secrets and private paths):
+<!-- project:end environment -->
 
-What actually happened. Include error messages, logs, or screenshots if
-relevant.
+**Logs**
+<!-- project:begin logs -->
+Paste the relevant log excerpt (redact tokens, passwords and other secrets).
+<!-- project:end logs -->
 
-## Environment
+```
+paste logs here
+```
 
-- PiMonitor version/commit:
-- Raspberry Pi model:
-- Distribution/OS version (`/etc/os-release`):
-- Kernel version (`uname -r`):
-- Installed via: (`install.sh` / manual / other)
-
-## Additional Context
-
-Anything else that might help diagnose the issue (e.g. relevant section of
-`/etc/pimonitor/config.yaml` with secrets/API keys redacted, `journalctl -u
-pimonitor` output).
+**Additional context**
+Add any other context about the problem here.

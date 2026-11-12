@@ -1,0 +1,18 @@
+version: "2"
+
+linters:
+  enable:
+    # Stand-in for SonarQube go:S3776 (cognitive complexity above 15), so the finding shows up in the
+    # analyzer gate instead of only after the pull request is open.
+    - gocognit
+  settings:
+    gocognit:
+      min-complexity: 15
+  # gocognit also counts the bare `if err != nil` check, which SonarQube ignores. Where that alone pushes
+  # an existing function over the limit, add a named exclusion here and record the reason in
+  # `.squad/project.md`, e.g.:
+  # exclusions:
+  #   rules:
+  #     - path: internal/foo/bar\.go
+  #       text: "cognitive complexity \\d+ of func `\\(\\*Bar\\)\\.Baz`"
+  #       linters: [gocognit]

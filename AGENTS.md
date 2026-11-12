@@ -1,83 +1,176 @@
 # AGENTS.md
 
-Guidance for Codex (and human contributors) working in this repository.
+Project guidance for AI coding agents working in this repository. This one file holds the rules for all of
+them: Codex, Kimi Code and GitHub Copilot's coding agent read it directly, Claude Code through the
+`@AGENTS.md` import in [`CLAUDE.md`](/CLAUDE.md), and GitHub Copilot's code review and chat through
+[`.github/copilot-instructions.md`](/.github/copilot-instructions.md), which the template's `adopt-template`
+skill generates from it: everything from the first `##` heading on is identical in both files (Claude Code's
+`@` import lines aside), so a change to it is made in both, and `.squad/tools/config-check.py` fails when they
+differ. This file is a summary; the binding, detailed references are [`ARCHITECTURE.md`](/docs/ARCHITECTURE.md)
+(how the system is put together and why), [`CONTRIBUTING.md`](/docs/CONTRIBUTING.md) (workflow, PR
+conventions, versioning), [`UNIT_TESTS.md`](/docs/UNIT_TESTS.md) (test conventions — **unit tests are
+mandatory for new code**) and [`.squad/stack.md`](/.squad/stack.md) (toolchain and commands). Read them before
+making a non-trivial change; when this file and one of them appear to disagree, treat that as a sync bug to
+fix, not as license to pick either one.
 
-## Project Overview
+## What this project is
 
-PiMonitor is a lightweight system-monitoring dashboard for the Raspberry Pi.
-A single Go binary collects system metrics (CPU usage & load average, CPU
-temperature, RAM/swap, filesystem usage, network throughput, kernel version,
-distribution, Pi model, available apt updates), serves a self-contained web
-dashboard, and exposes a versioned REST API (`/api/v1/...`) for third-party
-integration (e.g. openHAB). It runs as a systemd service on the Pi; a
-separate, root-privileged systemd timer refreshes the apt package cache so
-the main service itself never needs elevated privileges.
+<!-- project:begin overview -->
+{{TODO: Two or three sentences: what the software does, how it runs (service, CLI, web app, container), who
+uses it. See [`ARCHITECTURE.md`](/docs/ARCHITECTURE.md) for how it fits together.}}
+<!-- project:end overview -->
 
-See `README.md` for the full feature list and architecture diagram,
-[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for how the system is put together and why,
-[`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md) for the contribution workflow,
-[`docs/TESTS.md`](docs/TESTS.md) for test conventions, and `docs/API.md` for the REST API
-contract.
+## Golden rules
 
-## Language
+- **Never commit or push to `main`** — no one, not even with approval. Every change goes through a
+  separate branch and a pull request.
+- **Commits and pushes to a feature branch are always allowed** without asking (squad members never commit
+  or push: `.squad/team.md`, *Git and GitHub*): commit finished work and push it to the current feature
+  branch (creating that branch off `main` if needed), so nothing is lost when a session ends. Force-pushing
+  or otherwise rewriting published history, deleting branches, and creating tags (a `v*` tag may trigger a
+  release) still need explicit user approval.
+- **Pull requests are only opened by the squad or by the user.** The `squad-issue` and `squad-spec`
+  skills open a PR once it is approved (`.squad/routing.md`, *PR approval*); outside the squad, a PR is
+  opened only when the user explicitly asks for one (e.g. by running the `create-pr` skill). Never open a PR
+  on your own initiative.
+- **A change made outside the squad that touches a security area** — one listed in
+  [`.squad/project.md`](/.squad/project.md) (*Security areas*), a CI workflow (any change to it: permissions,
+  secrets, triggers, the actions it uses), Docker or build configuration, or a dependency — is reviewed before it is merged: `create-pr` adds
+  Security's diff review to its review loop, and a pull request opened another way (by hand, from a plain
+  session) gets a `review-pr` run whose findings are worked in that pull request.
+- Run *Format* from [`.squad/stack.md`](/.squad/stack.md) after editing code and before building; CI is
+  not meant to find formatting issues. In the squad skills the member that changed the files runs it on
+  them before handing back (`.squad/team.md`, *Shared rules*).
+- A changed file may not carry **any analyzer diagnostic of any severity**, including info-level ones that
+  never show up as build warnings but that the CI code analysis (e.g. SonarQube Cloud) reports. Check with
+  the *Analyzer gate* from `.squad/stack.md` and fix every finding before considering the work done (in
+  the squad skills, the Code Officer owns this).
+- New or changed production code needs unit tests until the *Coverage gate* in `.squad/stack.md` passes:
+  **at least 80 % line coverage** on new or changed lines and overall (the thresholds live in
+  `.squad/tools/squad_settings.py`, see [`UNIT_TESTS.md`](/docs/UNIT_TESTS.md#code-coverage)).
+<!-- stack:begin golden-rules -->
+- `gofmt` formats everything; `go vet` and **golangci-lint** must report nothing new, and `govulncheck`
+  must stay clean.
+- Add dependencies with `go get`, run `go mod tidy`, and commit `go.mod` and `go.sum` together.
+<!-- stack:end golden-rules -->
 
-All source code, comments, commit messages, and documentation in this
-repository are written in **English**.
+## Commit messages and pull requests
 
-## Build & Test Commands
+- Commit subject: one summary of **no more than 80 characters**, no trailing period, not in the first
+  person. A body only where the subject does not explain the change; pull requests are squash-merged, so
+  branch commits never reach `main` and may simply name the pipeline step.
+- Pull request title `[area] Description` (areas in `docs/CONTRIBUTING.md`), description of **3–5
+  sentences** on what changed and why: they become the commit on `main`.
+- Everything written to the repository or to GitHub — code, comments, documentation, commit messages, PR
+  titles and descriptions, review comments — is in **English**, regardless of the conversation's language.
 
-- `make build` — native build to `bin/pimonitor` (for local development)
-- `make build-arm64` / `make build-arm` — cross-compile for Raspberry Pi
-  (`GOARM=6` for Pi Zero/1, `GOARM=7` for Pi 2/3, arm64 for Pi 3/4/5 64-bit OS)
-- `make run` — run locally against `packaging/pimonitor.example.yaml`
-  (metrics that require real Pi/Linux hardware, e.g. CPU temperature, degrade
-  gracefully to empty/zero values on other platforms instead of failing)
-- `make test` — `go test ./...`
-- `make lint` — `golangci-lint run` (also enforced in CI)
+## Commands
 
-## Conventions
+<!-- stack:begin commands -->
+```bash
+go mod download
+gofmt -w .
+go build ./...
+go vet ./...
+go test ./... -race -coverprofile=coverage.out
+python3 .squad/tools/analyzer-check.py                      # analyzer gate (vet + golangci-lint)
+python3 .squad/tools/coverage-check.py                      # coverage gate
+```
+<!-- stack:end commands -->
 
-- Prefer the Go standard library over third-party dependencies. The only
-  accepted runtime dependency is `gopkg.in/yaml.v3` for config parsing.
-  `/proc`- and `/sys`-parsing is hand-rolled rather than using `gopsutil` —
-  see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) and [`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md)
-  for the reasoning (binary size / dependency surface on constrained hardware).
-- Every metric parser under `internal/collector` should be unit-testable
-  against fixture strings, independent of real `/proc`/`/sys` access.
-- REST API changes that alter the JSON shape of an existing `/api/v1/...`
-  endpoint are breaking changes — bump to `/api/v2/...` instead of changing
-  `v1` in place, and update `docs/API.md`.
-- Commit messages: short imperative summary line, explain *why* in the body
-  when not obvious from the diff.
+All commands, with what each one checks, are listed in [`.squad/stack.md`](/.squad/stack.md).
 
-## Tests are mandatory
+## Architecture
 
-New or changed behavior must ship with tests — this is a hard requirement, not
-a suggestion. Follow [`docs/TESTS.md`](docs/TESTS.md) for naming, structure, fixture
-conventions, and the "no real `/proc`/`/sys` access in tests" rule. Do not
-propose or open a PR that adds/changes logic without corresponding test
-coverage; if something is genuinely untestable without real Pi hardware, say
-so explicitly instead of skipping the test silently.
+<!-- project:begin architecture -->
+{{TODO: The main projects/packages/modules, one line each.}}
+<!-- project:end architecture -->
 
-## Related Skills
+## Project configuration
 
-Project-specific Codex skills live under `.agents/skills/`:
+<!-- stack:begin configuration -->
+- **Go** version and module path from `go.mod`; tools (`govulncheck`) as `tool` dependencies in `go.mod`.
+- **golangci-lint** configured in `.golangci.yml`.
+<!-- stack:end configuration -->
+<!-- project:begin configuration -->
+<!-- project:end configuration -->
 
-- `create-pr` — run tests/lint locally, then open a PR following
-  `.github/pull_request_template.md`.
-- `review-pr` — check out a PR, run tests, and review it against this
-  project's Go/security conventions.
-- `fix-issue` — reproduce a reported issue (ideally as a failing test),
-  implement a minimal fix, and open a PR referencing the issue.
+## Code style
 
-The same three skills also exist for Claude Code under `.claude/skills/`, and
-the two copies differ. `.claude/skills/` is the source of truth; the versions
-here are an older subset. Part of the difference is deliberate: the Claude Code
-versions run a review subagent (`.claude/agents/pimonitor-reviewer.md`) before
-pushing, and that agent is defined only for Claude Code. The Claude Code copies
-also carry newer rules that do not depend on the subagent and are not yet
-ported here: resolving every review comment posted on an open PR, how to fill
-each PR-template section, round caps for re-reviews, and a newer review
-checklist with a severity model. Bringing this tree up to date is tracked in
-#189. Until then, when a skill here and its Claude Code counterpart disagree,
-follow the Claude Code version.
+<!-- stack:begin code-style -->
+`gofmt` formatting; short lower-case package names; doc comments on exported identifiers starting with
+the identifier's name; errors returned and wrapped with `%w`, never ignored; no `panic` in library code;
+`context.Context` first for anything that does I/O or blocks.
+<!-- stack:end code-style -->
+<!-- project:begin code-style -->
+<!-- project:end code-style -->
+
+## Testing
+
+<!-- stack:begin testing -->
+**Unit tests are mandatory for newly written code.** Standard `testing` package, colocated `_test.go`
+files, table-driven tests with `t.Run`, `t.Helper()` in helpers, `t.TempDir()` for files, failure messages
+that state got and want, the id of a squad acceptance criterion in the name of its test (`t.Run("AC3 …")`;
+`docs/UNIT_TESTS.md`, *Criterion ids*); no real network or clock (the narrow exceptions, such as a time bound tested as the
+ratio of two durations, never an absolute one, are in `docs/UNIT_TESTS.md`).
+<!-- stack:end testing -->
+Full conventions, including the project's test doubles and the checklist to run before committing a new
+test, are in [`UNIT_TESTS.md`](/docs/UNIT_TESTS.md).
+
+## Related skills
+
+Project-specific workflow skills live under `.claude/skills/` and run in Claude Code:
+
+- `create-pr` — verify (format, build, tests, analyzer and coverage gates), review the change locally,
+  then open a PR following [`.github/pull_request_template.md`](/.github/pull_request_template.md).
+- `squad-issue` — fix a bug reported in a GitHub issue with the squad: the Lead plans and picks a tier
+  (`docs` / `patch` / `tests` / `trivial` / `standard` / `security`), the Devil's Advocate challenges a plan once when
+  `.squad/routing.md` calls for it, Security reviews the plan whenever a security area is touched and the
+  diff of a change to a security control, the Tester writes failing tests first, the Dev implements until the
+  *Coverage gate* passes, the Code Officer clears analyzer diagnostics, the Reviewer reviews the diff, and
+  once the PR is approved by checklist (the Lead decides what is open) a PR referencing the issue opens.
+- `squad-spec` — the same squad pipeline for a new feature, spec first: the Lead writes `spec.md` (scenarios,
+  edge cases, the acceptance criteria) and the Devil's Advocate challenges it before `plan.md` and `tasks.md`
+  are written against it, in a working folder under `specs/`; also for an issue the user calls a feature or that is
+  labelled `feature`/`enhancement` (`.squad/routing.md`, *Bug or feature*).
+- `decision-consolidate` — merge unreleased decision records (Superseded chains, records of one decision) into
+  one record each, split a record that holds several decisions, delete the obsolete ones, lift behavior that sits
+  in records into the area documents and fix links and index; released records stay untouched.
+- `review-pr` — review an open pull request against this project's stack, analyzer, security and
+  unit-test conventions, and post the findings with an explicit verdict.
+
+Every review — before the push in `create-pr` and the squad skills, on an open pull request in `review-pr` —
+runs the read-only subagent `.claude/agents/squad-reviewer.md`, which holds the checklist, the severity model
+and the round semantics. The squad's members (`.squad/team.md`) run as subagents under
+`.claude/agents/squad-*.md`; a hook denies them Git and GitHub writes, so only the orchestrating session
+commits, pushes and posts. The pipeline, its limits and escalations are in [`.squad/routing.md`](/.squad/routing.md),
+the project's guarantees, security areas and integration surface in [`.squad/project.md`](/.squad/project.md).
+Working records stay under `specs/` on the work branch. A product PR never changes the squad or these
+instructions (`.squad/stack.md`, `.squad/project.md`, `.squad/tools/squad_settings.py` and the project blocks of this file excepted); squad lessons become `squad` or `squad-upstream` issues in this repository (`.squad/orchestration.md`, *Squad
+lessons*). The user acts as Product Manager and is asked only in the cases `.squad/routing.md` lists (*Escalation to
+the Product Manager*), a feature's spec approval among them.
+
+The reasoning behind code decisions — why something was built the way it was — is recorded by the Lead
+as one decision record per decision in [`docs/decisions/`](/docs/decisions/README.md) (unreleased records are
+edited in place, released ones are append-only and superseded), not in `ARCHITECTURE.md`. What holds today —
+formats, limits, error behavior, guarantees — is written once in the area document of the change in
+[`docs/areas/`](/docs/areas/README.md), which the same pull request updates. Read the relevant records and area
+documents before changing code they cover, and do not contradict an accepted record without changing it
+(unreleased) or superseding it (released).
+
+Two rules these skills enforce that are easy to get wrong:
+
+- **A pull request documents the change, not how it was produced.** The internal review loop — its
+  pass count, its findings, the commits that resolved them — never appears in the PR title, body or
+  commit messages.
+- **A finding posted as a review comment gets worked in that pull request**, blocking or not, now, in
+  that pull request — never deferred to "the next change that touches this code". If it
+  really should not be fixed here, reply with the reason or open a linked issue now — then resolve the thread.
+
+## Pull requests, contributing and architecture
+
+Follow [`CONTRIBUTING.md`](/docs/CONTRIBUTING.md) for branch/PR naming (`[area] Description`), the PR
+checklist in [`.github/pull_request_template.md`](/.github/pull_request_template.md), and the
+stability policy. Consult [`ARCHITECTURE.md`](/docs/ARCHITECTURE.md) before changing the behavior it
+describes — the guarantees listed in [`.squad/project.md`](/.squad/project.md) are deliberate, not
+incidental behavior.
