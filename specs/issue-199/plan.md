@@ -191,3 +191,20 @@ delete on the worker goroutine that owns the map (fact 9).
 ## Out of scope / follow-ups
 
 - A `cleared` event dropped at a full queue never reaches the worker and ends no window (record 0005); no change.
+
+## Challenge notes
+
+Devil's Advocate, mode plan, issue #199 (/home/user/PiMonitor/specs/issue-199/plan.md)
+
+The plan holds up. I checked these against the code:
+- Root cause (facts 1, 2, 6). In /home/user/PiMonitor/internal/alert/notify.go, `dispatch` checks the rate limit only for `fired` events (line 219) and calls `recordSent` after any successful delivery (lines 229-231). `recordSent` stamps the key at line 270.
+- AC2, AC6 and the second AC1 case fail on today's code, so the tests catch the defect. Today a delivered `cleared` at base+50s puts the `fired` at base+70s inside the window. A rejected `cleared` leaves base's window in place, so the `fired` at base+2s is dropped. The second AC1 case and AC2 also rule out option 2, and AC6 rules out option 3.
+- No sibling path is missed. `eventReaches` (notify.go:435-441) filters on the higher of From and To. A webhook with min_level crit receives every `fired` that reaches crit, and also the `cleared` that left crit before it (crit→warn or crit→ok, both `cleared` per alert.go:340-343). A filtered webhook therefore never sees a refire without the `cleared` that ends its window.
+- No existing test breaks. TestNotifier_ClearedBypassesRateLimit (notify_test.go:394) sends fired then cleared and asserts both arrive, which still holds. TestNotifier_RateLimitsPerWebhook sends fired then fired, which is still coalesced.
+- Calling `dispatch` directly works for the tests: `deliver`/`post` is synchronous, and with maxRetries 0 a 400 is a permanent error, so there is no retry. newCapturingServer's channel holds 16 requests, which is enough.
+
+Objections:
+
+1. minor: In /home/user/PiMonitor/docs/ARCHITECTURE.md line 240, the sentence after the one the plan edits ("Each successful delivery drops the entries whose window has already run out", line 240-241) becomes false: after the change only a successful `fired` delivery prunes, because pruning stays in `recordSent`. Dev: when adding the `cleared` sentence there, change "Each successful delivery" to "Each successful delivery of a `fired` event".
+
+2. minor: Two comments still say the limiter keeps a flapping alert from flooding a webhook, which record 0005 (*Consequences*) now says is untrue. One is the doc comment on `rateLimited` in /home/user/PiMonitor/internal/alert/notify.go (line 237, "so a fast-flapping metric can't flood a webhook"). The other is the comment in `dispatch` at notify.go:218 ("The limiter only coalesces repeated firings"). Dev: remove the flapping/flood claim from `rateLimited`'s comment and say it coalesces a `fired` event after a delivered `fired` event with no `cleared` between. Then grep notify.go for "flap" and "flood" and leave no match.
