@@ -34,7 +34,7 @@ go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0
 it was built with. `go install …@version` builds with your local default toolchain rather
 than the one `go.mod` asks for, so if that default is older than the `go` line in
 [`go.mod`](../go.mod), prefix the command with `GOTOOLCHAIN=go<version>` (for example
-`GOTOOLCHAIN=go1.27.3 go install …`).
+`GOTOOLCHAIN=go1.27.4 go install …`).
 
 > [!IMPORTANT]
 > The above steps are a one-time setup for your machine and do not need to be repeated
