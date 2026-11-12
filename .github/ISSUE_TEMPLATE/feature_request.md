@@ -1,24 +1,20 @@
 ---
 name: Feature request
-about: Suggest an idea or enhancement for PiMonitor
-title: "[Feature] "
+about: Suggest an idea for this project
+title: ""
 labels: enhancement
 assignees: ''
+
 ---
 
-## Problem / Motivation
+**Is your feature request related to a problem? Please describe.**
+A clear and concise description of what the problem is, e.g. "I'm frustrated when [...]"
 
-What problem would this feature solve, or what use case does it enable?
+**Describe the solution you'd like**
+A clear and concise description of what you want to happen.
 
-## Proposed Solution
+**Describe alternatives you've considered**
+A clear and concise description of any alternative solutions or features you've considered.
 
-Describe the feature you'd like to see. If it affects the REST API
-(`/api/v1/...`), the web dashboard, or the systemd packaging, please say so.
-
-## Alternatives Considered
-
-Any alternative approaches or workarounds you've considered.
-
-## Additional Context
-
-Anything else relevant (links, mockups, related issues).
+**Additional context**
+Add any other context, configuration snippets, or dashboard screenshots about the feature request here.

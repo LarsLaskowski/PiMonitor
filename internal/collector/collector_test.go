@@ -521,7 +521,7 @@ func TestCollector_Processes_DisabledByDefault(t *testing.T) {
 
 // TestCollector_Processes_PopulatedOnSlowTick covers the other half: with
 // ProcessesEnabled true, slowTick refreshes Processes() from a fixture
-// /proc root (per docs/TESTS.md, injected rather than reading the real
+// /proc root (per docs/UNIT_TESTS.md, injected rather than reading the real
 // /proc), independent of whatever the updates collector (which shells out
 // to apt) does on this tick.
 func TestCollector_Processes_PopulatedOnSlowTick(t *testing.T) {
