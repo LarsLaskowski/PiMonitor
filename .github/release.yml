@@ -1,13 +1,15 @@
 # Controls the notes GitHub generates for a release ("Generate release notes" on the release page).
 # GitHub groups by pull request label only (not by title), so label the pull request before merging.
-# Nothing else is excluded: a pull request without a known label (Dependabot's included) is listed under
-# "Other changes".
+# Excluded: `ignore-for-release` and Dependabot's GitHub Actions updates (label `github_actions`, from the
+# `github-actions` ecosystem in .github/dependabot.yml): a bumped workflow action does not interest a release's readers.
+# Any other pull request without a known label (Dependabot's other updates included) is listed under "Other changes".
 # A pull request lands in the first category whose labels it carries, so the order matters.
 # https://docs.github.com/en/repositories/releasing-projects-on-github/automatically-generated-release-notes
 changelog:
   exclude:
     labels:
       - ignore-for-release
+      - github_actions
   categories:
     - title: "Breaking changes"
       labels:
