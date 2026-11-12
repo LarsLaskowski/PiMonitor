@@ -197,3 +197,15 @@ now makes those calls, within the budget.
 
 - The `/proc/stat` seven-counter crash: #195.
 - Every-tick warnings of the mandatory sources (`cpu`, `memory`, `disks`, …): unchanged by the issue's decision.
+
+## Challenge notes
+
+Devil's Advocate, minor objections (no major):
+
+1. The `temperature_test.go` adaptations are not purely mechanical. Bind the existing `err == nil` checks to `Collect()` (the zone) only. In `TestTemperatureCollector_Collect_PMICUnsupportedLatches` assert that `CollectPMIC` returns an error matching `errors.Is(err, errVcgencmdUnsupportedOutput)` on every call and keep the check that `measure_temp pmic` runs once. In `TestTemperatureCollector_Collect_PMICTransientFailureKeepsRetrying` assert that the error does not match `errVcgencmdUnsupportedOutput`. In `TestTemperatureCollector_Collect_VcgencmdExecFails` assert that `CollectGPU` and `CollectPMIC` return a non-nil error with nil readings. Do not discard the new errors with `_`.
+2. A cpufreq source that exists but has no readable core, and hwmon chips present but with no readable channel, stay silent (the field is omitted, nothing is logged). Keep this behavior; in the "Not logged at all" bullet of `docs/areas/metrics.md` say it explicitly: "cpufreq directories present but no core readable, hwmon chips present but no channel readable".
+3. Decision record 0001 does not place `updates` (apt) and process collection on either side of its split. In *Decision* add one sentence: `updates` and process collection keep logging every failure, since they are not hardware sources.
+
+## Security notes
+
+Security, non-blocking: the claim in *Security considerations* that `vcgencmd` failure text stays bounded at 200 bytes holds only for the exec-failure path (`sanitizeVcgencmdDetail`, `vcgencmd.go`, unchanged). The parse-failure text of `measure_temp` carries vcgencmd's stdout `%q`-escaped and unbounded (`temperature.go:228,234`), as `get_throttled` already does (`throttled.go:77,84`). The PMIC latch keeps that error for the life of the process. Bounding the parse-failure text is general hardening outside this change; the Lead decides on a linked issue.
