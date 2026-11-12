@@ -250,9 +250,22 @@ func (n *Notifier) rateLimited(w *webhookWorker, ev Event) bool {
 // recordSent stamps the last-delivery time for (metric, resource) after a
 // successful delivery, so the rate limiter counts deliveries rather than
 // attempts: a failed delivery must not suppress the next firing.
+//
+// It also drops every entry whose window has already run out relative to
+// ev. Keys are per resource, so without this a host whose mountpoints churn
+// (containers, removable media) would accumulate one entry per resource
+// that ever alerted, for the life of the process. Dropping an expired entry
+// changes no decision: rateLimited only suppresses an event less than
+// minInterval after the recorded time, and events reach a worker in sample
+// order, so no later event can fall inside a window that is already over.
 func (n *Notifier) recordSent(w *webhookWorker, ev Event) {
 	if n.minInterval <= 0 {
 		return
+	}
+	for key, last := range w.lastSent {
+		if ev.At.Sub(last) >= n.minInterval {
+			delete(w.lastSent, key)
+		}
 	}
 	w.lastSent[rateLimitKey(ev)] = ev.At
 }
