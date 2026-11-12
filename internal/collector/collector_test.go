@@ -1335,3 +1335,157 @@ fi`)
 		t.Fatalf("measure_temp pmic ran %d times over %d ticks, want 1:\n%s", n, ticks, logged)
 	}
 }
+
+// scalarSeriesLens returns the point count of each scalar history series by
+// its JSON key.
+func scalarSeriesLens(h History) map[string]int {
+	return map[string]int{
+		"cpu_percent":         len(h.CPUPercent),
+		"load1":               len(h.Load1),
+		"load5":               len(h.Load5),
+		"load15":              len(h.Load15),
+		"temperature":         len(h.Temperature),
+		"memory_used_percent": len(h.MemoryUsedPercent),
+		"swap_used_percent":   len(h.SwapUsedPercent),
+	}
+}
+
+// TestCollector_FastTick_FailedReadingAddsNoHistoryPoint covers issue #198:
+// a failed collection records no point in the affected scalar series, the
+// other series of the same tick still get theirs, and the snapshot keeps its
+// zero value.
+func TestCollector_FastTick_FailedReadingAddsNoHistoryPoint(t *testing.T) {
+	cases := []struct {
+		name     string
+		break_   func(t *testing.T, c *Collector, missing string)
+		affected []string
+		zero     func(s Snapshot) bool
+	}{
+		{
+			name: "AC1 cpu failure leaves cpu_percent empty",
+			break_: func(_ *testing.T, c *Collector, missing string) {
+				c.cpu = &CPUCollector{path: missing}
+			},
+			affected: []string{"cpu_percent"},
+			zero:     func(s Snapshot) bool { return s.CPU.OverallPercent == 0 },
+		},
+		{
+			name: "AC1 load average failure leaves load1 load5 load15 empty",
+			break_: func(_ *testing.T, c *Collector, missing string) {
+				c.loadAvg = &LoadAvgCollector{path: missing}
+			},
+			affected: []string{"load1", "load5", "load15"},
+			zero: func(s Snapshot) bool {
+				return s.Load.Load1 == 0 && s.Load.Load5 == 0 && s.Load.Load15 == 0
+			},
+		},
+		{
+			name: "AC1 memory failure leaves memory and swap empty",
+			break_: func(_ *testing.T, c *Collector, missing string) {
+				c.memory = &MemoryCollector{path: missing}
+			},
+			affected: []string{"memory_used_percent", "swap_used_percent"},
+			zero: func(s Snapshot) bool {
+				return s.Memory.UsedPercent == 0 && s.Swap.UsedPercent == 0
+			},
+		},
+		{
+			name: "AC1 temperature failure leaves temperature empty",
+			break_: func(_ *testing.T, c *Collector, _ string) {
+				c.temp = &TemperatureCollector{zoneGlob: filepath.Join(t.TempDir(), "thermal_zone*")}
+			},
+			affected: []string{"temperature"},
+			zero:     func(s Snapshot) bool { return s.Temperature.Celsius == 0 },
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			writeThermalZone(t, root, "thermal_zone0", "cpu-thermal", "40000")
+
+			c := newTestCollector()
+			c.temp = &TemperatureCollector{zoneGlob: filepath.Join(root, "thermal_zone*")}
+			tc.break_(t, c, filepath.Join(t.TempDir(), "missing"))
+
+			c.fastTick(context.Background())
+
+			affected := map[string]bool{}
+			for _, k := range tc.affected {
+				affected[k] = true
+			}
+			for key, got := range scalarSeriesLens(c.History()) {
+				want := 1
+				if affected[key] {
+					want = 0
+				}
+				if got != want {
+					t.Errorf("series %s has %d points after one tick, want %d", key, got, want)
+				}
+			}
+			if !tc.zero(c.Snapshot()) {
+				t.Errorf("snapshot value of the failed source is not zero: %+v", c.Snapshot())
+			}
+		})
+	}
+}
+
+func TestCollector_FastTick_NoThermalZoneLeavesTemperatureHistoryEmpty(t *testing.T) {
+	t.Run("AC2 no thermal zone gives an empty temperature series", func(t *testing.T) {
+		c := newTestCollector()
+		c.temp = &TemperatureCollector{zoneGlob: filepath.Join(t.TempDir(), "thermal_zone*")}
+
+		c.fastTick(context.Background())
+		c.fastTick(context.Background())
+
+		h := c.History()
+		if got := len(h.Temperature); got != 0 {
+			t.Errorf("temperature series has %d points without a thermal zone, want 0", got)
+		}
+		if got := len(h.MemoryUsedPercent); got != 2 {
+			t.Errorf("memory_used_percent series has %d points after two ticks, want 2", got)
+		}
+	})
+}
+
+func TestHistory_JSONKeepsEmptyScalarSeries(t *testing.T) {
+	scalarKeys := []string{
+		"cpu_percent", "load1", "load5", "load15",
+		"temperature", "memory_used_percent", "swap_used_percent",
+	}
+	before := time.Now().Add(-time.Minute)
+
+	c := newTestCollector()
+	c.temp = &TemperatureCollector{zoneGlob: filepath.Join(t.TempDir(), "thermal_zone*")}
+	c.cpu = &CPUCollector{path: filepath.Join(t.TempDir(), "missing")}
+	c.fastTick(context.Background())
+
+	check := func(t *testing.T, h History) {
+		t.Helper()
+		b, err := json.Marshal(h)
+		if err != nil {
+			t.Fatalf("json.Marshal: %v", err)
+		}
+		var raw map[string]json.RawMessage
+		if err := json.Unmarshal(b, &raw); err != nil {
+			t.Fatalf("json.Unmarshal: %v", err)
+		}
+		for _, k := range scalarKeys {
+			if _, ok := raw[k]; !ok {
+				t.Errorf("scalar key %q missing from %s", k, b)
+			}
+		}
+		for _, k := range []string{"temperature", "cpu_percent"} {
+			if got := string(raw[k]); got != "[]" {
+				t.Errorf("series %s marshals as %s, want []", k, got)
+			}
+		}
+	}
+
+	t.Run("AC3 full", func(t *testing.T) {
+		check(t, c.History())
+	})
+	t.Run("AC3 since", func(t *testing.T) {
+		check(t, c.History().Since(before))
+	})
+}

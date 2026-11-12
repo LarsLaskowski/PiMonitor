@@ -2,9 +2,11 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"log/slog"
 	"testing"
+	"time"
 
 	"github.com/larslaskowski/pimonitor/internal/alert"
 	"github.com/larslaskowski/pimonitor/internal/config"
@@ -186,4 +188,33 @@ func TestWarnIfNotifierInert(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestAwaitCollector(t *testing.T) {
+	t.Run("AC5 stalled collector returns at the deadline", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		done := make(chan struct{}) // never closed
+
+		result := make(chan bool, 1)
+		go func() { result <- awaitCollector(ctx, done) }()
+
+		select {
+		case got := <-result:
+			if got {
+				t.Error("awaitCollector = true for a collector that never finished, want false")
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatal("awaitCollector did not return after the context was done")
+		}
+	})
+
+	t.Run("finished collector", func(t *testing.T) {
+		done := make(chan struct{})
+		close(done)
+
+		if got := awaitCollector(context.Background(), done); !got {
+			t.Error("awaitCollector = false for a finished collector, want true")
+		}
+	})
 }
