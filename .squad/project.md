@@ -86,11 +86,10 @@ change with it. For anything else the diff adds, grep the whole repository — `
 - the tests in `internal/config/config_test.go` that pin defaults and validation
 
 **A new HTTP route** touches:
-- `New()` in `internal/httpapi/server.go` (registration)
-- the `routeBucket()` switch in `internal/httpapi/serverstats.go` (a path without a case falls into `static`) and the
-  `names` slice in `newServerStats()` (the `by_route` key set)
+- its entry in `routeTable` (or `metricsSubResources`) in `internal/httpapi/routes.go`, from which `New()` registers it,
+  `routeBucket()` classifies it and `newServerStats()` creates its `by_route` counter
 - the `by_route` key list and example in `docs/API.md`
-- if it uses `apiRoute`, it inherits `withNoStore`, `withMaxInFlight`, `withGzip` and `withAPIKey`: the
+- if its entry sets `api: true` (the `apiRoute` chain), it inherits `withNoStore`, `withMaxInFlight`, `withGzip` and `withAPIKey`: the
   Authentication, Compression, Caching and Rate limiting sections of `docs/API.md`, the concurrency-limit
   sentence in `SECURITY.md` and the `defaultMaxInFlight`/`inFlight` comments in `server.go` must still match
 - an `httptest` test through `s.Handler().ServeHTTP` for its status, headers and auth gating

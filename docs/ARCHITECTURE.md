@@ -45,7 +45,7 @@ see [Privilege separation](#privilege-separation-and-deployment) below and
 together the following collaborators before starting anything:
 
 1. `config.Load` — resolves `Config` from built-in defaults, an optional YAML file, and
-   CLI flags (see [Configuration](#configuration)).
+   CLI flags (see [Configuration](#configuration-internalconfig)).
 2. `alert.NewNotifier` — builds the webhook notifier from `cfg.Alerts`; returns `nil` with
    no error when no webhooks are configured, so the rest of the code can treat a `nil`
    `*Notifier` as "notifications disabled" without a separate feature flag.
@@ -58,7 +58,7 @@ together the following collaborators before starting anything:
 The collector and the HTTP server then run as two goroutines under a shared
 `signal.NotifyContext(SIGINT, SIGTERM)`. On shutdown, `server.Shutdown` is given a 10s
 grace period, and `main` waits for the collector's own shutdown path (which performs one
-final history flush, see [History persistence](#history-persistence)) to finish — bounded
+final history flush, see [History persistence](#history-persistence-internalcollectorpersistgo)) to finish — bounded
 by the same shutdown context, so a stuck flush cannot hang the process indefinitely.
 
 ## Metric collection (`internal/collector`)

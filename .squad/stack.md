@@ -77,12 +77,11 @@ PiMonitor builds no container image (no Dockerfile); the release binaries are bu
 module as committed, so the reproduction below still applies to a change of `go.mod`, `go.sum` or an embedded file
 (`internal/web/assets/`, `//go:embed`).
 
-The Dockerfile copies `go.mod` and `go.sum` first, runs `go mod download`, then copies the sources and builds
-without network. Where Docker runs, build the image. Where it does not (the sandbox), reproduce that order:
-`go mod download`, then `GOFLAGS=-mod=readonly GOPROXY=off go build ./...` — a module the build needs that
-`go.sum` does not pin, or an embedded file (`//go:embed`) the Dockerfile's `COPY` lines leave out, fails here
-as it would in the image. Every change to `go.mod`, `go.sum`, an embedded file or the Dockerfile runs it
-before the review; a build from the full working tree with network does not replace it.
+Reproduce the release build's module pinning without network: `go mod download`, then
+`GOFLAGS=-mod=readonly GOPROXY=off go build ./...` — a module the build needs that `go.sum` does not pin fails here
+as it would in the GoReleaser build. Every change to `go.mod`, `go.sum` or an embedded file runs it before the
+review, and an embedded file it needs must be committed (GoReleaser builds from the tagged commit); a build from the
+full working tree with network does not replace it.
 
 ## Coverage exclusions
 
