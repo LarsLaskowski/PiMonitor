@@ -186,6 +186,7 @@ type Collector struct {
 	throttled *ThrottledCollector
 	sysInfo   *SysInfoCollector
 	updates   *UpdatesCollector
+	pihole    *PiholeCollector
 	uptime    *UptimeCollector
 	processes *ProcessCollector
 
@@ -202,6 +203,9 @@ type Collector struct {
 	// user lacking access to /dev/vcio_gencmd) fails identically on every fast
 	// tick, so it is logged at WARN once rather than on every poll.
 	throttledFailures failureLog
+	// piholeFailures does the same for the Pi-hole collector: an unreadable
+	// /etc/pihole/versions fails identically on every slow tick.
+	piholeFailures failureLog
 
 	// fastInterval is cfg.FastInterval clamped to a safe positive minimum
 	// (see clampInterval), computed once at construction so Run's ticker
@@ -288,6 +292,7 @@ func New(cfg Config, log *slog.Logger) *Collector {
 		throttled:       NewThrottledCollector(vcg),
 		sysInfo:         NewSysInfoCollector(),
 		updates:         NewUpdatesCollector(cfg.UpdatesStaleThreshold),
+		pihole:          NewPiholeCollector(),
 		uptime:          NewUptimeCollector(),
 		processes:       NewProcessCollector(),
 		log:             log,
@@ -728,6 +733,16 @@ func (c *Collector) slowTick(ctx context.Context) {
 	} else {
 		c.mu.Lock()
 		c.latest.Updates = updates
+		c.mu.Unlock()
+	}
+
+	// Independent of the apt check above: an apt failure must not hide
+	// Pi-hole's state, and vice versa.
+	pihole, err := c.pihole.Collect()
+	c.piholeFailures.observe(c.log, "pihole collection failed", err)
+	if err == nil {
+		c.mu.Lock()
+		c.latest.Pihole = pihole
 		c.mu.Unlock()
 	}
 

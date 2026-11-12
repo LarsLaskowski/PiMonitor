@@ -30,6 +30,14 @@ func fullSnapshot() collector.Snapshot {
 			{Name: "eth0", RxBytesPerSec: 1240.5, TxBytesPerSec: 302.1},
 		},
 		Updates: collector.Updates{Count: 3},
+		Pihole: collector.Pihole{
+			Installed:       true,
+			UpdateAvailable: true,
+			Components: []collector.PiholeComponent{
+				{Name: "core", InstalledVersion: "v6.5", LatestVersion: "v6.6", UpdateAvailable: true},
+				{Name: "ftl", InstalledVersion: "v6.8", LatestVersion: "v6.8"},
+			},
+		},
 	}
 }
 
@@ -56,6 +64,8 @@ func TestRenderPrometheusMetrics_LabelsAndValues(t *testing.T) {
 		{"network receive gauge with iface label", `pimonitor_network_receive_bytes_per_second{iface="eth0"} 1240.5`},
 		{"network transmit gauge with iface label", `pimonitor_network_transmit_bytes_per_second{iface="eth0"} 302.1`},
 		{"updates pending gauge", "pimonitor_updates_pending 3"},
+		{"pihole update available, core", `pimonitor_pihole_update_available{component="core"} 1`},
+		{"pihole up to date, ftl", `pimonitor_pihole_update_available{component="ftl"} 0`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -80,6 +90,7 @@ func TestRenderPrometheusMetrics_HelpAndTypeComments(t *testing.T) {
 		"pimonitor_disk_used_percent",
 		"pimonitor_network_receive_bytes_per_second",
 		"pimonitor_updates_pending",
+		"pimonitor_pihole_update_available",
 	} {
 		if !strings.Contains(body, "# HELP "+name+" ") {
 			t.Errorf("missing HELP comment for %s", name)
@@ -110,6 +121,7 @@ func TestRenderPrometheusMetrics_OmitsAbsentOptionalFields(t *testing.T) {
 		"pimonitor_pmic_temperature_celsius",
 		"pimonitor_disk_",
 		"pimonitor_network_",
+		"pimonitor_pihole_",
 	} {
 		if strings.Contains(body, absent) {
 			t.Fatalf("expected no %s* lines when the field is absent/empty, got:\n%s", absent, body)

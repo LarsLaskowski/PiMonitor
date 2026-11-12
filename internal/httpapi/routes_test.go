@@ -136,6 +136,15 @@ func fullSubResourceSnapshot() collector.Snapshot {
 			CacheAgeSeconds: 7200,
 			CheckedAt:       time.Date(2026, 7, 13, 10, 0, 0, 0, time.UTC),
 		},
+		Pihole: collector.Pihole{
+			Installed:       true,
+			UpdateAvailable: true,
+			Components: []collector.PiholeComponent{
+				{Name: "core", InstalledVersion: "v6.5", LatestVersion: "v6.6", Branch: "master", UpdateAvailable: true},
+			},
+			CacheAgeSeconds: 3600,
+			CheckedAt:       time.Date(2026, 7, 13, 10, 0, 0, 0, time.UTC),
+		},
 	}
 }
 
@@ -205,6 +214,7 @@ func TestMetricsSubResources_NoData(t *testing.T) {
 		{path: "/api/v1/metrics/disks", want: "null"},
 		{path: "/api/v1/metrics/temperature", want: `{"zone":"","celsius":0}`},
 		{path: "/api/v1/metrics/memory", want: `{"total_bytes":0,"available_bytes":0,"used_percent":0}`},
+		{path: "/api/v1/metrics/pihole", want: `{"is_installed":false,"is_update_available":false,"checked_at":"0001-01-01T00:00:00Z"}`},
 	}
 
 	s, fm := newTestServer(Config{})
@@ -221,6 +231,25 @@ func TestMetricsSubResources_NoData(t *testing.T) {
 				t.Fatalf("GET %s body = %s, want %s", tt.path, got, tt.want)
 			}
 		})
+	}
+}
+
+// TestMetricsSubResources_PiholeShape pins the field names of the pihole
+// object documented in docs/API.md, which are part of the v1 contract.
+func TestMetricsSubResources_PiholeShape(t *testing.T) {
+	s, fm := newTestServer(Config{})
+	fm.snapshot = fullSubResourceSnapshot()
+
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/metrics/pihole", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET /api/v1/metrics/pihole = %d, want 200", rec.Code)
+	}
+	const want = `{"is_installed":true,"is_update_available":true,` +
+		`"components":[{"name":"core","installed_version":"v6.5","latest_version":"v6.6","branch":"master","is_update_available":true}],` +
+		`"cache_age_seconds":3600,"checked_at":"2026-07-13T10:00:00Z"}`
+	if got := strings.TrimSpace(rec.Body.String()); got != want {
+		t.Fatalf("GET /api/v1/metrics/pihole body = %s, want %s", got, want)
 	}
 }
 

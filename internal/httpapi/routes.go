@@ -114,6 +114,7 @@ var metricsSubResources = []metricsSubResource{
 	{name: "disks", value: func(s collector.Snapshot) any { return s.Disks }},
 	{name: "network", value: func(s collector.Snapshot) any { return s.Network }},
 	{name: "updates", value: func(s collector.Snapshot) any { return s.Updates }},
+	{name: "pihole", value: func(s collector.Snapshot) any { return s.Pihole }},
 }
 
 // path is the endpoint the sub-resource is served at.

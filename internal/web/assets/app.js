@@ -283,6 +283,37 @@
     if (document.getElementById('updates-modal').open) {
       renderUpdatesTable();
     }
+
+    renderPihole(snap.pihole);
+  }
+
+  const PIHOLE_COMPONENT_LABELS = { core: 'Core', web: 'Web', ftl: 'FTL' };
+
+  // Pi-hole is not installed through apt, so it gets its own line in the
+  // Updates card rather than being folded into the apt count above. The
+  // whole section stays hidden on hosts without Pi-hole (and with an older
+  // server that does not send the field at all).
+  function renderPihole(pihole) {
+    const installed = !!(pihole && pihole.is_installed);
+    document.getElementById('pihole-section').classList.toggle('hidden', !installed);
+    if (!installed) return;
+
+    const status = document.getElementById('pihole-status');
+    status.textContent = pihole.is_update_available ? 'Update available' : 'Up to date';
+    status.classList.toggle('metric-warn', !!pihole.is_update_available);
+    status.classList.toggle('metric-ok', !pihole.is_update_available);
+
+    const parts = (pihole.components || []).map(c => {
+      const label = (PIHOLE_COMPONENT_LABELS[c.name] || c.name) + ' ' + c.installed_version;
+      if (!c.is_update_available) return label;
+      // On a non-release branch an update can be new commits under the
+      // same version number, so only show an arrow to a different version.
+      return c.latest_version && c.latest_version !== c.installed_version
+        ? label + ' \u2192 ' + c.latest_version
+        : label + ' (update)';
+    });
+    setText('pihole-versions', parts.join(' \u00b7 '));
+    document.getElementById('pihole-stale').classList.toggle('hidden', !pihole.stale);
   }
 
   // Maps each alert.Report metric name to the badge element(s) it lights up.
