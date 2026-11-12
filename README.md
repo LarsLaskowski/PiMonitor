@@ -483,8 +483,8 @@ development only** — command lines are world-readable through
 See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for how the system is put together
 and why, [`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md) for the contribution workflow,
 [`docs/UNIT_TESTS.md`](docs/UNIT_TESTS.md) for test conventions (tests are mandatory for new
-code), and [`CLAUDE.md`](CLAUDE.md) for build/test commands and AI-agent
-guidance. Contributions are welcome - see the issue and pull request
+code), [`.squad/stack.md`](.squad/stack.md) for the build/test commands, and
+[`AGENTS.md`](AGENTS.md) for AI-agent guidance. Contributions are welcome - see the issue and pull request
 templates under `.github/` for what to include.
 
 ## License

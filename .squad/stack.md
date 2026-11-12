@@ -99,6 +99,8 @@ SonarQube Cloud reads `sonar.coverage.exclusions` in `sonar-project.properties`.
 - Errors are returned and wrapped with context (`fmt.Errorf("…: %w", err)`), never ignored; no `panic` in
   library code.
 - `context.Context` is the first parameter of anything that does I/O or can block, and is honored.
+- Opened files and readers are closed; goroutines and tickers a component starts stop on shutdown (context
+  cancellation), as `cmd/pimonitor/main.go` wires them.
 - Prefer the standard library; `gopkg.in/yaml.v3` is the only accepted runtime dependency (`AGENTS.md`, *Code
   style*).
 - A collector takes its source path (`/proc`, `/sys`, a command's output) as a field or parameter so tests can point
@@ -126,6 +128,11 @@ end-to-end install check, for example) has a local smoke substitute, which the T
 `bash -n` and `shellcheck` on the script, and a mode of the script (or a test) that runs the documented lines
 against a scratch directory with stub commands, without systemd. The plan lists the rows that can only run in
 CI (`.squad/routing.md`, *Operator environments and documented procedures*).
+
+**Collector bugs.** A bug in a collector is reproduced with a fixture that captures the reported input (the issue's
+`/proc/meminfo`, `apt list --upgradable` output, …); the plan notes the reported environment (Pi model,
+distribution, kernel, PiMonitor version), since collector bugs are often hardware- or OS-specific, and says what
+only real Pi hardware can verify.
 
 See `docs/UNIT_TESTS.md`: the standard `testing` package, table-driven tests with `t.Run`, `t.Helper()` in
 helpers, `t.TempDir()` for files, failure messages that state got and want.

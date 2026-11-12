@@ -48,6 +48,9 @@ Please provide a summary of the tests affected by this work and any unique strat
 - [ ] I have read the [CONTRIBUTING](../docs/CONTRIBUTING.md) documentation and followed the project's code style guidelines.
 - [ ] New dependencies, if any, were added the way *Dependencies* in `.squad/stack.md` prescribes.
 <!-- project:begin checklist -->
+- [ ] Reviewer Notes name the touched routes, config keys, collectors or packaging files, and a smoke test on a Pi
+      (or what only real hardware can verify).
+
 ### REST API / configuration / packaging
 
 <!--- Remove this section if not applicable. -->
