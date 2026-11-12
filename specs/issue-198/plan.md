@@ -201,3 +201,23 @@ I reviewed `/home/user/PiMonitor/specs/issue-198/plan.md` against these files:
 **Non-blocking finding (fix now):** after the change, the `persistWG` comment at `collector.go:248-249` ("tracks in-flight persistHistory writes so Run's ctx.Done() …") describes a wait that `Run` no longer does. The Dev should reword it in the same edit that rewrites the `Run` comment. Proposed text: "persistWG tracks in-flight persistHistory writes; tests wait on it to observe a background write's completion." If no test waits on it either, the Dev should remove the field and its `Add`/`Done` calls instead.
 
 No blocking findings.
+
+## Challenge notes
+
+I found no major objections and two minor ones. I checked the plan's claims against the code, and they hold:
+
+- **Scalar points:** `fastTick` adds them without any condition (`/home/user/PiMonitor/internal/collector/collector.go:586-592`).
+- **Load error:** the load-average error lives only in the local `err` (`collector.go:507-510`).
+- **Shutdown write:** the try-lock skips the final write (`/home/user/PiMonitor/internal/collector/persist.go:359-363`), and `persistWG.Wait()` then waits only for the earlier write (`collector.go:359-360`).
+- **File format:** `history.bin` stores each series with its own point count (`persist.go:20-26`, `146-165`), so series of different lengths need no format change.
+- **Dashboard:** it handles empty or shorter series. `historyBounds`/`mergeHistory` work across all series (`/home/user/PiMonitor/internal/web/assets/app.js:1040-1094`), and `drawSparkline` clears the canvas before it returns when there are fewer than 2 points (`/home/user/PiMonitor/internal/web/assets/chart.js:16-20`).
+- **Alerts:** they already get validity flags per source (`collector.go:607-619`), and there is no load alert, so no sibling path keeps the same defect.
+- **Test doubles:** `CPUCollector`, `LoadAvgCollector` and `MemoryCollector` each have a `path` field, so the AC1 test can point them at a missing file.
+- **Decision records:** 0003 and 0004 already exist in `/home/user/PiMonitor/docs/decisions/`.
+- **Need:** the change is needed. The issue states the decision, and `docs/areas/history.md:135-142` lists both points as open questions.
+
+Objections:
+
+1. **minor — the AC4 test as written fails in CI for the wrong reason.** `TestCollector_Run_FinalWriteWaitsForRunningWrite` asks for "at least one" point per scalar series. It builds its collector the way `TestCollector_Run_ShutdownWaitsForFinalFlush` does (`New(Config{...})` with the real sources, `/home/user/PiMonitor/internal/collector/persist_test.go:381-389`). `collector_test.go:20-21` says CI containers usually have no thermal zone. After this change the `temperature` series stays empty there, so an "at least one in every series" check would fail even with correct code. Instruction to the Tester: assert that every scalar series of the loaded file has as many points as `c.History()`. Require at least one point only for `memory_used_percent` (or `load1`), or point `c.temp` at a `writeThermalZone` fixture if `temperature` must be non-empty too.
+
+2. **minor — one sentence in `ARCHITECTURE.md` stops being true, and the plan only says to "check" it.** Under *Startup and shutdown* (`/home/user/PiMonitor/docs/ARCHITECTURE.md:80-84`), the collector's shutdown path "hands off one final history write". With `flushHistory` the final write runs on `Run`'s own goroutine after waiting for any running write, so nothing is handed off. Instruction to the Dev: reword that clause to say the collector waits for a running write and then writes the final state itself, still bounded by the shutdown context. Do this together with the *History persistence* bullets the plan already lists.
