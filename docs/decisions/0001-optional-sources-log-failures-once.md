@@ -1,6 +1,6 @@
 # 0001: Optional metric sources log their failures once
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-12
 - **Area:** Metrics
 - **Source:** Issue #197

@@ -62,5 +62,5 @@ once in the [area document](../areas/README.md) of the record's area, and the re
 <!-- project:begin index -->
 | #    | Title | Status | Date |
 | ---- | ----- | ------ | ---- |
-| [0001](0001-optional-sources-log-failures-once.md) | Optional metric sources log their failures once | Proposed | 2026-11-12 |
+| [0001](0001-optional-sources-log-failures-once.md) | Optional metric sources log their failures once | Accepted | 2026-11-12 |
 <!-- project:end index -->
