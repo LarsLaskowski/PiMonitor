@@ -48,6 +48,18 @@ Please provide a summary of the tests affected by this work and any unique strat
 - [ ] I have read the [CONTRIBUTING](../docs/CONTRIBUTING.md) documentation and followed the project's code style guidelines.
 - [ ] New dependencies, if any, were added the way *Dependencies* in `.squad/stack.md` prescribes.
 <!-- project:begin checklist -->
+### REST API / configuration / packaging
+
+<!--- Remove this section if not applicable. -->
+
+- [ ] I have updated [`docs/API.md`](../docs/API.md) to reflect a REST API change.
+- [ ] No breaking change to `/api/v1/...` response shapes, or a new API version
+      (`/api/v2/...`) was introduced instead.
+- [ ] I have updated `README.md` / `packaging/pimonitor.example.yaml` to reflect a new or
+      changed configuration option.
+- [ ] I have updated `packaging/install.sh` or the systemd units if this changes
+      installation/packaging, and kept the unprivileged/privileged service split intact
+      (see [`SECURITY.md`](../SECURITY.md)).
 <!-- project:end checklist -->
 
 ## ⏭ Next Steps

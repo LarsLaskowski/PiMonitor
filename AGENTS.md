@@ -16,8 +16,14 @@ fix, not as license to pick either one.
 ## What this project is
 
 <!-- project:begin overview -->
-{{TODO: Two or three sentences: what the software does, how it runs (service, CLI, web app, container), who
-uses it. See [`ARCHITECTURE.md`](/docs/ARCHITECTURE.md) for how it fits together.}}
+PiMonitor is a lightweight system-monitoring dashboard for the Raspberry Pi. A single Go binary collects system
+metrics (CPU usage and load average, CPU temperature, RAM/swap, filesystem usage, network throughput, kernel
+version, distribution, Pi model, available apt updates), serves a self-contained web dashboard, and exposes a
+versioned REST API (`/api/v1/...`, contract in [`docs/API.md`](/docs/API.md)) for third-party integration such as
+openHAB. It runs as an unprivileged systemd service on the Pi; a separate, root-privileged systemd timer refreshes
+the apt package cache so the main service itself never needs elevated privileges. See
+[`README.md`](/README.md) for the feature list and installation, and [`ARCHITECTURE.md`](/docs/ARCHITECTURE.md)
+for how it fits together.
 <!-- project:end overview -->
 
 ## Golden rules
@@ -83,7 +89,16 @@ All commands, with what each one checks, are listed in [`.squad/stack.md`](/.squ
 ## Architecture
 
 <!-- project:begin architecture -->
-{{TODO: The main projects/packages/modules, one line each.}}
+- `cmd/pimonitor` — the binary: flag parsing, config loading, wiring of collector, alerts and HTTP server.
+- `internal/collector` — hand-rolled `/proc`, `/sys`, `vcgencmd`, apt and Pi-hole parsers, the snapshot type, ring-buffer
+  history and its persistence (`persist.go`).
+- `internal/alert` — threshold/debounce engine and the webhook notifier (queue, retry, rate limit).
+- `internal/httpapi` — the `net/http` server: `/api/v1/...` routes, middleware (API key, gzip, no-store,
+  in-flight limit, security headers), per-route server stats and the Prometheus endpoint.
+- `internal/web` — the embedded dashboard assets (`assets/`: vanilla HTML/CSS/JS, no build step).
+- `internal/config` — YAML config: defaults, parsing, validation.
+- `packaging/` — `install.sh`, the systemd units (`pimonitor.service`, `pimonitor-apt-update.service`/`.timer`)
+  and `pimonitor.example.yaml`.
 <!-- project:end architecture -->
 
 ## Project configuration
@@ -93,6 +108,13 @@ All commands, with what each one checks, are listed in [`.squad/stack.md`](/.squ
 - **golangci-lint** configured in `.golangci.yml`.
 <!-- stack:end configuration -->
 <!-- project:begin configuration -->
+- Runtime configuration is a YAML file (`/etc/pimonitor/config.yaml` on the Pi, `packaging/pimonitor.example.yaml`
+  as the documented example), parsed with `gopkg.in/yaml.v3` — the only accepted runtime dependency. Options,
+  defaults and validation: [`ARCHITECTURE.md`](/docs/ARCHITECTURE.md#configuration-internalconfig) and the
+  Configuration section of [`README.md`](/README.md#configuration).
+- `make build` / `make build-arm64` / `make build-arm` (`GOARM=6` for Pi Zero/1; arm64 for Pi 3/4/5 64-bit OS) and
+  `make run` (runs against `packaging/pimonitor.example.yaml`) are the developer entry points; the squad's commands
+  are in [`.squad/stack.md`](/.squad/stack.md). Releases are built by GoReleaser (`.goreleaser.yaml`).
 <!-- project:end configuration -->
 
 ## Code style
@@ -103,6 +125,19 @@ the identifier's name; errors returned and wrapped with `%w`, never ignored; no 
 `context.Context` first for anything that does I/O or blocks.
 <!-- stack:end code-style -->
 <!-- project:begin code-style -->
+- Prefer the Go standard library over third-party dependencies. `/proc`- and `/sys`-parsing is hand-rolled rather
+  than using `gopsutil`, to keep binary size and dependency surface small on constrained hardware
+  ([`CONTRIBUTING.md`](/docs/CONTRIBUTING.md#stability-policy)); a new dependency needs a justification against
+  hand-rolling it.
+- Every metric parser under `internal/collector` takes its source path or input as a field or parameter, so it is
+  unit-testable against fixture strings without real `/proc`/`/sys` access.
+- A missing hardware source (no thermal zone, no `vcgencmd`, non-Linux platform) yields an empty/zero value and a
+  logged warning, never a crash and never a fabricated reading.
+- `exec.Command` only with fixed argument lists; external input is never interpolated into a command.
+- `internal/web/assets/app.js` never assigns non-empty content to `.innerHTML` (enforced by
+  `internal/web/xss_test.go`); DOM nodes are built with `document.createElement` + `textContent`.
+- A change to the JSON shape of an existing `/api/v1/...` response is a breaking change: add `/api/v2/...` instead
+  of changing `v1` in place, and update [`docs/API.md`](/docs/API.md).
 <!-- project:end code-style -->
 
 ## Testing

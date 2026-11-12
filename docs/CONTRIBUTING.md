@@ -5,23 +5,75 @@
 
 ### Machine setup
 
-{{TODO: Tools a contributor needs once: Git, the SDK/runtime of the stack (see `.squad/stack.md`, *Toolchain*),
-the formatter and linters, anything else.}}
+To begin you'll need Git and a Go toolchain. Development and testing do not require a
+Raspberry Pi: hardware-specific metrics (CPU temperature, Pi model, `vcgencmd`-sourced
+readings) simply report as empty/zero on other platforms instead of failing.
+
+The `PiMonitor` repository uses Git as its source control system. If you haven't already
+installed it, you can download it [here](https://git-scm.com/downloads) or, if you prefer
+a GUI-based approach, try [GitHub Desktop](https://desktop.github.com/).
+
+Once Git is installed, you'll also need the Go version this project targets (see
+[`go.mod`](../go.mod) and [`.squad/stack.md`](../.squad/stack.md), *Toolchain*). Instructions
+and downloads for your preferred OS can be found [here](https://go.dev/dl/).
+
+> [!NOTE]
+> The `go` directive in `go.mod` tracks a currently-supported Go release (Go supports the
+> two most recent major releases). Since PiMonitor ships as a single statically-linked
+> binary, the toolchain version is a dependency-security property, not just a build detail
+> — it's raised whenever the declared version falls out of that support window, independent
+> of any new language features being adopted.
+
+For linting, install `golangci-lint` matching the version CI uses (see
+[`.github/workflows/ci.yml`](../.github/workflows/ci.yml); the current version is also named in
+`.squad/stack.md`, *Toolchain*):
+
+```sh
+go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@<version>
+```
+
+`golangci-lint` refuses to lint a module whose `go` directive is newer than the Go version
+it was built with. `go install …@version` builds with your local default toolchain rather
+than the one `go.mod` asks for, so if that default is older than the `go` line in
+[`go.mod`](../go.mod), prefix the command with `GOTOOLCHAIN=go<version>` (for example
+`GOTOOLCHAIN=go1.27.4 go install …`). `govulncheck` needs no install: it is a `tool`
+dependency in `go.mod` and runs as `go tool govulncheck ./...`.
+
+> [!IMPORTANT]
+> The above steps are a one-time setup for your machine and do not need to be repeated
+> after the initial configuration.
 
 ### Cloning the repository
 
 ```shell
-git clone https://github.com/{{TODO: owner}}/{{TODO: repo}}.git
+git clone https://github.com/larslaskowski/pimonitor.git
+```
+
+Cloning via SSH:
+
+```shell
+git clone git@github.com:larslaskowski/pimonitor.git
 ```
 
 ### Building and running
 
-{{TODO: The *Restore*, *Build* and run commands from `.squad/stack.md`, plus the minimum configuration needed to
-see the application do useful work locally.}}
+```sh
+go mod download      # Restore
+make build           # native build, for local development -> bin/pimonitor
+make build-arm64     # cross-compile for 64-bit Raspberry Pi OS (Pi 3/4/5)
+make build-arm       # cross-compile for 32-bit / Pi Zero/1 (GOARM=6)
+```
+
+`make run` starts the server locally against `packaging/pimonitor.example.yaml` — useful
+for frontend/API development on a non-Pi machine, since hardware-specific metrics degrade
+gracefully instead of failing.
 
 ### Running tests
 
-{{TODO: The *Test* command from `.squad/stack.md`.}}
+```sh
+go test ./... -race  # Test (make test runs go test ./... without -race)
+make lint            # golangci-lint run
+```
 
 For detailed rules on how unit tests are structured and named, see [`UNIT_TESTS.md`](UNIT_TESTS.md).
 **Unit tests are mandatory for newly written code** — see the checklist there before opening a pull
@@ -46,7 +98,7 @@ For PR naming use the following convention: `[area] Description` (no period at t
   the change entails is enough; there is room to elaborate in the description.
 
 <!-- project:begin areas -->
-Areas: `{{TODO: Area1}}`, `{{TODO: Area2}}`, `Tests`, `Docker`, `CI`, `Docs`.
+Areas: `Collector`, `Alerts`, `API`, `Dashboard`, `Config`, `Packaging`, `Tests`, `CI`, `Docs`.
 <!-- project:end areas -->
 
 When a PR is related to an issue, use the `Closes #issuenumber` syntax so the issue links to the
@@ -91,8 +143,13 @@ expected to arrive clean (see the process decisions in [`decisions/process.md`](
 <!-- project:begin releases -->
 ## Versioning and releases
 
-{{TODO: How a release is cut (e.g. a `v<major>.<minor>.<patch>` release with its tag, created manually on `main`)
-and what it publishes. Merging a PR by itself never publishes a release.}}
+PiMonitor is versioned `v<major>.<minor>.<patch>`. A release is cut by pushing a tag of that form on
+`main` (it needs the maintainer's approval); `.github/workflows/release.yml` then runs GoReleaser
+(`.goreleaser.yaml`), which builds the `linux/arm` (`GOARM=6`) and `linux/arm64` binaries, packs each with
+the files under `packaging/`, `README.md` and `LICENSE.md` into a `tar.gz` archive, writes `checksums.txt` and
+publishes a GitHub release whose notes GitHub generates from the pull request labels
+(`.github/release.yml`). A published release also triggers `.github/workflows/notify-website.yml`. Merging a
+PR by itself never publishes a release.
 <!-- project:end releases -->
 
 <!-- project:begin stability -->
@@ -101,7 +158,31 @@ and what it publishes. Merging a PR by itself never publishes a release.}}
 An essential consideration in every pull request is its impact on the system. Avoid introducing
 unnecessary breaking changes, performance or functional regressions, or negative impacts on usability. In
 particular, preserve the guarantees listed in [`.squad/project.md`](../.squad/project.md) (*Guarantees*)
-and described in [`ARCHITECTURE.md`](ARCHITECTURE.md) unless a change explicitly intends to alter one.
+and described in [`ARCHITECTURE.md`](ARCHITECTURE.md) unless a change explicitly intends to alter one:
+
+- Preserve the unprivileged/privileged split described in
+  [`ARCHITECTURE.md`](ARCHITECTURE.md#privilege-separation-and-deployment) and
+  [`SECURITY.md`](../SECURITY.md) — `pimonitor.service` must never need elevated privileges.
+- Preserve graceful degradation on non-Pi/non-Linux platforms: a missing hardware source
+  (e.g. no thermal zone, no `vcgencmd`) must produce an empty/zero value and a logged
+  warning, never a crash.
+- Keep new shell-outs (in the style of the existing `apt list --upgradable` /
+  `vcgencmd measure_temp` calls) to fixed argument lists — never interpolate external
+  input into a shell command.
+- Prefer the Go standard library. The only accepted runtime dependency is `gopkg.in/yaml.v3`
+  for config parsing; `/proc`- and `/sys`-parsing is hand-rolled rather than pulled in via a
+  library such as `gopsutil`, to keep the binary size and dependency surface small on
+  constrained hardware. Adding a new dependency needs a clear justification, not just convenience.
+- `internal/web/assets/app.js` must never assign non-empty content to `.innerHTML`; build DOM
+  nodes with `document.createElement` + `textContent` instead. This is enforced by
+  `internal/web/xss_test.go` — see [`ARCHITECTURE.md`](ARCHITECTURE.md#web-dashboard-internalweb).
+
+### REST API stability
+
+Changes that alter the JSON shape of an existing `/api/v1/...` endpoint are breaking
+changes: bump to `/api/v2/...` instead of changing `v1` in place, and update
+[`API.md`](API.md). See [`ARCHITECTURE.md`](ARCHITECTURE.md) for the reasoning
+and [`API.md`](API.md) for the full current contract.
 <!-- project:end stability -->
 
 ## Reporting security issues
@@ -112,6 +193,6 @@ Do not report security vulnerabilities through public GitHub issues. See
 ## License
 
 <!-- project:begin license -->
-By contributing to this project, you agree that your contributions will be licensed under the
-same license that covers the project (see `LICENSE` or `LICENSE.md` in the repository root).
+By contributing to this project, you agree that your contributions will be licensed
+under the same [MIT License](../LICENSE.md) that covers the project.
 <!-- project:end license -->

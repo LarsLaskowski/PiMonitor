@@ -20,18 +20,19 @@ A clear and concise description of what you expected to happen.
 
 <!-- project:begin environment -->
 **Environment**
- - Version / image tag: [e.g. `1.2.2` or `latest`]
- - Deployment method: [e.g. `docker run`, Docker Compose, binary, package]
- - Versions of systems it talks to: [e.g. server or API versions]
- - Host OS: [e.g. Debian 12]
+ - PiMonitor version/commit:
+ - Raspberry Pi model:
+ - Distribution/OS version (`/etc/os-release`):
+ - Kernel version (`uname -r`):
+ - Installed via: (`install.sh` / manual / other)
 
 **Configuration**
- - Relevant non-default settings (redact secrets and private paths):
+ - Relevant section of `/etc/pimonitor/config.yaml` (redact secrets and API keys):
 <!-- project:end environment -->
 
 **Logs**
 <!-- project:begin logs -->
-Paste the relevant log excerpt (redact tokens, passwords and other secrets).
+Paste the relevant `journalctl -u pimonitor` excerpt (redact tokens, API keys and other secrets).
 <!-- project:end logs -->
 
 ```
