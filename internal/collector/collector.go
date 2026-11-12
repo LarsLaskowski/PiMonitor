@@ -249,12 +249,14 @@ type Collector struct {
 	// observe a background write's completion.
 	persistWG sync.WaitGroup
 	// persisting is a buffered try-lock (capacity 1): a successful send means
-	// no write is currently in flight. Used to skip an overlapping flush
-	// rather than queue it, since the next flush writes newer data anyway.
+	// no write is currently in flight. persistHistory uses it to skip an
+	// overlapping flush rather than queue it, since the next flush writes newer
+	// data anyway; flushHistory instead waits on it, so the final write runs
+	// after a running one.
 	persisting chan struct{}
-	// writeFile performs the atomic write persistHistory hands off to a
-	// background goroutine. Defaults to writeFileAtomic; overridable in
-	// tests to control write timing without touching real disk I/O.
+	// writeFile performs the atomic write (in persistHistory's background
+	// goroutine, or inline in flushHistory). Defaults to writeFileAtomic;
+	// overridable in tests to control write timing without touching real disk I/O.
 	writeFile func(path string, data []byte) error
 }
 
