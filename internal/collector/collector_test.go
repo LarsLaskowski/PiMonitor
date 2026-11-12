@@ -1350,6 +1350,25 @@ func scalarSeriesLens(h History) map[string]int {
 	}
 }
 
+// assertFailedTickSeries fails the test unless, after one tick, every scalar
+// series listed in affected is empty and every other one holds one point.
+func assertFailedTickSeries(t *testing.T, c *Collector, affected []string) {
+	t.Helper()
+	failed := map[string]bool{}
+	for _, k := range affected {
+		failed[k] = true
+	}
+	for key, got := range scalarSeriesLens(c.History()) {
+		want := 1
+		if failed[key] {
+			want = 0
+		}
+		if got != want {
+			t.Errorf("series %s has %d points after one tick, want %d", key, got, want)
+		}
+	}
+}
+
 // TestCollector_FastTick_FailedReadingAddsNoHistoryPoint covers issue #198:
 // a failed collection records no point in the affected scalar series, the
 // other series of the same tick still get theirs, and the snapshot keeps its
@@ -1410,19 +1429,7 @@ func TestCollector_FastTick_FailedReadingAddsNoHistoryPoint(t *testing.T) {
 
 			c.fastTick(context.Background())
 
-			affected := map[string]bool{}
-			for _, k := range tc.affected {
-				affected[k] = true
-			}
-			for key, got := range scalarSeriesLens(c.History()) {
-				want := 1
-				if affected[key] {
-					want = 0
-				}
-				if got != want {
-					t.Errorf("series %s has %d points after one tick, want %d", key, got, want)
-				}
-			}
+			assertFailedTickSeries(t, c, tc.affected)
 			if !tc.zero(c.Snapshot()) {
 				t.Errorf("snapshot value of the failed source is not zero: %+v", c.Snapshot())
 			}

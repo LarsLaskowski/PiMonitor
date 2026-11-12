@@ -213,7 +213,7 @@ func TestAwaitCollector(t *testing.T) {
 		done := make(chan struct{})
 		close(done)
 
-		if got := awaitCollector(context.Background(), done); !got {
+		if !awaitCollector(context.Background(), done) {
 			t.Error("awaitCollector = false for a finished collector, want true")
 		}
 	})

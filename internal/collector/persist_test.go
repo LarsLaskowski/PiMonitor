@@ -526,6 +526,39 @@ func TestSyncDirectory_MissingDir(t *testing.T) {
 	}
 }
 
+// waitForHistoryPoint fails the test unless c records a memory point within timeout.
+func waitForHistoryPoint(t *testing.T, c *Collector, timeout time.Duration) {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for len(c.History().MemoryUsedPercent) == 0 {
+		if time.Now().After(deadline) {
+			t.Fatal("Run recorded no history point")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+// assertHistoryFileMatches fails the test unless the history file at path holds
+// the point count of every scalar series of c, and holds points in the memory
+// and load1 series.
+func assertHistoryFileMatches(t *testing.T, c *Collector, path string) {
+	t.Helper()
+	c2 := newPersistTestCollector(path, time.Hour)
+	c2.loadHistory()
+	want := scalarSeriesLens(c.History())
+	got := scalarSeriesLens(c2.History())
+	for key, w := range want {
+		if got[key] != w {
+			t.Errorf("series %s: file holds %d points, collector has %d", key, got[key], w)
+		}
+	}
+	for _, key := range []string{"memory_used_percent", "load1"} {
+		if got[key] == 0 {
+			t.Errorf("series %s of the file has no point, want at least one", key)
+		}
+	}
+}
+
 // TestCollector_Run_FinalWriteWaitsForRunningWrite covers issue #198: a write
 // still running when shutdown starts must not make the final write get
 // skipped; the final write runs after it and the file holds the latest state.
@@ -561,13 +594,7 @@ func TestCollector_Run_FinalWriteWaitsForRunningWrite(t *testing.T) {
 		}()
 
 		// Let Run collect a few points while the write blocks, then shut down.
-		deadline := time.Now().Add(2 * time.Second)
-		for len(c.History().MemoryUsedPercent) == 0 {
-			if time.Now().After(deadline) {
-				t.Fatal("Run recorded no history point")
-			}
-			time.Sleep(5 * time.Millisecond)
-		}
+		waitForHistoryPoint(t, c, 2*time.Second)
 		cancel()
 
 		select {
@@ -588,20 +615,7 @@ func TestCollector_Run_FinalWriteWaitsForRunningWrite(t *testing.T) {
 			t.Errorf("write function invoked %d times, want 2 (running write and final write)", got)
 		}
 
-		c2 := newPersistTestCollector(path, time.Hour)
-		c2.loadHistory()
-		want := scalarSeriesLens(c.History())
-		got := scalarSeriesLens(c2.History())
-		for key, w := range want {
-			if got[key] != w {
-				t.Errorf("series %s: file holds %d points, collector has %d", key, got[key], w)
-			}
-		}
-		for _, key := range []string{"memory_used_percent", "load1"} {
-			if got[key] == 0 {
-				t.Errorf("series %s of the file has no point, want at least one", key)
-			}
-		}
+		assertHistoryFileMatches(t, c, path)
 	})
 }
 
