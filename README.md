@@ -18,7 +18,7 @@ automation systems like openHAB). Runs as a systemd service.
   `vcgencmd`-sourced GPU and PMIC (Pi 4/5) temperatures if available
 - **Memory & swap** usage
 - **Filesystem usage** - per mounted filesystem, pseudo filesystems
-  (tmpfs, proc, overlay, ...) excluded by default
+  (tmpfs, proc, overlay, ...) always excluded
 - **Disk I/O throughput** (REST API) - per block device read/write
   bytes-per-second
 - **Network throughput** per interface (optional, can be disabled)
@@ -147,8 +147,9 @@ tar xzf "pimonitor_${VERSION#v}_linux_${ARCH}.tar.gz"
 cd "pimonitor_${VERSION#v}_linux_${ARCH}"
 
 ls
-# install.sh  pimonitor  pimonitor.service  pimonitor-apt-update.service
-# pimonitor-apt-update.timer  pimonitor.example.yaml  README.md  LICENSE.md
+# download-latest.sh  install.sh  pimonitor  pimonitor.service
+# pimonitor-apt-update.service  pimonitor-apt-update.timer
+# pimonitor.example.yaml  README.md  LICENSE.md
 ```
 
 Alternatively, pick a specific version and architecture manually from the
@@ -194,7 +195,8 @@ needed.
 This creates an unprivileged `pimonitor` system user, installs the binary
 to `/usr/local/bin/pimonitor`, writes a default config to
 `/etc/pimonitor/config.yaml` (if one doesn't already exist), installs the
-two systemd units, and enables/starts both. Because the config file may
+three systemd unit files, and enables/starts `pimonitor.service` and
+`pimonitor-apt-update.timer`. Because the config file may
 contain the `api_key` secret, the installer keeps it readable only by root
 and the `pimonitor` group (`/etc/pimonitor` is `750 root:pimonitor`, the
 config file `640 root:pimonitor`) — re-running `install.sh` also tightens

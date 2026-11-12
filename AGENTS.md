@@ -110,7 +110,7 @@ All commands, with what each one checks, are listed in [`.squad/stack.md`](/.squ
 <!-- project:begin configuration -->
 - Runtime configuration is a YAML file (`/etc/pimonitor/config.yaml` on the Pi, `packaging/pimonitor.example.yaml`
   as the documented example), parsed with `gopkg.in/yaml.v3` — the only accepted runtime dependency. Options,
-  defaults and validation: [`ARCHITECTURE.md`](/docs/ARCHITECTURE.md#configuration-internalconfig) and the
+  defaults and validation: [`docs/areas/configuration.md`](/docs/areas/configuration.md) and the
   Configuration section of [`README.md`](/README.md#configuration).
 - `make build` / `make build-arm64` / `make build-arm` (`GOARM=6` for Pi Zero/1; arm64 for Pi 3/4/5 64-bit OS) and
   `make run` (runs against `packaging/pimonitor.example.yaml`) are the developer entry points; the squad's commands
