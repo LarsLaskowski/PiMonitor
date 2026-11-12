@@ -70,6 +70,15 @@ Project-specific Claude Code skills live under `.claude/skills/`:
 - `fix-issue` — reproduce a reported issue (ideally as a failing test),
   implement a minimal fix, and open a PR referencing the issue.
 
+The same three skills also exist for Codex under `.agents/skills/` (see
+`AGENTS.md`). This tree is the source of truth; the Codex copies are an older
+subset. They leave out the review subagent below on purpose, because it is
+defined only for Claude Code, but they also still lack rules that do not
+depend on it (resolving posted review points, the PR-template fill guidance,
+round caps, the current review checklist). Bringing them up to date is tracked
+in #189; when you change a skill here, note in that issue what the Codex copy
+still needs.
+
 Review runs as a subagent defined in `.claude/agents/pimonitor-reviewer.md`
 (read-only, pinned to Opus, fresh context). `create-pr` and `fix-issue` call
 it *before* pushing, so a change is reviewed while it is still local;

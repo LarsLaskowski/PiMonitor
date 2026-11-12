@@ -61,7 +61,7 @@ so explicitly instead of skipping the test silently.
 
 ## Related Skills
 
-Project-specific Codex skills live under `.Codex/skills/`:
+Project-specific Codex skills live under `.agents/skills/`:
 
 - `create-pr` — run tests/lint locally, then open a PR following
   `.github/pull_request_template.md`.
@@ -69,3 +69,15 @@ Project-specific Codex skills live under `.Codex/skills/`:
   project's Go/security conventions.
 - `fix-issue` — reproduce a reported issue (ideally as a failing test),
   implement a minimal fix, and open a PR referencing the issue.
+
+The same three skills also exist for Claude Code under `.claude/skills/`, and
+the two copies differ. `.claude/skills/` is the source of truth; the versions
+here are an older subset. Part of the difference is deliberate: the Claude Code
+versions run a review subagent (`.claude/agents/pimonitor-reviewer.md`) before
+pushing, and that agent is defined only for Claude Code. The Claude Code copies
+also carry newer rules that do not depend on the subagent and are not yet
+ported here: resolving every review comment posted on an open PR, how to fill
+each PR-template section, round caps for re-reviews, and a newer review
+checklist with a severity model. Bringing this tree up to date is tracked in
+#189. Until then, when a skill here and its Claude Code counterpart disagree,
+follow the Claude Code version.

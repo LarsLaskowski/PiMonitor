@@ -81,7 +81,7 @@ not be merged; see the checklist in [`.github/pull_request_template.md`](../.git
 | Mocking | No mocking framework. Fixtures (temp files via `t.TempDir()`, in-memory fixture strings) and small hand-written fakes (e.g. `fakeMetrics` in `httpapi`) instead |
 | HTTP testing | `net/http/httptest` (`httptest.NewRecorder`, `httptest.NewRequest`) |
 | Race/coverage | `go test ./... -race -cover` (CI); `-race` is not run by `make test` locally, run it explicitly when touching concurrent code (`collector`, `alert`) |
-| Lint | `golangci-lint run` (`make lint`), same config as CI |
+| Lint | `golangci-lint run` (`make lint`): golangci-lint's default linters, no committed config; use the version CI pins |
 
 Do not introduce a third-party test framework, assertion library (e.g. `testify`), or
 mocking library — the project standardizes on the standard library `testing` package and

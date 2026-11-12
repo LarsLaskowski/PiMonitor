@@ -117,8 +117,9 @@ a red build.
   build DOM nodes with `document.createElement` + `textContent` instead. This is enforced
   by `internal/web/xss_test.go`, not just a style preference — see
   [`ARCHITECTURE.md`](ARCHITECTURE.md#web-dashboard-internalweb) for why.
-- Run `golangci-lint run` (`make lint`) before opening a pull request; CI enforces the
-  same configuration.
+- Run `golangci-lint run` (`make lint`) before opening a pull request. The repository
+  commits no `.golangci.yml`, so local runs and CI both use golangci-lint's default
+  linters; running the version CI pins (see above) gives the same result as CI.
 
 ## REST API stability
 
