@@ -547,6 +547,11 @@ func TestParseVcgencmdTemp_ErrorText(t *testing.T) {
 			want:   unsupported + `unexpected vcgencmd output: "error=1 error_msg=x"`,
 		},
 		{
+			name:   "AC1 short output unchanged",
+			output: "garbage output",
+			want:   unsupported + `unexpected vcgencmd output: "garbage output"`,
+		},
+		{
 			name:    "AC2 long unparsable number is bounded",
 			output:  "temp=" + strings.Repeat("x", 250),
 			want:    unsupported + "parse vcgencmd temp " + strconv.Quote("temp="+strings.Repeat("x", 195)+"...") + ": invalid syntax",
