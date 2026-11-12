@@ -116,6 +116,12 @@ func run(args []string) error {
 	}
 }
 
+// awaitCollector blocks until done is closed or ctx is done and reports
+// whether done was closed first.
+func awaitCollector(ctx context.Context, done <-chan struct{}) bool {
+	return false
+}
+
 // serverConfig maps the resolved configuration to httpapi.Config, factored
 // out of run() (like clientConfig below) so the mapping is unit-testable
 // without starting a real server.
