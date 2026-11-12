@@ -1224,6 +1224,46 @@ func TestCollector_FastTick_OptionalSourceLoggedOnce(t *testing.T) {
 			t.Fatalf("CPUFrequency = %+v, want one core after the directory appeared", got)
 		}
 	})
+
+	t.Run("AC2 hwmon disabled logs nothing", func(t *testing.T) {
+		e := newOptionalSourceEnv(t)
+		e.c.cfg.HwmonEnabled = false
+
+		e.tick(ticks)
+
+		if out := e.buf.String(); strings.Contains(out, "hwmon sensor collection failed") {
+			t.Fatalf("log mentions hwmon with hwmon_enabled off, want nothing; log:\n%s", out)
+		}
+		if got := e.c.latest.Sensors; len(got) != 0 {
+			t.Fatalf("Sensors = %+v, want omitted with hwmon_enabled off", got)
+		}
+	})
+}
+
+// TestCollector_FastTick_AllOptionalSourcesMissing_AC4 pins that a tick with
+// every optional source absent completes and still reports the mandatory
+// memory and uptime readings.
+func TestCollector_FastTick_AllOptionalSourcesMissing_AC4(t *testing.T) {
+	e := newOptionalSourceEnv(t)
+
+	e.tick(2)
+
+	snap := e.c.Snapshot()
+	if snap.Memory.TotalBytes != 1000000*1024 {
+		t.Errorf("Memory.TotalBytes = %d, want %d from the fixture", snap.Memory.TotalBytes, 1000000*1024)
+	}
+	if diffFloat(snap.UptimeSeconds, 12345.67) > 0.001 {
+		t.Errorf("UptimeSeconds = %v, want 12345.67 from the fixture", snap.UptimeSeconds)
+	}
+	if snap.TemperatureValid {
+		t.Error("TemperatureValid = true, want false without a thermal zone")
+	}
+	if snap.GPUTemperature != nil || snap.PMICTemperature != nil || snap.Throttled != nil {
+		t.Errorf("snapshot = gpu %+v pmic %+v throttled %+v, want all omitted", snap.GPUTemperature, snap.PMICTemperature, snap.Throttled)
+	}
+	if len(snap.Wireless) != 0 || len(snap.Sensors) != 0 || len(snap.CPUFrequency) != 0 {
+		t.Errorf("wireless %+v sensors %+v cpufreq %+v, want all omitted", snap.Wireless, snap.Sensors, snap.CPUFrequency)
+	}
 }
 
 // TestCollector_FastTick_GPUAndPMICWithoutThermalZone_AC3 pins that a host
