@@ -8,6 +8,8 @@ on:
   schedule:
     - cron: '30 1 * * 0'
 
+permissions: {}
+
 jobs:
   analyze:
     name: Analyze (${{ matrix.language }})
@@ -29,6 +31,9 @@ jobs:
             build-mode: none
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Autobuild runs the repository's Makefile; it needs no stored token.
+          persist-credentials: false
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
