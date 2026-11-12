@@ -744,3 +744,119 @@ func TestNotifierRecordSent_KeepsEntriesInsideWindow(t *testing.T) {
 		t.Error("/other not rate-limited 1s after its own delivery")
 	}
 }
+
+// A cleared event ends the rate-limit window of its metric and resource and
+// never starts one: only a delivered fired event does (issue #199).
+func TestNotifier_ClearedEndsRateLimitWindow(t *testing.T) {
+	type step struct {
+		kind   string
+		from   Level
+		to     Level
+		offset time.Duration
+	}
+	fired := func(offset time.Duration) step {
+		return step{kind: KindFired, from: LevelOK, to: LevelCrit, offset: offset}
+	}
+	escalated := func(offset time.Duration) step {
+		return step{kind: KindFired, from: LevelWarn, to: LevelCrit, offset: offset}
+	}
+	cleared := func(offset time.Duration) step {
+		return step{kind: KindCleared, from: LevelCrit, to: LevelOK, offset: offset}
+	}
+
+	cases := []struct {
+		name         string
+		steps        []step
+		rejectKind   string
+		want         []time.Duration
+		noKeyAfterAt int // index of a step after which no window may be held, -1 for none
+	}{
+		{
+			name:         "AC1 cleared without earlier firing starts no window",
+			steps:        []step{cleared(0), fired(time.Second)},
+			want:         []time.Duration{0, time.Second},
+			noKeyAfterAt: 0,
+		},
+		{
+			name:         "AC1 cleared does not extend the window",
+			steps:        []step{fired(0), cleared(50 * time.Second), fired(70 * time.Second)},
+			want:         []time.Duration{0, 50 * time.Second, 70 * time.Second},
+			noKeyAfterAt: -1,
+		},
+		{
+			name:         "AC2 firing after delivered cleared inside window is delivered",
+			steps:        []step{fired(0), cleared(time.Second), fired(2 * time.Second)},
+			want:         []time.Duration{0, time.Second, 2 * time.Second},
+			noKeyAfterAt: -1,
+		},
+		{
+			name:         "AC3 repeated firing after a refire is dropped",
+			steps:        []step{fired(0), cleared(time.Second), fired(2 * time.Second), escalated(3 * time.Second)},
+			want:         []time.Duration{0, time.Second, 2 * time.Second},
+			noKeyAfterAt: -1,
+		},
+		{
+			name:         "AC4 cleared after a dropped firing is delivered",
+			steps:        []step{fired(0), fired(time.Second), cleared(2 * time.Second)},
+			want:         []time.Duration{0, 2 * time.Second},
+			noKeyAfterAt: -1,
+		},
+		{
+			name:         "AC6 firing after rejected cleared inside window is delivered",
+			steps:        []step{fired(0), cleared(time.Second), fired(2 * time.Second)},
+			rejectKind:   KindCleared,
+			want:         []time.Duration{0, 2 * time.Second},
+			noKeyAfterAt: -1,
+		},
+	}
+
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ch := make(chan eventView, 16)
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				body, _ := io.ReadAll(r.Body)
+				var v eventView
+				if err := json.Unmarshal(body, &v); err != nil {
+					w.WriteHeader(http.StatusBadRequest)
+					return
+				}
+				if tc.rejectKind != "" && v.Kind == tc.rejectKind {
+					w.WriteHeader(http.StatusBadRequest)
+					return
+				}
+				ch <- v
+				w.WriteHeader(http.StatusOK)
+			}))
+			defer srv.Close()
+
+			n, err := NewNotifier(config.Alerts{
+				Webhooks:                 []config.Webhook{{URL: srv.URL}},
+				NotifyMinIntervalSeconds: 60,
+			}, nil)
+			if err != nil {
+				t.Fatalf("NewNotifier: %v", err)
+			}
+			w := n.workers[0]
+
+			for i, s := range tc.steps {
+				ev := Event{Metric: "cpu", Kind: s.kind, From: s.from, To: s.to, Value: 90, At: base.Add(s.offset)}
+				n.dispatch(context.Background(), w, ev)
+				if i == tc.noKeyAfterAt {
+					if _, held := w.lastSent[rateLimitKey(ev)]; held {
+						t.Errorf("step %d (%s): lastSent holds a window after a cleared event, want none", i, s.kind)
+					}
+				}
+			}
+
+			close(ch)
+			var got []time.Duration
+			for v := range ch {
+				got = append(got, v.At.Sub(base))
+			}
+			if fmt.Sprint(got) != fmt.Sprint(tc.want) {
+				t.Errorf("delivered events at offsets %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
