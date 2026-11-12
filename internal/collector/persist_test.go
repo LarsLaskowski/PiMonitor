@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -522,5 +523,142 @@ func TestSyncDirectory_ExistingDir(t *testing.T) {
 func TestSyncDirectory_MissingDir(t *testing.T) {
 	if err := syncDirectory(filepath.Join(t.TempDir(), "missing")); err == nil {
 		t.Fatal("syncDirectory = nil, want an error for a missing directory")
+	}
+}
+
+// waitForHistoryPoint fails the test unless c records a memory point within timeout.
+func waitForHistoryPoint(t *testing.T, c *Collector, timeout time.Duration) {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for len(c.History().MemoryUsedPercent) == 0 {
+		if time.Now().After(deadline) {
+			t.Fatal("Run recorded no history point")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+// assertHistoryFileMatches fails the test unless the history file at path holds
+// the point count of every scalar series of c, and holds points in the memory
+// and load1 series.
+func assertHistoryFileMatches(t *testing.T, c *Collector, path string) {
+	t.Helper()
+	c2 := newPersistTestCollector(path, time.Hour)
+	c2.loadHistory()
+	want := scalarSeriesLens(c.History())
+	got := scalarSeriesLens(c2.History())
+	for key, w := range want {
+		if got[key] != w {
+			t.Errorf("series %s: file holds %d points, collector has %d", key, got[key], w)
+		}
+	}
+	for _, key := range []string{"memory_used_percent", "load1"} {
+		if got[key] == 0 {
+			t.Errorf("series %s of the file has no point, want at least one", key)
+		}
+	}
+}
+
+// TestCollector_Run_FinalWriteWaitsForRunningWrite covers issue #198: a write
+// still running when shutdown starts must not make the final write get
+// skipped; the final write runs after it and the file holds the latest state.
+func TestCollector_Run_FinalWriteWaitsForRunningWrite(t *testing.T) {
+	t.Run("AC4 final write runs after the running write", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "history.bin")
+		c := New(Config{
+			FastInterval:    10 * time.Millisecond,
+			SlowInterval:    time.Hour,
+			HistoryCapacity: 100,
+			PersistPath:     path,
+			HistoryWindow:   time.Hour,
+		}, nil)
+
+		started := make(chan struct{})
+		proceed := make(chan struct{})
+		var calls int32
+		c.writeFile = blockingWriteFile(started, proceed, &calls)
+
+		// A write of the still-empty history is running and blocked.
+		c.persistHistory()
+		select {
+		case <-started:
+		case <-time.After(2 * time.Second):
+			t.Fatal("write function was never invoked")
+		}
+
+		ctx, cancel := context.WithCancel(context.Background())
+		done := make(chan struct{})
+		go func() {
+			c.Run(ctx)
+			close(done)
+		}()
+
+		// Let Run collect a few points while the write blocks, then shut down.
+		waitForHistoryPoint(t, c, 2*time.Second)
+		cancel()
+
+		select {
+		case <-done:
+			t.Fatal("Run returned while a write was still running")
+		case <-time.After(200 * time.Millisecond):
+		}
+
+		close(proceed)
+
+		select {
+		case <-done:
+		case <-time.After(2 * time.Second):
+			t.Fatal("Run did not return after the running write completed")
+		}
+
+		if got := atomic.LoadInt32(&calls); got != 2 {
+			t.Errorf("write function invoked %d times, want 2 (running write and final write)", got)
+		}
+
+		assertHistoryFileMatches(t, c, path)
+	})
+}
+
+func TestCollector_FlushHistory_WriteFailureIsLoggedAndLockReleased(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "history.bin")
+	log, buf := newCapturingLogger()
+	c := New(Config{
+		FastInterval:    time.Second,
+		SlowInterval:    time.Minute,
+		HistoryCapacity: 10,
+		PersistPath:     path,
+		HistoryWindow:   time.Hour,
+	}, log)
+
+	wantErr := errors.New("disk full")
+	var calls int32
+	c.writeFile = func(string, []byte) error {
+		atomic.AddInt32(&calls, 1)
+		return wantErr
+	}
+
+	done := make(chan struct{})
+	go func() {
+		c.flushHistory()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("flushHistory did not return after a failed write")
+	}
+
+	if got := atomic.LoadInt32(&calls); got != 1 {
+		t.Errorf("write function invoked %d times, want 1", got)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "could not persist metric history") || !strings.Contains(out, "disk full") {
+		t.Errorf("log = %q, want the persist warning carrying the write error", out)
+	}
+	select {
+	case c.persisting <- struct{}{}:
+		<-c.persisting
+	default:
+		t.Error("persisting slot still held after a failed flush, want it released")
 	}
 }

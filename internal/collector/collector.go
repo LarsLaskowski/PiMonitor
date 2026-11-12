@@ -226,8 +226,8 @@ type Collector struct {
 	// separate from latest/Snapshot so it stays off GET /api/v1/metrics,
 	// bounding that response's payload size — see Processes().
 	latestProcesses Processes
-	// historyGen counts fastTicks that have recorded at least one history
-	// point. HTTP handlers use it to detect whether the retained history has
+	// historyGen counts fastTicks (a tick may add no point, and eviction can
+	// still change the history). HTTP handlers use it to detect whether the retained history has
 	// actually changed since a cached, already-serialised response was built,
 	// so a client polling faster than the collector ticks doesn't force a
 	// fresh deep-copy-and-encode of the whole window on every request.
@@ -245,16 +245,18 @@ type Collector struct {
 	rxHist          map[string]*RingBuffer[HistoryPoint]
 	txHist          map[string]*RingBuffer[HistoryPoint]
 
-	// persistWG tracks in-flight persistHistory writes so Run's ctx.Done()
-	// branch can wait for the final flush before returning.
+	// persistWG tracks in-flight persistHistory writes; tests wait on it to
+	// observe a background write's completion.
 	persistWG sync.WaitGroup
 	// persisting is a buffered try-lock (capacity 1): a successful send means
-	// no write is currently in flight. Used to skip an overlapping flush
-	// rather than queue it, since the next flush writes newer data anyway.
+	// no write is currently in flight. persistHistory uses it to skip an
+	// overlapping flush rather than queue it, since the next flush writes newer
+	// data anyway; flushHistory instead waits on it, so the final write runs
+	// after a running one.
 	persisting chan struct{}
-	// writeFile performs the atomic write persistHistory hands off to a
-	// background goroutine. Defaults to writeFileAtomic; overridable in
-	// tests to control write timing without touching real disk I/O.
+	// writeFile performs the atomic write (in persistHistory's background
+	// goroutine, or inline in flushHistory). Defaults to writeFileAtomic;
+	// overridable in tests to control write timing without touching real disk I/O.
 	writeFile func(path string, data []byte) error
 }
 
@@ -351,13 +353,12 @@ func (c *Collector) Run(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			// Final flush so a clean shutdown (e.g. reboot for updates)
-			// loses at most the points since the last fast tick. persistHistory
-			// hands the write off to a background goroutine, so wait for it
-			// (and any still-running flush from the last slowTick) before
-			// returning: cmd/pimonitor/main.go bounds this by its shutdown
-			// context, so a stuck fsync cannot hang the process.
-			c.persistHistory()
-			c.persistWG.Wait()
+			// loses at most the points since the last fast tick. flushHistory
+			// waits for a still-running slow-tick write and then writes the
+			// current state itself, so the file holds the latest history:
+			// cmd/pimonitor/main.go bounds this wait by its shutdown context,
+			// so a stuck fsync cannot hang the process.
+			c.flushHistory()
 			return
 		case <-fastTicker.C:
 			c.fastTick(ctx)
@@ -463,8 +464,9 @@ func (c *Collector) collectSysInfo() {
 }
 
 // fastTickSamples holds every metric fastTick reads before taking c.mu,
-// plus each source's error, so history and alerts can tell a real zero
-// value apart from a failed collection.
+// plus each source's error, so history points and alerts can tell a real
+// zero value apart from a failed collection: a failed source adds no
+// scalar history point.
 type fastTickSamples struct {
 	now        time.Time
 	cpuUsage   CPUUsage
@@ -475,6 +477,7 @@ type fastTickSamples struct {
 	gpuTemp    *GPUTemperature
 	pmicTemp   *PMICTemperature
 	tempErr    error
+	loadErr    error
 	throttled  *Throttled
 	mem        Memory
 	swap       Swap
@@ -504,9 +507,9 @@ func (c *Collector) collectFastTickSamples(ctx context.Context) fastTickSamples 
 	var err error
 	s.cpuFreq, err = c.cpuFreq.Collect()
 	c.cpuFreqFailures.observe(c.log, "cpu frequency collection failed", err)
-	s.load, err = c.loadAvg.Collect()
-	if err != nil {
-		c.log.Warn("load average collection failed", "error", err)
+	s.load, s.loadErr = c.loadAvg.Collect()
+	if s.loadErr != nil {
+		c.log.Warn("load average collection failed", "error", s.loadErr)
 	}
 	s.temp, s.tempErr = c.temp.Collect()
 	c.tempFailures.observe(c.log, "temperature collection failed", s.tempErr)
@@ -583,13 +586,19 @@ func (c *Collector) fastTick(ctx context.Context) {
 	c.latest.Wireless = s.wireless
 	c.latest.Sensors = s.sensors
 
-	c.cpuHist.Add(HistoryPoint{Timestamp: s.now, Value: s.cpuUsage.OverallPercent})
-	c.l1Hist.Add(HistoryPoint{Timestamp: s.now, Value: s.load.Load1})
-	c.l5Hist.Add(HistoryPoint{Timestamp: s.now, Value: s.load.Load5})
-	c.l15Hist.Add(HistoryPoint{Timestamp: s.now, Value: s.load.Load15})
-	c.tempHist.Add(HistoryPoint{Timestamp: s.now, Value: s.temp.Celsius})
-	c.memHist.Add(HistoryPoint{Timestamp: s.now, Value: s.mem.UsedPercent})
-	c.swapHist.Add(HistoryPoint{Timestamp: s.now, Value: s.swap.UsedPercent})
+	// A failed collection records no point: the zero value is no reading.
+	addPoint := func(h *RingBuffer[HistoryPoint], err error, v float64) {
+		if err == nil {
+			h.Add(HistoryPoint{Timestamp: s.now, Value: v})
+		}
+	}
+	addPoint(c.cpuHist, s.cpuErr, s.cpuUsage.OverallPercent)
+	addPoint(c.l1Hist, s.loadErr, s.load.Load1)
+	addPoint(c.l5Hist, s.loadErr, s.load.Load5)
+	addPoint(c.l15Hist, s.loadErr, s.load.Load15)
+	addPoint(c.tempHist, s.tempErr, s.temp.Celsius)
+	addPoint(c.memHist, s.memErr, s.mem.UsedPercent)
+	addPoint(c.swapHist, s.memErr, s.swap.UsedPercent)
 
 	c.recordDeviceHistory(s.now, s.disks, s.diskIO, s.netIfaces)
 	c.historyGen++
