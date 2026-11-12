@@ -1126,118 +1126,127 @@ func (e *optionalSourceEnv) assertRecoveredOnce(t *testing.T, msg string) {
 	}
 }
 
+// optionalSourceTicks is the number of consecutive missing-source ticks the
+// log-once subtests run.
+const optionalSourceTicks = 3
+
 // TestCollector_FastTick_OptionalSourceLoggedOnce covers issue #197: a
 // missing optional source is logged once under its own message, repeats go to
 // DEBUG, and the source appearing later logs one recovery line.
 func TestCollector_FastTick_OptionalSourceLoggedOnce(t *testing.T) {
-	const ticks = 3
+	t.Run("AC1 missing thermal zone", testOptionalSourceLoggedOnceAC1MissingThermalZone)
+	t.Run("AC2 vcgencmd", testOptionalSourceLoggedOnceAC2Vcgencmd)
+	t.Run("AC2 wireless", testOptionalSourceLoggedOnceAC2Wireless)
+	t.Run("AC2 hwmon", testOptionalSourceLoggedOnceAC2Hwmon)
+	t.Run("AC2 cpufreq", testOptionalSourceLoggedOnceAC2CPUFreq)
+	t.Run("AC2 hwmon disabled logs nothing", testOptionalSourceLoggedOnceAC2HwmonDisabled)
+}
 
-	t.Run("AC1 missing thermal zone", func(t *testing.T) {
-		e := newOptionalSourceEnv(t)
+func testOptionalSourceLoggedOnceAC1MissingThermalZone(t *testing.T) {
+	e := newOptionalSourceEnv(t)
 
-		e.tick(ticks)
-		e.assertLoggedOnceThenRecovered(t, "temperature collection failed", ticks)
-		e.addThermalZone(t)
-		e.tick(1)
+	e.tick(optionalSourceTicks)
+	e.assertLoggedOnceThenRecovered(t, "temperature collection failed", optionalSourceTicks)
+	e.addThermalZone(t)
+	e.tick(1)
 
-		e.assertRecoveredOnce(t, "temperature collection failed")
-		if got := e.c.latest.TemperatureValid; !got {
-			t.Fatalf("TemperatureValid = %v after the zone appeared, want true", got)
-		}
-	})
+	e.assertRecoveredOnce(t, "temperature collection failed")
+	if got := e.c.latest.TemperatureValid; !got {
+		t.Fatalf("TemperatureValid = %v after the zone appeared, want true", got)
+	}
+}
 
-	t.Run("AC2 vcgencmd", func(t *testing.T) {
-		e := newOptionalSourceEnv(t)
-		msgs := []string{
-			"gpu temperature collection failed",
-			"pmic temperature collection failed",
-			"throttled state collection failed",
-		}
+func testOptionalSourceLoggedOnceAC2Vcgencmd(t *testing.T) {
+	e := newOptionalSourceEnv(t)
+	msgs := []string{
+		"gpu temperature collection failed",
+		"pmic temperature collection failed",
+		"throttled state collection failed",
+	}
 
-		e.tick(ticks)
-		for _, msg := range msgs {
-			e.assertLoggedOnceThenRecovered(t, msg, ticks)
-		}
-		if snap := e.c.latest; snap.GPUTemperature != nil || snap.PMICTemperature != nil || snap.Throttled != nil {
-			t.Fatalf("snapshot = gpu %+v pmic %+v throttled %+v, want all omitted without vcgencmd",
-				snap.GPUTemperature, snap.PMICTemperature, snap.Throttled)
-		}
-		e.installVcgencmd(t)
-		e.tick(1)
+	e.tick(optionalSourceTicks)
+	for _, msg := range msgs {
+		e.assertLoggedOnceThenRecovered(t, msg, optionalSourceTicks)
+	}
+	if snap := e.c.latest; snap.GPUTemperature != nil || snap.PMICTemperature != nil || snap.Throttled != nil {
+		t.Fatalf("snapshot = gpu %+v pmic %+v throttled %+v, want all omitted without vcgencmd",
+			snap.GPUTemperature, snap.PMICTemperature, snap.Throttled)
+	}
+	e.installVcgencmd(t)
+	e.tick(1)
 
-		for _, msg := range msgs {
-			e.assertRecoveredOnce(t, msg)
-		}
-		if snap := e.c.latest; snap.GPUTemperature == nil || snap.PMICTemperature == nil || snap.Throttled == nil {
-			t.Fatalf("snapshot = gpu %+v pmic %+v throttled %+v, want all reported once vcgencmd exists",
-				snap.GPUTemperature, snap.PMICTemperature, snap.Throttled)
-		}
-	})
+	for _, msg := range msgs {
+		e.assertRecoveredOnce(t, msg)
+	}
+	if snap := e.c.latest; snap.GPUTemperature == nil || snap.PMICTemperature == nil || snap.Throttled == nil {
+		t.Fatalf("snapshot = gpu %+v pmic %+v throttled %+v, want all reported once vcgencmd exists",
+			snap.GPUTemperature, snap.PMICTemperature, snap.Throttled)
+	}
+}
 
-	t.Run("AC2 wireless", func(t *testing.T) {
-		e := newOptionalSourceEnv(t)
+func testOptionalSourceLoggedOnceAC2Wireless(t *testing.T) {
+	e := newOptionalSourceEnv(t)
 
-		e.tick(ticks)
-		e.assertLoggedOnceThenRecovered(t, "wireless collection failed", ticks)
-		if got := e.c.latest.Wireless; len(got) != 0 {
-			t.Fatalf("Wireless = %+v, want omitted without /proc/net/wireless", got)
-		}
-		e.addWireless(t)
-		e.tick(1)
+	e.tick(optionalSourceTicks)
+	e.assertLoggedOnceThenRecovered(t, "wireless collection failed", optionalSourceTicks)
+	if got := e.c.latest.Wireless; len(got) != 0 {
+		t.Fatalf("Wireless = %+v, want omitted without /proc/net/wireless", got)
+	}
+	e.addWireless(t)
+	e.tick(1)
 
-		e.assertRecoveredOnce(t, "wireless collection failed")
-		if got := e.c.latest.Wireless; len(got) != 1 {
-			t.Fatalf("Wireless = %+v, want one interface after the file appeared", got)
-		}
-	})
+	e.assertRecoveredOnce(t, "wireless collection failed")
+	if got := e.c.latest.Wireless; len(got) != 1 {
+		t.Fatalf("Wireless = %+v, want one interface after the file appeared", got)
+	}
+}
 
-	t.Run("AC2 hwmon", func(t *testing.T) {
-		e := newOptionalSourceEnv(t)
+func testOptionalSourceLoggedOnceAC2Hwmon(t *testing.T) {
+	e := newOptionalSourceEnv(t)
 
-		e.tick(ticks)
-		e.assertLoggedOnceThenRecovered(t, "hwmon sensor collection failed", ticks)
-		if got := e.c.latest.Sensors; len(got) != 0 {
-			t.Fatalf("Sensors = %+v, want omitted without hwmon chips", got)
-		}
-		e.addHwmon(t)
-		e.tick(1)
+	e.tick(optionalSourceTicks)
+	e.assertLoggedOnceThenRecovered(t, "hwmon sensor collection failed", optionalSourceTicks)
+	if got := e.c.latest.Sensors; len(got) != 0 {
+		t.Fatalf("Sensors = %+v, want omitted without hwmon chips", got)
+	}
+	e.addHwmon(t)
+	e.tick(1)
 
-		e.assertRecoveredOnce(t, "hwmon sensor collection failed")
-		if got := e.c.latest.Sensors; len(got) != 1 {
-			t.Fatalf("Sensors = %+v, want one sensor after the chip appeared", got)
-		}
-	})
+	e.assertRecoveredOnce(t, "hwmon sensor collection failed")
+	if got := e.c.latest.Sensors; len(got) != 1 {
+		t.Fatalf("Sensors = %+v, want one sensor after the chip appeared", got)
+	}
+}
 
-	t.Run("AC2 cpufreq", func(t *testing.T) {
-		e := newOptionalSourceEnv(t)
+func testOptionalSourceLoggedOnceAC2CPUFreq(t *testing.T) {
+	e := newOptionalSourceEnv(t)
 
-		e.tick(ticks)
-		e.assertLoggedOnceThenRecovered(t, "cpu frequency collection failed", ticks)
-		if got := e.c.latest.CPUFrequency; len(got) != 0 {
-			t.Fatalf("CPUFrequency = %+v, want omitted without a cpufreq directory", got)
-		}
-		e.addCPUFreq(t)
-		e.tick(1)
+	e.tick(optionalSourceTicks)
+	e.assertLoggedOnceThenRecovered(t, "cpu frequency collection failed", optionalSourceTicks)
+	if got := e.c.latest.CPUFrequency; len(got) != 0 {
+		t.Fatalf("CPUFrequency = %+v, want omitted without a cpufreq directory", got)
+	}
+	e.addCPUFreq(t)
+	e.tick(1)
 
-		e.assertRecoveredOnce(t, "cpu frequency collection failed")
-		if got := e.c.latest.CPUFrequency; len(got) != 1 {
-			t.Fatalf("CPUFrequency = %+v, want one core after the directory appeared", got)
-		}
-	})
+	e.assertRecoveredOnce(t, "cpu frequency collection failed")
+	if got := e.c.latest.CPUFrequency; len(got) != 1 {
+		t.Fatalf("CPUFrequency = %+v, want one core after the directory appeared", got)
+	}
+}
 
-	t.Run("AC2 hwmon disabled logs nothing", func(t *testing.T) {
-		e := newOptionalSourceEnv(t)
-		e.c.cfg.HwmonEnabled = false
+func testOptionalSourceLoggedOnceAC2HwmonDisabled(t *testing.T) {
+	e := newOptionalSourceEnv(t)
+	e.c.cfg.HwmonEnabled = false
 
-		e.tick(ticks)
+	e.tick(optionalSourceTicks)
 
-		if out := e.buf.String(); strings.Contains(out, "hwmon sensor collection failed") {
-			t.Fatalf("log mentions hwmon with hwmon_enabled off, want nothing; log:\n%s", out)
-		}
-		if got := e.c.latest.Sensors; len(got) != 0 {
-			t.Fatalf("Sensors = %+v, want omitted with hwmon_enabled off", got)
-		}
-	})
+	if out := e.buf.String(); strings.Contains(out, "hwmon sensor collection failed") {
+		t.Fatalf("log mentions hwmon with hwmon_enabled off, want nothing; log:\n%s", out)
+	}
+	if got := e.c.latest.Sensors; len(got) != 0 {
+		t.Fatalf("Sensors = %+v, want omitted with hwmon_enabled off", got)
+	}
 }
 
 // TestCollector_FastTick_AllOptionalSourcesMissing_AC4 pins that a tick with
