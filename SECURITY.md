@@ -40,7 +40,8 @@ reporters and reviewers have context:
   `/proc`, `/sys/class/thermal`, `/sys/devices/system/cpu/*/cpufreq`,
   `/sys/class/hwmon`, `/etc/os-release`, and the existing apt
   cache under `/var/lib/apt/lists/` (via the read-only `apt list --upgradable`
-  command), plus the optional, fixed-argument `vcgencmd measure_temp` /
+  command) and, when Pi-hole is installed, the world-readable
+  `/etc/pihole/versions`, plus the optional, fixed-argument `vcgencmd measure_temp` /
   `measure_temp pmic` / `get_throttled` calls. It never invokes anything that
   requires root. Its only extra privilege is membership in the `video` group
   (`SupplementaryGroups=video` in `pimonitor.service`), which Raspberry Pi OS

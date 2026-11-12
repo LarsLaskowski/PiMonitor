@@ -967,3 +967,39 @@ func TestCollector_FastTick_ThrottledFailureLoggedOnce(t *testing.T) {
 		t.Fatalf("WARN line should carry vcgencmd's failure message; log:\n%s", out)
 	}
 }
+
+// TestCollector_SlowTick_PiholeIndependentOfUpdates pins that the Pi-hole
+// state is refreshed on the slow tick even when the apt check fails, and
+// that it lands in its own snapshot field rather than in Updates.
+func TestCollector_SlowTick_PiholeIndependentOfUpdates(t *testing.T) {
+	c := newTestCollector()
+	c.updates = &UpdatesCollector{aptPath: "/nonexistent/apt", now: time.Now}
+	c.pihole = newTestPiholeCollector(t, true, piholeVersionsCoreAndFTLUpdate, time.Now())
+
+	c.slowTick(context.Background())
+
+	snap := c.Snapshot()
+	if !snap.Pihole.Installed || !snap.Pihole.UpdateAvailable {
+		t.Fatalf("Snapshot().Pihole = %+v, want installed with an update available", snap.Pihole)
+	}
+	if snap.Updates.Count != 0 {
+		t.Fatalf("Snapshot().Updates.Count = %d, want Pi-hole updates kept out of the apt count", snap.Updates.Count)
+	}
+}
+
+// TestCollector_SlowTick_PiholeErrorKeepsPreviousState pins that a failed
+// Pi-hole read keeps the last good state instead of reporting Pi-hole as
+// uninstalled.
+func TestCollector_SlowTick_PiholeErrorKeepsPreviousState(t *testing.T) {
+	c := newTestCollector()
+	c.updates = &UpdatesCollector{aptPath: "/nonexistent/apt", now: time.Now}
+	c.pihole = newTestPiholeCollector(t, true, piholeVersionsUpToDate, time.Now())
+	c.slowTick(context.Background())
+
+	overwriteTempFile(t, c.pihole.versionsPath, "garbage\n")
+	c.slowTick(context.Background())
+
+	if snap := c.Snapshot(); !snap.Pihole.Installed {
+		t.Fatalf("Snapshot().Pihole = %+v, want the previous installed state kept", snap.Pihole)
+	}
+}

@@ -167,6 +167,18 @@
     return parts.join(' ');
   }
 
+  // Coarse "how long ago" for ages measured in hours or days, where
+  // minute precision would only be noise.
+  function fmtAge(seconds) {
+    const s = Math.max(0, Math.floor(seconds || 0));
+    if (s < 60) return 'just now';
+    if (s < 3600) return Math.floor(s / 60) + 'm ago';
+    if (s < 86400) return Math.floor(s / 3600) + 'h ago';
+    const days = Math.floor(s / 86400);
+    const hours = Math.floor((s % 86400) / 3600);
+    return days + 'd' + (hours ? ' ' + hours + 'h' : '') + ' ago';
+  }
+
   function fmtClock(date) {
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   }
@@ -283,6 +295,54 @@
     if (document.getElementById('updates-modal').open) {
       renderUpdatesTable();
     }
+
+    renderPihole(snap.pihole, snap.timestamp);
+  }
+
+  // How long ago Pi-hole's own update checker last ran. Pi-hole refreshes
+  // its versions file only once a day, so this can lag `pihole -up` by up
+  // to ~24h; showing the age makes that lag visible. cache_age_seconds is
+  // the file's age as of the last slow tick (checked_at), so the time
+  // elapsed since then is added. Both timestamps come from the Pi's clock,
+  // so browser clock skew cannot distort the result.
+  function piholeCheckAge(pihole, snapTimestamp) {
+    let age = pihole.cache_age_seconds || 0;
+    const checkedAt = Date.parse(pihole.checked_at);
+    const now = Date.parse(snapTimestamp);
+    if (!Number.isNaN(checkedAt) && !Number.isNaN(now) && now > checkedAt) {
+      age += (now - checkedAt) / 1000;
+    }
+    return age;
+  }
+
+  const PIHOLE_COMPONENT_LABELS = { core: 'Core', web: 'Web', ftl: 'FTL' };
+
+  // Pi-hole is not installed through apt, so it gets its own line in the
+  // Updates card rather than being folded into the apt count above. The
+  // whole section stays hidden on hosts without Pi-hole (and with an older
+  // server that does not send the field at all).
+  function renderPihole(pihole, snapTimestamp) {
+    const installed = pihole?.is_installed === true;
+    document.getElementById('pihole-section').classList.toggle('hidden', !installed);
+    if (!installed) return;
+
+    const status = document.getElementById('pihole-status');
+    status.textContent = pihole.is_update_available ? 'Update available' : 'Up to date';
+    status.classList.toggle('metric-warn', !!pihole.is_update_available);
+    status.classList.toggle('metric-ok', !pihole.is_update_available);
+
+    const parts = (pihole.components || []).map(c => {
+      const label = (PIHOLE_COMPONENT_LABELS[c.name] || c.name) + ' ' + c.installed_version;
+      if (!c.is_update_available) return label;
+      // On a non-release branch an update can be new commits under the
+      // same version number, so only show an arrow to a different version.
+      return c.latest_version && c.latest_version !== c.installed_version
+        ? label + ' \u2192 ' + c.latest_version
+        : label + ' (update)';
+    });
+    setText('pihole-versions', parts.join(' \u00b7 '));
+    setText('pihole-checked', 'Checked ' + fmtAge(piholeCheckAge(pihole, snapTimestamp)));
+    document.getElementById('pihole-stale').classList.toggle('hidden', !pihole.stale);
   }
 
   // Maps each alert.Report metric name to the badge element(s) it lights up.

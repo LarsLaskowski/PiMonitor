@@ -186,6 +186,35 @@ extract the fields you need (e.g. via JSONPath in openHAB's HTTP binding).
     "cache_age_seconds": 1800,
     "stale": false,
     "checked_at": "2026-07-12T18:20:00Z"
+  },
+  "pihole": {
+    "is_installed": true,
+    "is_update_available": true,
+    "components": [
+      {
+        "name": "core",
+        "installed_version": "v6.5",
+        "latest_version": "v6.6",
+        "branch": "master",
+        "is_update_available": true
+      },
+      {
+        "name": "web",
+        "installed_version": "v6.6.1",
+        "latest_version": "v6.6.1",
+        "branch": "master",
+        "is_update_available": false
+      },
+      {
+        "name": "ftl",
+        "installed_version": "v6.8",
+        "latest_version": "v6.8",
+        "branch": "master",
+        "is_update_available": false
+      }
+    ],
+    "cache_age_seconds": 64800,
+    "checked_at": "2026-07-12T18:20:00Z"
   }
 }
 ```
@@ -287,6 +316,33 @@ Notes:
   separate root-privileged systemd timer, not by this process) is older
   than the configured staleness threshold — treat the update count as
   possibly outdated when this is set.
+- `pihole` reports a native [Pi-hole](https://pi-hole.net/) installation
+  and its own updates. It is always present, and deliberately separate from
+  `updates`: Pi-hole is not installed through apt, so its updates are never
+  part of `updates.count`.
+  - `is_installed` is `true` only for a native Pi-hole **v6 or newer**, i.e.
+    when both `/usr/bin/pihole-FTL` and `/etc/pihole/versions` exist. Pi-hole
+    v5 and older, and Pi-hole running in Docker, report `false`. When it is
+    `false`, only `is_installed`, `is_update_available` (`false`) and
+    `checked_at` are sent.
+  - `components` holds one entry per component (`core`, `web`, `ftl`). On
+    the release branch (`master`) `is_update_available` is `true` when
+    `installed_version` and `latest_version` differ; on any other branch the
+    installed and latest commit hashes are compared instead, so an update
+    there can share the installed version number. A value Pi-hole could not
+    determine (it writes the literal `null`, e.g. when its remote check
+    failed or was rate-limited, and always for the latest version on
+    non-master branches) is treated as unknown: `latest_version` is then
+    omitted, and an unknown value never counts as an update. The top-level `is_update_available` is `true` when any
+    component has one.
+  - PiMonitor only reads `/etc/pihole/versions`, which Pi-hole's own update
+    checker rewrites once a day (cron) and after every reboot or `pihole -up`.
+    The result can therefore lag a live `pihole -up` by up to about a day:
+    `cache_age_seconds` is the file's age as of `checked_at`, and `stale` is
+    set (and otherwise omitted) once it is older than 48h, i.e. at least one
+    daily refresh was missed. `pihole -up` additionally re-downloads an FTL
+    binary whose checksum changed under an unchanged version number; that
+    case is not visible in the versions file and is not reported.
 - Fields may read as zero values (`0`, `""`, empty arrays) briefly after
   process start, before the first collection tick completes, or
   permanently on non-Pi/non-Linux systems for hardware-specific fields
@@ -305,6 +361,7 @@ single value and would rather not fetch and parse the whole thing:
 | `GET /api/v1/metrics/disks` | the `disks` array |
 | `GET /api/v1/metrics/network` | the `network` array |
 | `GET /api/v1/metrics/updates` | the `updates` object |
+| `GET /api/v1/metrics/pihole` | the `pihole` object |
 
 Each endpoint returns **exactly** the correspondingly named field of
 `GET /api/v1/metrics` — the same JSON, sliced out, with no wrapper object
@@ -642,6 +699,7 @@ off.
     "/api/v1/metrics/disks": 0,
     "/api/v1/metrics/network": 0,
     "/api/v1/metrics/updates": 0,
+    "/api/v1/metrics/pihole": 0,
     "/api/v1/alerts": 5,
     "/api/v1/config": 3,
     "/api/v1/processes": 0,
@@ -719,6 +777,11 @@ pimonitor_network_receive_bytes_per_second{iface="eth0"} 1240.5
 # HELP pimonitor_updates_pending Number of upgradable apt packages.
 # TYPE pimonitor_updates_pending gauge
 pimonitor_updates_pending 3
+# HELP pimonitor_pihole_update_available Whether a Pi-hole component has an update available (1) or not (0).
+# TYPE pimonitor_pihole_update_available gauge
+pimonitor_pihole_update_available{component="core"} 1
+pimonitor_pihole_update_available{component="web"} 0
+pimonitor_pihole_update_available{component="ftl"} 0
 ```
 
 Metrics exposed (all gauges, prefixed `pimonitor_`):
@@ -735,6 +798,7 @@ Metrics exposed (all gauges, prefixed `pimonitor_`):
 | `disk_total_bytes`, `disk_used_bytes`, `disk_used_percent` | `mount` | One series per mounted filesystem, same set as `disks` in `GET /api/v1/metrics` (pseudo-filesystems and network filesystems already excluded) |
 | `network_receive_bytes_per_second`, `network_transmit_bytes_per_second` | `iface` | Omitted entirely when network monitoring is disabled (`network_enabled: false`), same as `network` in `GET /api/v1/metrics` |
 | `updates_pending` | — | Count of upgradable apt packages |
+| `pihole_update_available` | `component` (`core`, `web`, `ftl`) | `1` when that Pi-hole component has an update, else `0`; same rules as `pihole` in `GET /api/v1/metrics`. Omitted entirely when Pi-hole is not installed |
 
 Example `prometheus.yml` scrape config:
 

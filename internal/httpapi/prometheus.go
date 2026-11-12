@@ -36,6 +36,7 @@ func renderPrometheusMetrics(snap collector.Snapshot) []byte {
 	writeDiskMetrics(&buf, snap.Disks)
 	writeNetworkMetrics(&buf, snap.Network)
 	writeUpdatesMetrics(&buf, snap.Updates)
+	writePiholeMetrics(&buf, snap.Pihole)
 
 	return buf.Bytes()
 }
@@ -153,6 +154,24 @@ func writeNetworkMetrics(buf *bytes.Buffer, ifaces []collector.NetworkInterface)
 func writeUpdatesMetrics(buf *bytes.Buffer, updates collector.Updates) {
 	writeGaugeHeader(buf, "pimonitor_updates_pending", "Number of upgradable apt packages.")
 	writeMetric(buf, "pimonitor_updates_pending", "", "", float64(updates.Count))
+}
+
+// writePiholeMetrics writes one update-available gauge per Pi-hole
+// component. The family is skipped entirely when Pi-hole is not installed,
+// so a host without Pi-hole exposes no Pi-hole series at all instead of a
+// misleading "no update" 0.
+func writePiholeMetrics(buf *bytes.Buffer, pihole collector.Pihole) {
+	if !pihole.Installed || len(pihole.Components) == 0 {
+		return
+	}
+	writeGaugeHeader(buf, "pimonitor_pihole_update_available", "Whether a Pi-hole component has an update available (1) or not (0).")
+	for _, comp := range pihole.Components {
+		value := 0.0
+		if comp.UpdateAvailable {
+			value = 1
+		}
+		writeMetric(buf, "pimonitor_pihole_update_available", "component", comp.Name, value)
+	}
 }
 
 // writeGaugeHeader writes the HELP/TYPE comment pair Prometheus's text

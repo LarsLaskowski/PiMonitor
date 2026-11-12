@@ -182,6 +182,32 @@ type Updates struct {
 	CheckedAt       time.Time       `json:"checked_at"`
 }
 
+// PiholeComponent is the version state of one Pi-hole component (core,
+// web or ftl), as last recorded by Pi-hole's own update checker.
+type PiholeComponent struct {
+	Name             string `json:"name"`
+	InstalledVersion string `json:"installed_version"`
+	LatestVersion    string `json:"latest_version,omitempty"`
+	Branch           string `json:"branch,omitempty"`
+	UpdateAvailable  bool   `json:"is_update_available"`
+}
+
+// Pihole reports whether a native Pi-hole v6+ installation was detected
+// and whether Pi-hole itself has updates available. It is deliberately
+// separate from Updates: Pi-hole is not installed through apt, so its
+// updates never appear in Updates.Count, and folding them in would change
+// what existing integrations read from updates.count. The underlying
+// versions file is refreshed out-of-band by Pi-hole's own cron job; this
+// process only ever reads it.
+type Pihole struct {
+	Installed       bool              `json:"is_installed"`
+	UpdateAvailable bool              `json:"is_update_available"`
+	Components      []PiholeComponent `json:"components,omitempty"`
+	CacheAgeSeconds float64           `json:"cache_age_seconds,omitempty"`
+	Stale           bool              `json:"stale,omitempty"`
+	CheckedAt       time.Time         `json:"checked_at"`
+}
+
 // Snapshot is the full set of current metric values.
 type Snapshot struct {
 	Timestamp     time.Time          `json:"timestamp"`
@@ -215,6 +241,7 @@ type Snapshot struct {
 	Wireless         []Wireless          `json:"wireless,omitempty"`
 	System           SystemInfo          `json:"system"`
 	Updates          Updates             `json:"updates"`
+	Pihole           Pihole              `json:"pihole"`
 }
 
 // HistoryPoint is a single timestamped sample in a metric's ring buffer.
