@@ -13,7 +13,7 @@ repeating them.
 
 ```mermaid
 flowchart LR
-    Proc["/proc, /sys,\n/etc/os-release,\napt cache"] --> Collector[collector.Collector]
+    Proc["/proc, /sys,\n/etc/os-release,\napt cache,\n/etc/pihole/versions"] --> Collector[collector.Collector]
     VCGen["vcgencmd\n(optional, Pi-only)"] --> Collector
     Collector -->|fast tick| Alerts[alert.Engine]
     Alerts -->|events| Notifier[alert.Notifier]
@@ -64,7 +64,7 @@ by the same shutdown context, so a stuck flush cannot hang the process indefinit
 
 `Collector` (`collector.go`) owns one sub-collector struct per metric family — `cpu`,
 `cpuFreq`, `loadAvg`, `memory`, `disk`, `diskIO`, `network`, `wireless`, `hwmon`, `temp`,
-`throttled`, `sysInfo`, `updates`, `uptime`, `processes` — each in its own file (`cpu.go`,
+`throttled`, `sysInfo`, `updates`, `pihole`, `uptime`, `processes` — each in its own file (`cpu.go`,
 `memory.go`, ...) with a `Collect()` method that reads `/proc`/`/sys` (or shells out to
 `vcgencmd`/`apt` where no `/proc`/`/sys` source exists) and returns a typed value plus an
 error. Every one of these parsers is built to be unit-testable against fixture strings
@@ -86,6 +86,18 @@ on their own interval:
   the fast tick's cadence. The two are independent of each other — an apt failure logs a
   warning but does not skip process collection on that same tick, matching the fast tick's
   per-source error isolation.
+
+  The same tick also reads Pi-hole's update state (`pihole.go`). Pi-hole is installed by
+  its own installer, not through apt, so its updates never show up in
+  `apt list --upgradable`. Instead of querying GitHub or the Pi-hole API (network access,
+  rate limits, a Pi-hole password in PiMonitor's config), the collector reads
+  `/etc/pihole/versions`, which Pi-hole's own `pihole updatechecker` cron job rewrites
+  daily — the same "privileged/other process refreshes, PiMonitor only reads" split as
+  the apt cache. The result is a separate `Snapshot.Pihole`, never folded into
+  `Updates.Count`, so integrations reading the apt count keep its meaning. On `master`
+  only version numbers are compared: the installed hash is the release tag's and
+  legitimately differs from what the update checker records as the remote hash. A
+  persistent read failure is logged once via `failureLog` and keeps the last good state.
 
 **Snapshot + history, guarded by one `sync.RWMutex`.** `Collector.latest` holds the most
 recent value of every metric (`Snapshot()` returns a copy under `RLock`); each scalar
@@ -536,7 +548,8 @@ apt package cache (`apt-get update`) requires root while reading its result
 - **`pimonitor.service`** runs as a dedicated, unprivileged system user. It only reads
   world-readable files under `/proc`, `/sys/class/thermal`,
   `/sys/devices/system/cpu/*/cpufreq`, `/sys/class/hwmon`, `/etc/os-release`, and the
-  existing apt cache, plus the read-only `apt list --upgradable` command and the optional
+  existing apt cache and Pi-hole's world-readable `/etc/pihole/versions`, plus the
+  read-only `apt list --upgradable` command and the optional
   `vcgencmd measure_temp` / `vcgencmd measure_temp pmic` / `vcgencmd get_throttled` commands — all invoked with fixed
   argument lists (never user input interpolated into a shell command), and further
   sandboxed via systemd unit hardening directives. Its only supplementary group is

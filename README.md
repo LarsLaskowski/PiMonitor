@@ -27,6 +27,9 @@ automation systems like openHAB). Runs as a systemd service.
 - **Uptime** - device clock and time since boot
 - **Available apt updates** - count and package list, with a staleness
   indicator for the underlying apt cache
+- **Pi-hole updates** - when a native Pi-hole v6+ is installed, whether
+  Core, Web or FTL have an update, read from Pi-hole's own daily version
+  check
 - Short metric history (default: last 60 minutes) for sparklines,
   periodically snapshotted to a compact binary file so it survives
   restarts and reboots - no database
@@ -78,7 +81,8 @@ automation systems like openHAB). Runs as a systemd service.
 The main service (`pimonitor.service`) never requires root: it only reads
 world-readable files under `/proc`, `/sys/class/thermal`,
 `/sys/devices/system/cpu/*/cpufreq`, `/sys/class/hwmon`,
-`/etc/os-release`, and the apt cache, plus the read-only
+`/etc/os-release`, the apt cache, and Pi-hole's `/etc/pihole/versions`,
+plus the read-only
 `apt list --upgradable` command and the optional `vcgencmd` readings (for
 which the unit adds the service to the `video` group, needed to open
 `/dev/vcio_gencmd` / `/dev/vchiq` on Raspberry Pi OS). A separate, root-privileged systemd timer

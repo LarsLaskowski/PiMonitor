@@ -167,6 +167,18 @@
     return parts.join(' ');
   }
 
+  // Coarse "how long ago" for ages measured in hours or days, where
+  // minute precision would only be noise.
+  function fmtAge(seconds) {
+    const s = Math.max(0, Math.floor(seconds || 0));
+    if (s < 60) return 'just now';
+    if (s < 3600) return Math.floor(s / 60) + 'm ago';
+    if (s < 86400) return Math.floor(s / 3600) + 'h ago';
+    const days = Math.floor(s / 86400);
+    const hours = Math.floor((s % 86400) / 3600);
+    return days + 'd' + (hours ? ' ' + hours + 'h' : '') + ' ago';
+  }
+
   function fmtClock(date) {
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   }
@@ -284,7 +296,23 @@
       renderUpdatesTable();
     }
 
-    renderPihole(snap.pihole);
+    renderPihole(snap.pihole, snap.timestamp);
+  }
+
+  // How long ago Pi-hole's own update checker last ran. Pi-hole refreshes
+  // its versions file only once a day, so this can lag `pihole -up` by up
+  // to ~24h; showing the age makes that lag visible. cache_age_seconds is
+  // the file's age as of the last slow tick (checked_at), so the time
+  // elapsed since then is added. Both timestamps come from the Pi's clock,
+  // so browser clock skew cannot distort the result.
+  function piholeCheckAge(pihole, snapTimestamp) {
+    let age = pihole.cache_age_seconds || 0;
+    const checkedAt = Date.parse(pihole.checked_at);
+    const now = Date.parse(snapTimestamp);
+    if (!isNaN(checkedAt) && !isNaN(now) && now > checkedAt) {
+      age += (now - checkedAt) / 1000;
+    }
+    return age;
   }
 
   const PIHOLE_COMPONENT_LABELS = { core: 'Core', web: 'Web', ftl: 'FTL' };
@@ -293,7 +321,7 @@
   // Updates card rather than being folded into the apt count above. The
   // whole section stays hidden on hosts without Pi-hole (and with an older
   // server that does not send the field at all).
-  function renderPihole(pihole) {
+  function renderPihole(pihole, snapTimestamp) {
     const installed = !!(pihole && pihole.is_installed);
     document.getElementById('pihole-section').classList.toggle('hidden', !installed);
     if (!installed) return;
@@ -313,6 +341,7 @@
         : label + ' (update)';
     });
     setText('pihole-versions', parts.join(' \u00b7 '));
+    setText('pihole-checked', 'Checked ' + fmtAge(piholeCheckAge(pihole, snapTimestamp)));
     document.getElementById('pihole-stale').classList.toggle('hidden', !pihole.stale);
   }
 
