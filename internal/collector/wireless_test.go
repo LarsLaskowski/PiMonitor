@@ -3,6 +3,7 @@ package collector
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -157,13 +158,14 @@ func TestWirelessCollector_Collect(t *testing.T) {
 	}
 }
 
-func TestWirelessCollector_Collect_NoWirelessFile(t *testing.T) {
-	c := &WirelessCollector{path: filepath.Join(t.TempDir(), "does-not-exist")}
+func TestWirelessCollector_Collect_NoWirelessFile_AC2(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "does-not-exist")
+	c := &WirelessCollector{path: path}
 
 	got, err := c.Collect()
 
-	if err != nil {
-		t.Fatalf("Collect should not error when /proc/net/wireless is absent (no wireless hardware), got %v", err)
+	if err == nil || !strings.Contains(err.Error(), path) {
+		t.Fatalf("Collect error = %v, want an error naming the absent file %s", err, path)
 	}
 	if len(got) != 0 {
 		t.Fatalf("expected no interfaces, got %d: %+v", len(got), got)

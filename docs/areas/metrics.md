@@ -56,11 +56,13 @@ such as openHAB that poll single values.
 - While no zone is found, detection is retried at most once every **30 s**; a zone that appears later is used
   without a restart. When the chosen zone's file disappears, the zone is detected again under the same throttle.
 - `gpu_temperature` is `vcgencmd measure_temp` and `pmic_temperature` is `vcgencmd measure_temp pmic` (output
-  `temp=NN.N'C`, in °C). Both are only attempted after the thermal zone was read successfully in the same tick.
-  Each is present only when its call succeeded in that tick; a failure is silent and affects neither the other
-  reading nor `temperature`.
+  `temp=NN.N'C`, in °C). Both are attempted on every fast
+  tick, whether or not a thermal zone was read. Each is present only when its call succeeded in that tick; a failure
+  affects neither the other reading nor `temperature` and is logged as stated under
+  [Limits and errors](#limits-and-errors).
 - Once `vcgencmd` answers `measure_temp pmic` with anything other than a temperature (a board without a PMIC
-  sensor), the PMIC reading is not attempted again for the life of the process. A failed or timed-out call is
+  sensor), the PMIC reading is not attempted again for the life of the process and the same error is reported
+  from then on. A failed or timed-out call is
   retried on the next tick.
 - `throttled` decodes `vcgencmd get_throttled` (`throttled=0x…`): bits 0–3 are `under_voltage_now`,
   `frequency_capped_now`, `throttled_now`, `soft_temp_limit_now`; bits 16–19 the matching `*_since_boot` flags.
@@ -176,24 +178,28 @@ such as openHAB that poll single values.
 
 - A failing source never stops the service or the other sources. Its field takes the zero or empty value for that
   tick (fast-tick fields) or keeps the last good value (`updates`, `pihole`, process rankings).
-- These failures are logged as a warning on **every** tick they occur: `cpu`, `load_average`, `temperature`
-  (including "no CPU thermal zone detected"), `memory`/`swap`, `disks` (only when `/proc/mounts` cannot be read),
-  `disk_io`, `network`, `wireless` (only for an unreadable or malformed file), `uptime`, `updates`, processes (only
-  when `/proc` cannot be listed), and, once at startup, the core count. `cpu_frequency` and `sensors` skip what
-  they cannot read and do not fail as a whole.
-- `throttled` and `pihole` failures are logged once: a warning on the first failure and whenever the error text
-  changes, debug while the same error repeats, and an info line when the source recovers. A `vcgencmd` failure
-  message carries at most 200 bytes of the command's own output, on one line.
-- Not logged at all: a missing `vcgencmd`, a failed `measure_temp`/`measure_temp pmic` call, a missing
-  `/proc/net/wireless`, a host without hwmon or cpufreq, a single mountpoint whose `statfs` fails or hangs, a single
-  unreadable process, and system identity values that cannot be determined.
+- These failures are logged as a warning on **every** tick they occur: `cpu`, `load_average`, `memory`/`swap`,
+  `disks` (only when `/proc/mounts` cannot be read), `disk_io`, `network`, `uptime`, `updates`, processes (only when
+  `/proc` cannot be listed), and, once at startup, the core count.
+- Failures of the optional hardware sources are logged once: a warning on the first failure and whenever the error
+  text changes, debug while the same error repeats, and an info line `<message>: recovered` when the source
+  recovers. These are `temperature` (including "no CPU thermal zone detected"), `gpu_temperature`,
+  `pmic_temperature`, `throttled`, `wireless` (a missing, unreadable or malformed `/proc/net/wireless`), `sensors`
+  (no hwmon chip directory; only with `hwmon_enabled`, nothing is logged when it is off), `cpu_frequency` (no cpufreq
+  directory) and `pihole`. A missing `vcgencmd` is reported once by each of the three readings that need it
+  (`gpu_temperature`, `pmic_temperature`, `throttled`). A board without a PMIC sensor logs one warning for
+  `pmic_temperature` and no recovery line. A `vcgencmd` exec failure message carries at most 200 bytes of the
+  command's own output, on one line.
+- Not logged at all: a single mountpoint whose `statfs` fails or hangs, a single hwmon channel or cpufreq core that
+  cannot be read, cpufreq directories present but no core readable, hwmon chips present but no channel readable, a
+  single unreadable process, and system identity values that cannot be determined.
 - No reading is invented: a value the source did not deliver is reported as 0, empty or absent, as stated per
   metric above. `GET /api/v1/metrics` cannot tell a 0 caused by a failure from a real 0; see
   [`API.md`](../API.md#get-apiv1metrics).
 
 ## Related decisions
 
-None yet.
+- [0001: Optional metric sources log their failures once](../decisions/0001-optional-sources-log-failures-once.md)
 
 ## Not here
 
@@ -208,13 +214,6 @@ None yet.
 
 ## Open questions
 
-- `AGENTS.md` and `.squad/project.md` (*Guarantees*) promise a "logged warning" for a missing hardware source. The
-  code logs a missing thermal zone as a warning on every fast tick (the journal flood that the once-only logging
-  of `throttled` was introduced to avoid), and logs nothing for a missing `vcgencmd`, wireless, hwmon or cpufreq
-  source. Which is intended?
-- `gpu_temperature` and `pmic_temperature` are only attempted after a successful thermal-zone read, so a host with
-  `vcgencmd` but no readable thermal zone reports neither. `API.md` names only `vcgencmd` availability as the
-  condition. Is the dependency intended?
 - A `/proc/stat` `cpu` line with exactly seven counters passes the parser's length check and then indexes past the
   end of the line, which crashes the process. Real kernels print at least eight counters, but this contradicts
   "never a crash" for malformed input. Tracked in LarsLaskowski/PiMonitor#195.

@@ -1,6 +1,7 @@
 package collector
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"os"
@@ -1001,5 +1002,336 @@ func TestCollector_SlowTick_PiholeErrorKeepsPreviousState(t *testing.T) {
 
 	if snap := c.Snapshot(); !snap.Pihole.Installed {
 		t.Fatalf("Snapshot().Pihole = %+v, want the previous installed state kept", snap.Pihole)
+	}
+}
+
+// optionalSourceEnv wires a Collector whose every optional hardware source
+// (thermal zone, vcgencmd, wireless, hwmon, cpufreq) points at a fixture
+// location that starts out empty, so a test decides which source is present
+// and the host's real /sys, /proc/net/wireless and PATH add no log lines.
+type optionalSourceEnv struct {
+	c        *Collector
+	buf      *bytes.Buffer
+	zoneRoot string
+	wireless string
+	hwmon    string
+	cpuFreq  string
+	binDir   string
+	now      time.Time
+}
+
+func newOptionalSourceEnv(t *testing.T) *optionalSourceEnv {
+	t.Helper()
+	e := &optionalSourceEnv{
+		zoneRoot: t.TempDir(),
+		wireless: filepath.Join(t.TempDir(), "wireless"),
+		hwmon:    t.TempDir(),
+		cpuFreq:  t.TempDir(),
+		binDir:   t.TempDir(),
+		now:      time.Unix(1_700_000_000, 0),
+	}
+	t.Setenv("PATH", e.binDir)
+	clock := func() time.Time { return e.now }
+	vcg := &vcgencmdRunner{now: clock, lastDetect: e.now}
+
+	c := newTestCollector()
+	c.log, e.buf = newCapturingLogger()
+	c.temp = &TemperatureCollector{
+		zoneGlob:       filepath.Join(e.zoneRoot, "thermal_zone*"),
+		now:            clock,
+		lastZoneDetect: e.now,
+		vcg:            vcg,
+	}
+	c.throttled = &ThrottledCollector{vcg: vcg}
+	c.wireless = &WirelessCollector{path: e.wireless}
+	c.hwmon = &HwmonCollector{glob: filepath.Join(e.hwmon, "hwmon*")}
+	c.cpuFreq = &CPUFreqCollector{glob: filepath.Join(e.cpuFreq, "cpu[0-9]*", "cpufreq")}
+	c.memory = &MemoryCollector{path: writeTempFile(t, t.TempDir(), "meminfo", meminfoFixture)}
+	c.uptime = &UptimeCollector{path: writeTempFile(t, t.TempDir(), "uptime", "12345.67 54321.00\n")}
+	e.c = c
+	return e
+}
+
+// tick runs n fast ticks and advances the clock past the re-detection
+// interval before each, so a source that appeared is found on the next tick.
+func (e *optionalSourceEnv) tick(n int) {
+	for range n {
+		e.now = e.now.Add(detectRetryInterval + time.Second)
+		e.c.fastTick(context.Background())
+	}
+}
+
+func (e *optionalSourceEnv) installVcgencmd(t *testing.T) {
+	t.Helper()
+	writeFakeVcgencmd(t, e.binDir, "vcgencmd", `if [ "$1" = "get_throttled" ]; then
+  echo "throttled=0x0"
+elif [ "$2" = "pmic" ]; then
+  echo "temp=52.1'C"
+else
+  echo "temp=42.8'C"
+fi`)
+}
+
+func (e *optionalSourceEnv) addThermalZone(t *testing.T) {
+	t.Helper()
+	writeThermalZone(t, e.zoneRoot, "thermal_zone0", "cpu-thermal", "50000")
+}
+
+func (e *optionalSourceEnv) addWireless(t *testing.T) {
+	t.Helper()
+	overwriteTempFile(t, e.wireless, wirelessFixture)
+}
+
+func (e *optionalSourceEnv) addHwmon(t *testing.T) {
+	t.Helper()
+	chip := writeHwmonChip(t, e.hwmon, "hwmon0", "nvme")
+	writeHwmonChannel(t, chip, 1, "40000", "Composite")
+}
+
+func (e *optionalSourceEnv) addCPUFreq(t *testing.T) {
+	t.Helper()
+	writeCPUFreqCore(t, e.cpuFreq, 0, "600000", "ondemand")
+}
+
+// assertLoggedOnceThenRecovered checks the log-once contract for msg after
+// ticks missing ticks and one recovered tick: one WARN, one DEBUG per further
+// tick, exactly one INFO "<msg>: recovered", and no second recovery line
+// after one more healthy tick.
+func (e *optionalSourceEnv) assertLoggedOnceThenRecovered(t *testing.T, msg string, missingTicks int) {
+	t.Helper()
+	warnKey := `msg="` + msg + `"`
+	recKey := `msg="` + msg + `: recovered"`
+	out := e.buf.String()
+	if got := countLogLines(out, "WARN", warnKey); got != 1 {
+		t.Fatalf("%s: WARN lines = %d, want 1; log:\n%s", msg, got, out)
+	}
+	if got := countLogLines(out, "DEBUG", warnKey); got != missingTicks-1 {
+		t.Fatalf("%s: DEBUG lines = %d, want %d; log:\n%s", msg, got, missingTicks-1, out)
+	}
+	if got := countLogLines(out, "INFO", recKey); got != 0 {
+		t.Fatalf("%s: recovered lines before recovery = %d, want 0; log:\n%s", msg, got, out)
+	}
+}
+
+func (e *optionalSourceEnv) assertRecoveredOnce(t *testing.T, msg string) {
+	t.Helper()
+	out := e.buf.String()
+	recKey := `msg="` + msg + `: recovered"`
+	if got := countLogLines(out, "INFO", recKey); got != 1 {
+		t.Fatalf("%s: recovered lines = %d, want 1; log:\n%s", msg, got, out)
+	}
+	e.tick(1)
+	if got := countLogLines(e.buf.String(), "INFO", recKey); got != 1 {
+		t.Fatalf("%s: recovered lines after another healthy tick = %d, want 1; log:\n%s", msg, got, e.buf.String())
+	}
+}
+
+// optionalSourceTicks is the number of consecutive missing-source ticks the
+// log-once subtests run.
+const optionalSourceTicks = 3
+
+// TestCollector_FastTick_OptionalSourceLoggedOnce covers issue #197: a
+// missing optional source is logged once under its own message, repeats go to
+// DEBUG, and the source appearing later logs one recovery line.
+func TestCollector_FastTick_OptionalSourceLoggedOnce(t *testing.T) {
+	t.Run("AC1 missing thermal zone", testOptionalSourceLoggedOnceAC1MissingThermalZone)
+	t.Run("AC2 vcgencmd", testOptionalSourceLoggedOnceAC2Vcgencmd)
+	t.Run("AC2 wireless", testOptionalSourceLoggedOnceAC2Wireless)
+	t.Run("AC2 hwmon", testOptionalSourceLoggedOnceAC2Hwmon)
+	t.Run("AC2 cpufreq", testOptionalSourceLoggedOnceAC2CPUFreq)
+	t.Run("AC2 hwmon disabled logs nothing", testOptionalSourceLoggedOnceAC2HwmonDisabled)
+}
+
+func testOptionalSourceLoggedOnceAC1MissingThermalZone(t *testing.T) {
+	e := newOptionalSourceEnv(t)
+
+	e.tick(optionalSourceTicks)
+	e.assertLoggedOnceThenRecovered(t, "temperature collection failed", optionalSourceTicks)
+	e.addThermalZone(t)
+	e.tick(1)
+
+	e.assertRecoveredOnce(t, "temperature collection failed")
+	if got := e.c.latest.TemperatureValid; !got {
+		t.Fatalf("TemperatureValid = %v after the zone appeared, want true", got)
+	}
+}
+
+func testOptionalSourceLoggedOnceAC2Vcgencmd(t *testing.T) {
+	e := newOptionalSourceEnv(t)
+	msgs := []string{
+		"gpu temperature collection failed",
+		"pmic temperature collection failed",
+		"throttled state collection failed",
+	}
+
+	e.tick(optionalSourceTicks)
+	for _, msg := range msgs {
+		e.assertLoggedOnceThenRecovered(t, msg, optionalSourceTicks)
+	}
+	if snap := e.c.latest; snap.GPUTemperature != nil || snap.PMICTemperature != nil || snap.Throttled != nil {
+		t.Fatalf("snapshot = gpu %+v pmic %+v throttled %+v, want all omitted without vcgencmd",
+			snap.GPUTemperature, snap.PMICTemperature, snap.Throttled)
+	}
+	e.installVcgencmd(t)
+	e.tick(1)
+
+	for _, msg := range msgs {
+		e.assertRecoveredOnce(t, msg)
+	}
+	if snap := e.c.latest; snap.GPUTemperature == nil || snap.PMICTemperature == nil || snap.Throttled == nil {
+		t.Fatalf("snapshot = gpu %+v pmic %+v throttled %+v, want all reported once vcgencmd exists",
+			snap.GPUTemperature, snap.PMICTemperature, snap.Throttled)
+	}
+}
+
+func testOptionalSourceLoggedOnceAC2Wireless(t *testing.T) {
+	e := newOptionalSourceEnv(t)
+
+	e.tick(optionalSourceTicks)
+	e.assertLoggedOnceThenRecovered(t, "wireless collection failed", optionalSourceTicks)
+	if got := e.c.latest.Wireless; len(got) != 0 {
+		t.Fatalf("Wireless = %+v, want omitted without /proc/net/wireless", got)
+	}
+	e.addWireless(t)
+	e.tick(1)
+
+	e.assertRecoveredOnce(t, "wireless collection failed")
+	if got := e.c.latest.Wireless; len(got) != 1 {
+		t.Fatalf("Wireless = %+v, want one interface after the file appeared", got)
+	}
+}
+
+func testOptionalSourceLoggedOnceAC2Hwmon(t *testing.T) {
+	e := newOptionalSourceEnv(t)
+
+	e.tick(optionalSourceTicks)
+	e.assertLoggedOnceThenRecovered(t, "hwmon sensor collection failed", optionalSourceTicks)
+	if got := e.c.latest.Sensors; len(got) != 0 {
+		t.Fatalf("Sensors = %+v, want omitted without hwmon chips", got)
+	}
+	e.addHwmon(t)
+	e.tick(1)
+
+	e.assertRecoveredOnce(t, "hwmon sensor collection failed")
+	if got := e.c.latest.Sensors; len(got) != 1 {
+		t.Fatalf("Sensors = %+v, want one sensor after the chip appeared", got)
+	}
+}
+
+func testOptionalSourceLoggedOnceAC2CPUFreq(t *testing.T) {
+	e := newOptionalSourceEnv(t)
+
+	e.tick(optionalSourceTicks)
+	e.assertLoggedOnceThenRecovered(t, "cpu frequency collection failed", optionalSourceTicks)
+	if got := e.c.latest.CPUFrequency; len(got) != 0 {
+		t.Fatalf("CPUFrequency = %+v, want omitted without a cpufreq directory", got)
+	}
+	e.addCPUFreq(t)
+	e.tick(1)
+
+	e.assertRecoveredOnce(t, "cpu frequency collection failed")
+	if got := e.c.latest.CPUFrequency; len(got) != 1 {
+		t.Fatalf("CPUFrequency = %+v, want one core after the directory appeared", got)
+	}
+}
+
+func testOptionalSourceLoggedOnceAC2HwmonDisabled(t *testing.T) {
+	e := newOptionalSourceEnv(t)
+	e.c.cfg.HwmonEnabled = false
+
+	e.tick(optionalSourceTicks)
+
+	if out := e.buf.String(); strings.Contains(out, "hwmon sensor collection failed") {
+		t.Fatalf("log mentions hwmon with hwmon_enabled off, want nothing; log:\n%s", out)
+	}
+	if got := e.c.latest.Sensors; len(got) != 0 {
+		t.Fatalf("Sensors = %+v, want omitted with hwmon_enabled off", got)
+	}
+}
+
+// TestCollector_FastTick_AllOptionalSourcesMissing_AC4 pins that a tick with
+// every optional source absent completes and still reports the mandatory
+// memory and uptime readings.
+func TestCollector_FastTick_AllOptionalSourcesMissing_AC4(t *testing.T) {
+	e := newOptionalSourceEnv(t)
+
+	e.tick(2)
+
+	snap := e.c.Snapshot()
+	if snap.Memory.TotalBytes != 1000000*1024 {
+		t.Errorf("Memory.TotalBytes = %d, want %d from the fixture", snap.Memory.TotalBytes, 1000000*1024)
+	}
+	if diffFloat(snap.UptimeSeconds, 12345.67) > 0.001 {
+		t.Errorf("UptimeSeconds = %v, want 12345.67 from the fixture", snap.UptimeSeconds)
+	}
+	if snap.TemperatureValid {
+		t.Error("TemperatureValid = true, want false without a thermal zone")
+	}
+	if snap.GPUTemperature != nil || snap.PMICTemperature != nil || snap.Throttled != nil {
+		t.Errorf("snapshot = gpu %+v pmic %+v throttled %+v, want all omitted", snap.GPUTemperature, snap.PMICTemperature, snap.Throttled)
+	}
+	if len(snap.Wireless) != 0 || len(snap.Sensors) != 0 || len(snap.CPUFrequency) != 0 {
+		t.Errorf("wireless %+v sensors %+v cpufreq %+v, want all omitted", snap.Wireless, snap.Sensors, snap.CPUFrequency)
+	}
+}
+
+// TestCollector_FastTick_GPUAndPMICWithoutThermalZone_AC3 pins that a host
+// whose vcgencmd answers still reports the GPU and PMIC temperatures when no
+// thermal zone is readable, while the CPU temperature stays invalid.
+func TestCollector_FastTick_GPUAndPMICWithoutThermalZone_AC3(t *testing.T) {
+	e := newOptionalSourceEnv(t)
+	e.installVcgencmd(t)
+
+	e.tick(1)
+
+	snap := e.c.Snapshot()
+	if snap.GPUTemperature == nil || diffFloat(snap.GPUTemperature.Celsius, 42.8) > 0.001 {
+		t.Fatalf("GPUTemperature = %+v, want 42.8 C without a thermal zone", snap.GPUTemperature)
+	}
+	if snap.PMICTemperature == nil || diffFloat(snap.PMICTemperature.Celsius, 52.1) > 0.001 {
+		t.Fatalf("PMICTemperature = %+v, want 52.1 C without a thermal zone", snap.PMICTemperature)
+	}
+	if snap.TemperatureValid {
+		t.Fatal("TemperatureValid = true, want false without a thermal zone")
+	}
+}
+
+// TestCollector_FastTick_PMICUnsupportedLoggedOnce_AC5 covers a board without
+// a PMIC sensor: one WARN, no repeated vcgencmd call, no false recovery.
+func TestCollector_FastTick_PMICUnsupportedLoggedOnce_AC5(t *testing.T) {
+	e := newOptionalSourceEnv(t)
+	e.addThermalZone(t)
+	countFile := filepath.Join(t.TempDir(), "pmic-invocations")
+	path := writeFakeVcgencmd(t, e.binDir, "vcgencmd", `if [ "$1" = "get_throttled" ]; then
+  echo "throttled=0x0"
+elif [ "$2" = "pmic" ]; then
+  echo "$@" >> `+countFile+`
+  echo 'error=1 error_msg="Invalid arguments"'
+else
+  echo "temp=42.8'C"
+fi`)
+	e.c.temp.vcg.detected = true
+	e.c.temp.vcg.path = path
+
+	const ticks = 4
+	e.tick(ticks)
+
+	out := e.buf.String()
+	const msg = `msg="pmic temperature collection failed"`
+	if got := countLogLines(out, "WARN", msg); got != 1 {
+		t.Fatalf("WARN lines = %d, want 1; log:\n%s", got, out)
+	}
+	if got := countLogLines(out, "DEBUG", msg); got != ticks-1 {
+		t.Fatalf("DEBUG lines = %d, want %d; log:\n%s", got, ticks-1, out)
+	}
+	if strings.Contains(out, "pmic temperature collection failed: recovered") {
+		t.Fatalf("unexpected recovered line for an unsupported PMIC; log:\n%s", out)
+	}
+	logged, err := os.ReadFile(countFile)
+	if err != nil {
+		t.Fatalf("read pmic invocation log (expected one invocation): %v", err)
+	}
+	if n := len(strings.Split(strings.TrimSpace(string(logged)), "\n")); n != 1 {
+		t.Fatalf("measure_temp pmic ran %d times over %d ticks, want 1:\n%s", n, ticks, logged)
 	}
 }

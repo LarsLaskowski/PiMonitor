@@ -2,7 +2,6 @@ package collector
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -39,16 +38,15 @@ type ThrottledCollector struct {
 
 // NewThrottledCollector wraps vcg, the vcgencmd runner shared with
 // TemperatureCollector. A missing vcgencmd is not fatal: Collect simply
-// returns no reading until vcgencmd appears (re-detection is retried by vcg
+// returns an error until vcgencmd appears (re-detection is retried by vcg
 // at most once per detectRetryInterval). Pass nil to disable collection.
 func NewThrottledCollector(vcg *vcgencmdRunner) *ThrottledCollector {
 	return &ThrottledCollector{vcg: vcg}
 }
 
 // Collect runs `vcgencmd get_throttled` (via the shared vcg runner) and
-// decodes the bitmask. It returns (nil, nil) when vcgencmd is not
-// available, so the throttled object is simply omitted from the snapshot
-// off-Pi.
+// decodes the bitmask. A missing vcgencmd is an error (the collector logs
+// it once), and the throttled object is omitted from the snapshot.
 func (c *ThrottledCollector) Collect(ctx context.Context) (*Throttled, error) {
 	if c.vcg == nil {
 		return nil, nil
@@ -56,9 +54,6 @@ func (c *ThrottledCollector) Collect(ctx context.Context) (*Throttled, error) {
 
 	out, err := c.vcg.run(ctx, "get_throttled")
 	if err != nil {
-		if errors.Is(err, errVcgencmdUnavailable) {
-			return nil, nil
-		}
 		return nil, err
 	}
 	t, err := parseThrottled(out)

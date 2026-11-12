@@ -16,9 +16,9 @@ import (
 const vcgencmdTimeout = 5 * time.Second
 
 // errVcgencmdUnavailable is returned by run when vcgencmd has not (yet) been
-// found on the system. It is not a failure: TemperatureCollector and
-// ThrottledCollector both treat it as "no reading available this tick"
-// rather than a collection error.
+// found on the system. TemperatureCollector (CollectGPU, CollectPMIC) and
+// ThrottledCollector return it as an error, which the Collector logs once
+// per reading (docs/decisions/0001); the reading is omitted from the snapshot.
 var errVcgencmdUnavailable = errors.New("vcgencmd not available")
 
 // vcgencmdRunner resolves the vcgencmd binary once and runs subcommands
