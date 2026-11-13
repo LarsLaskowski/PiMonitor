@@ -45,6 +45,9 @@ POST; the collector relies on it never to slow down metric collection.
 - The response status decides the outcome (see *Retries*); the response body is ignored.
 - HTTPS certificates are verified against the system's trust store; there is no option to skip verification. The
   standard proxy environment variables (`HTTPS_PROXY`, `HTTP_PROXY`, `NO_PROXY`) of the service are honored.
+  A proxy value that cannot be parsed as a URL, not even with `http://` put in front (for example one with an
+  invalid `%` escape or a control character), is ignored without an error or a log line, and the webhook is then
+  contacted directly; any other malformed value is used as the proxy address as it was read.
 - Redirects are followed, and the status of the final response counts. On a `301`, `302` or `303` redirect the
   follow-up request is a `GET` without body; configure the final URL rather than one that redirects.
 
