@@ -1623,3 +1623,40 @@ func TestCollector_CollectSysInfo_Hostname(t *testing.T) {
 		checkNoLogLineMentions(t, buf, hostNameMention, path)
 	})
 }
+
+// TestCollector_FastTick_MissingAggregateCPULine_AC4 covers issue #233: after
+// a valid tick, a /proc/stat without its aggregate cpu line adds no
+// cpu_percent point, leaves the snapshot's cpu at zero and logs a warning.
+func TestCollector_FastTick_MissingAggregateCPULine_AC4(t *testing.T) {
+	path := writeStatFile(t, procStatFixture1)
+	log, buf := newCapturingLogger()
+	c := New(Config{
+		FastInterval:    time.Second,
+		SlowInterval:    time.Minute,
+		HistoryCapacity: 10,
+	}, log)
+	c.cpu = &CPUCollector{path: path}
+
+	c.fastTick(context.Background())
+	before := len(c.History().CPUPercent)
+	if got := countLogLines(buf.String(), "WARN", "cpu collection failed"); got != 0 {
+		t.Fatalf("warnings after a valid tick = %d, want 0; log:\n%s", got, buf.String())
+	}
+
+	rewriteStatFile(t, path, procStatNoAggregate)
+	c.fastTick(context.Background())
+
+	if got := len(c.History().CPUPercent); got != before {
+		t.Errorf("cpu_percent has %d points after the failed tick, want %d", got, before)
+	}
+	cpu := c.Snapshot().CPU
+	if cpu.OverallPercent != 0 {
+		t.Errorf("snapshot overall_percent = %v, want 0", cpu.OverallPercent)
+	}
+	if cpu.PerCorePercent != nil {
+		t.Errorf("snapshot per_core_percent = %v, want none", cpu.PerCorePercent)
+	}
+	if got := countLogLines(buf.String(), "WARN", "cpu collection failed"); got != 1 {
+		t.Errorf("cpu collection failed warnings = %d, want 1; log:\n%s", got, buf.String())
+	}
+}
