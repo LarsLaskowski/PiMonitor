@@ -122,7 +122,6 @@ otherwise), one line each: the double, where it lives and what it stands in for;
 
 ## Analyzer exclusions
 
-- `.golangci.yml` excludes `gocognit` (the stand-in for SonarQube `go:S3776`) for `_test.go` files, which
-  SonarQube does not analyze here (`sonar.exclusions`), and for `Collect` of `DiskIOCollector`,
-  `NetworkCollector`, `PiholeCollector` and `ProcessCollector`, for which SonarQube reports no `go:S3776`
-  (`.squad/stack.md`, *Analyzer gate*).
+- `.golangci.yml` excludes `gocognit` (the stand-in for SonarQube `go:S3776`) for `Collect` of `DiskIOCollector`,
+  `NetworkCollector`, `PiholeCollector` and `ProcessCollector` and for the tests `TestParseMounts_DecodesOctalEscapes`
+  and `TestParseVcgencmdTemp`, for which SonarQube reports no `go:S3776` (`.squad/stack.md`, *Analyzer gate*).

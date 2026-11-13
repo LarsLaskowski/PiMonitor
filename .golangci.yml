@@ -13,9 +13,13 @@ linters:
   # `.squad/project.md` (*Analyzer exclusions*).
   exclusions:
     rules:
-      # Test files are not analyzed by SonarQube (`sonar.exclusions` in sonar-project.properties), so the
-      # stand-in for go:S3776 does not apply to them either.
-      - path: _test\.go
+      # SonarQube analyzes test files as tests (sonar.test.inclusions) and reports go:S3776 on them; it reports
+      # none for these two, which gocognit puts over 15 by counting error checks and nesting in t.Run closures.
+      - path: internal/collector/disk_test\.go
+        text: "cognitive complexity \\d+ of func `TestParseMounts_DecodesOctalEscapes`"
+        linters: [gocognit]
+      - path: internal/collector/temperature_test\.go
+        text: "cognitive complexity \\d+ of func `TestParseVcgencmdTemp`"
         linters: [gocognit]
       # SonarQube reports no go:S3776 for these collectors (15 or less by its count); gocognit also counts
       # constructs SonarQube does not, such as error checks and nesting inside closures, which puts them over 15.
