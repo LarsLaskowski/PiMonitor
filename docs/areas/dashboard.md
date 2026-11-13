@@ -85,9 +85,10 @@ client of the [HTTP API](http-api.md) like any third-party integration and has n
 ### Rendering
 
 - Text that comes from the server (mountpoints, interface names, package names and versions, Pi-hole versions,
-  host name, kernel, distribution, model) is inserted only as text nodes. The page script never assigns non-empty content to
-  `innerHTML`; clearing a container with an empty string is the only allowed use. `internal/web/xss_test.go` fails
-  the build otherwise.
+  host name, kernel, distribution, model) is inserted only as text nodes; the host name also goes to `document.title`
+  and the `title` property of its header element. The page script never assigns non-empty content to `innerHTML`;
+  clearing a container with an empty string is the only allowed use. `internal/web/xss_test.go` fails the build
+  otherwise.
 - The host name, when the snapshot carries `system.hostname`, is shown in parentheses after the brand in the header,
   muted and in normal weight, in its original case; a long name is cut with an ellipsis and the full name is its
   tooltip, while the closing parenthesis stays visible.
