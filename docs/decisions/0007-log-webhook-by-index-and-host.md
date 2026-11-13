@@ -31,13 +31,20 @@ endpoint failed. The log still has to tell the operator which webhook failed and
 5. **Replace the configured URL inside the error text by string substitution** — misses the forms the client
    reports differently: the password masked as `***`, a redirect target, a URL that does not parse; and it fails
    open when the text differs by one byte.
-6. **Keep the full URL at debug level** — the journal still receives it whenever someone debugs a failing
+6. **Filter the configured path and query out of the inner error text as well** — would also cover an endpoint
+   that echoes the request line into a malformed response, but it is option 5 applied to free text the endpoint
+   chose, fails open the same way, and protects a secret from the one party that already holds it.
+7. **Keep the parser's detail for a URL that does not parse** — `EscapeError`, `InvalidHostError` and the port
+   errors of `net/url` quote up to three bytes of the URL; the operator gains little over reading the
+   configuration file.
+8. **Keep the full URL at debug level** — the journal still receives it whenever someone debugs a failing
    webhook, which is exactly when the log is shared.
 
 ## Decision
 
-Notifier log lines identify a webhook by its configuration index and by its URL's scheme and host, never by its
-userinfo, path, query or fragment, also inside error texts (option 1). The fields and texts are in
+Notifier log lines identify a webhook by its configuration index and by its URL's scheme and host; the notifier
+itself never logs the URL's userinfo, path, query or fragment, also not as the URL of an error text (option 1).
+Bytes the endpoint sends back are logged as `net/http` quotes them. The fields and texts are in
 [Notifications](../areas/notifications.md#what-is-logged).
 
 ## Consequences
@@ -46,6 +53,8 @@ userinfo, path, query or fragment, also inside error texts (option 1). The field
   logged, and `net/http`'s inner errors name it in any case.
 - A URL that does not parse is logged only as invalid, without the parser's detail (which can quote up to three
   bytes of the URL); the operator reads the URL in the configuration file.
-- Text the endpoint itself chose (an unparsable redirect `Location`) still reaches the log as received; it is not
-  the configured secret.
+- Text the endpoint itself sends still reaches the log as `net/http` quotes it: an unparsable redirect `Location`
+  and a malformed status line (`malformed HTTP response "…"`, `malformed HTTP status code "…"`). An endpoint that
+  echoes the request line there puts the configured path and query into the log; the endpoint holds the secret
+  already, and the documentation names this exception beside the host name.
 - Revisiting this means a new log field naming more of the URL, which needs the same leak tests.

@@ -22,7 +22,7 @@ URL's userinfo, path, query and fragment reach the log twice.
 | 3 | The client masks only the password: userinfo user name, path, query and fragment stay in `*url.Error.URL` | `stripPassword` (client.go 1064–1070) replaces the password by `***`, nothing else | confirmed |
 | 4 | The Op of a POST's `*url.Error` is `Post` | `urlErrorOp` (client.go 546) | confirmed |
 | 5 | A RoundTripper error reaches `*url.Error.Err` unwrapped when the client has no `Timeout` | `send` (client.go 266–280) returns `err` as is; `Notifier.client` is `&http.Client{}` (`notify.go` 142) | confirmed |
-| 6 | Inner transport errors name at most host and port, not path, query or userinfo | `transport.go`/`client.go` error constructors (no request URL in their text); the one exception is `failed to parse Location header %q` (client.go 665), whose text is the endpoint's own redirect target | confirmed |
+| 6 | Inner transport errors carry no part of the configured URL that the notifier puts there, but they can quote bytes the endpoint sends: an unparsable redirect `Location` and a malformed status line (`malformed HTTP response "<line>"`, `malformed HTTP status code "<code>"`), so an endpoint that echoes the request line puts the configured path and query into the error text even after redaction | `client.go` 665; `badStringError` (request.go 97) used by response.go 174, 181, 185; echo case measured by Security in the step-3 review; the original claim ("at most host and port") is refuted | confirmed |
 | 7 | Parse errors of `net/url` can quote up to three bytes of the URL (`EscapeError`), one host byte (`InvalidHostError`) or the port | url.go 69–77, 119, 128, 140, 149, 562, 631 | confirmed |
 | 8 | `.squad/project.md` (*Security areas*, *Logging*) states that the notifier logs the configured webhook URL | `.squad/project.md` line 46–48 | confirmed |
 | 9 | `docs/areas/notifications.md` documents the `url` field and that the URL is logged in full | notifications.md lines 131–142 | confirmed |
@@ -35,10 +35,11 @@ Sentinel URL for AC1–AC3: a URL whose userinfo user name and password, path, q
 sentinel string (for example `https://SNTL:SNTL@hooks.example:8443/services/T0/B0/SNTL?token=SNTL#SNTL`).
 
 - AC1: For each of the six notifier log calls (queue full, rate-limited, render failed, rejected, giving up after
-  retries, retry), a webhook configured with the sentinel URL at index 1 of `alerts.webhooks` produces a log record
-  that contains the sentinel nowhere (message, every attribute key and value), has no `url` attribute, and carries
-  `webhook` = `1` (an integer) and `endpoint` = `https://hooks.example:8443`.
-- AC2: When the HTTP client fails with a transport error, the `error` attribute of the retry and giving-up records (a
+  retries, retry), a webhook configured with the sentinel URL at index 1 of `alerts.webhooks` produces the call's log record
+  (found by its message and `webhook` = 1), which has no `url` attribute and carries `webhook` = `1` (a JSON number)
+  and `endpoint` = `https://hooks.example:8443`; and the sentinel appears nowhere in the whole captured log output of
+  the test (webhook 0, where configured, has a URL without the sentinel).
+- AC2: When the HTTP client fails with a transport error whose own text holds no URL, the `error` attribute of the retry and giving-up records (a
   transport error is always retried, so it never reaches the rejected call) is the `*url.Error` text with the endpoint in place of the URL: for a transport that fails
   with `stub transport failure` exactly `Post "https://hooks.example:8443": stub transport failure`, sentinel
   absent.
@@ -99,8 +100,9 @@ absolute `scheme://[userinfo@]host[:port]/path?query#fragment` → scheme and ho
 client masked (`user:***@host`) → scheme and host; IPv6 literal with port → bracketed host and port; no scheme
 (`host/path`, `//host/path`), opaque (`scheme:rest`), empty host (`scheme:///path`), empty string, any string
 `url.Parse` rejects (control byte, bad escape, bad host byte, bad port) → `[invalid URL]`; a redirect's
-`*url.Error` carries the redirect target's URL → its scheme and host. A secret in the host name itself is logged
-(decision record, *Consequences*).
+`*url.Error` carries the redirect target's URL → its scheme and host. A secret in the host name itself is logged,
+and bytes an endpoint echoes back in a malformed response stay in the cause as `net/http` quotes them (decision
+record, *Consequences*).
 
 New user-visible output: the log lines' attribute set changes as above; the message texts do not change.
 
@@ -119,6 +121,9 @@ New user-visible output: the log lines' attribute set changes as above; the mess
 6. Keep the inner parse error of an unparsable URL — lost: `EscapeError` quotes up to three bytes of the path,
    query-adjacent or userinfo text (fact 7); the operator reads the URL in the configuration instead.
 7. Full URL only at debug level — lost: the log is shared precisely while a failing webhook is debugged.
+8. Also filter the configured path and query out of the inner error text (an echoing endpoint) — lost: option 5
+   on free text the endpoint chose, fails open the same way, against the party that holds the secret already
+   (*Security review*, finding 1).
 
 The reasons are in [0007](../../docs/decisions/0007-log-webhook-by-index-and-host.md).
 
@@ -154,21 +159,25 @@ All by the Dev, against the code as built:
 
 - `docs/areas/notifications.md`, *What is logged*: in the table, `url` becomes `webhook`, `endpoint` in all six
   rows; replace the bullet "The webhook URL is logged in full…" by bullets stating: `webhook` is the index in
-  `alerts.webhooks`; `endpoint` is scheme and host (with port), or `[invalid URL]`; userinfo, path, query and
-  fragment are never logged, also not inside error texts; a transport error reads `Post "<endpoint>": <cause>`
-  and an unparsable URL `parse "[invalid URL]": invalid URL`; the host name is logged (a secret in a host name is
-  not protected), and text the endpoint itself sends (an unparsable redirect `Location`) is logged as received.
+  `alerts.webhooks`; `endpoint` is scheme and host (with port), or `[invalid URL]`; the notifier never logs the
+  URL's userinfo, path, query or fragment, also not in the URL part of an error text; a transport error reads
+  `Post "<endpoint>": <cause>` and an unparsable URL `parse "[invalid URL]": invalid URL`. Two exceptions, stated
+  as such: the host name is logged (a secret in a host name is not protected), and the `<cause>` quotes bytes the
+  endpoint itself sends as received — an unparsable redirect `Location`, a malformed status line — so an endpoint
+  that echoes the request line puts the configured path and query into the log.
   Add [0007](../../docs/decisions/0007-log-webhook-by-index-and-host.md) under *Related decisions*. Under *Limits
   and errors*, first bullet: a malformed URL's failure is logged with `endpoint` `[invalid URL]`.
 - `.squad/project.md`, *Security areas*, *Logging* line: the Dev reports the exact text, the orchestrator writes
-  it in. Content: no call logs the API key or a webhook URL's userinfo, path, query or fragment; the notifier
-  names a webhook by its index and scheme and host and redacts `*url.Error` texts (`internal/alert/notify.go`) —
+  it in. Content: no call logs the API key; the notifier names a webhook by its index and scheme and host and
+  redacts the URL in `*url.Error` texts, so it never logs the URL's userinfo, path, query or fragment itself —
+  except where the endpoint echoes them back in a malformed response, which is quoted (`internal/alert/notify.go`) —
   link [Notifications](../docs/areas/notifications.md#what-is-logged); keep secrets out of new log fields
   (`.squad/stack.md`, *Logger arguments*).
 - `SECURITY.md`, *Threat Model / Design Notes*: one bullet — webhook URLs often are the webhook's credential;
   the full URLs live only in the configuration file (mode `640 root:pimonitor`); the service log names a webhook
-  by its index and the URL's scheme and host, never userinfo, path, query or fragment, error texts included; a
-  service that puts its secret in the host name is not covered.
+  by its index and the URL's scheme and host, and the notifier never logs userinfo, path, query or fragment itself,
+  error texts included; not covered: a service that puts its secret in the host name, and an endpoint that echoes
+  the request line back in a malformed response, which `net/http` quotes in the error text.
 
 Sweep: `docs/ARCHITECTURE.md` (notifier section, lines 224–256) states no logged field; `README.md` and
 `docs/areas/configuration.md` say nothing about logged URLs; the PR template asks for no changelog (the
@@ -196,35 +205,38 @@ log fields). The *Logging* security-area line is updated as listed above.
 
 - Validating the URL at startup (failing fast on an unparsable URL) would change configuration behavior; not
   requested here.
-- The redirect `Location` text in `failed to parse Location header` is the endpoint's own and stays as received.
+- Text the endpoint sends (an unparsable redirect `Location`, a malformed status line, also when it echoes the
+  request) stays in the error text as received; documented, not filtered (*Security review*, finding 1).
+- `net/http` quotes an invalid `HTTPS_PROXY`/`HTTP_PROXY` value, credentials included, in the transport error. A
+  service environment secret, not the webhook URL: linked follow-up issue, title "Notifier error log can quote
+  proxy credentials from an invalid HTTPS_PROXY value", body: "When the service's `HTTPS_PROXY`/`HTTP_PROXY` holds
+  a value `net/http` cannot parse, the webhook delivery error logged by `internal/alert/notify.go` quotes it, with
+  any `user:password@`. Decide whether to redact it in `redactError` or document it in `SECURITY.md`. Found in the
+  Security plan review of #194."
 
-## Challenge notes
+## Challenge
 
-Devil's Advocate, mode plan, specs/issue-194 (issue #194, tier security)
+Devil's Advocate, two minor objections, both accepted:
 
-I checked the plan's claims against the code and against the Go 1.27.4 standard library, and they hold:
-- `notify.go` has six log calls that pass `"url"`, at lines 206, 226, 231, 300–301, 304–305 and 308–309. Only the three in `deliver` pass the raw `err`.
-- `post` (lines 344–363) returns the error of `http.NewRequestWithContext` and of `client.Do` unchanged.
-- `request.go` 912–914 returns `url.Parse`'s `&Error{"parse", u, err}` (`url.go` 399–411).
-- `client.go` 634–650 builds `url.Error{Op: urlErrorOp(...), URL: stripPassword(...)}`, and `stripPassword` (1064–1070) masks only the password.
-- So AC2's exact text `Post "https://hooks.example:8443": stub transport failure` and AC3's `parse "[invalid URL]": invalid URL` match what `url.Error.Error()` would print after the rebuild.
-- `renderBody` runs the template against the struct `eventView` (`notify.go` 398–423). `{{.Nope}}` therefore parses but fails when executed, so the render-failed path is reachable as the plan says.
-- Config validation (`internal/config/config.go` 402–411) rejects only an empty URL. A malformed URL does reach `post`, so AC3 tests a real path.
+1. A record-only leak check passes while another record leaks — accepted: AC1 now requires the expected record
+   to exist and the sentinel to be absent from the whole captured output; webhook 0 gets a URL without the
+   sentinel. AC2 and AC3 tests do the same.
+2. Rate-limited setup and the JSON number type — accepted: the `AC1 rate-limited` subtest sets
+   `NotifyMinIntervalSeconds` > 0, gets a first fired event delivered on `n.workers[1]` with a 200 from the stub
+   (or seeds `w.lastSent`), then dispatches a second fired event of the same metric inside the interval; the
+   decoded `webhook` value is compared as a number (float64 after `json.Unmarshal` into `any`).
 
-Need, scope and alternatives all hold:
-- No other code logs or serves the webhook URL. I searched `cmd/` and `internal/httpapi`.
-- `ARCHITECTURE.md`, `README.md`, `SECURITY.md` and `API.md` say nothing about logged URLs.
-- The plan covers `docs/areas/notifications.md` 131–142 and the `.squad/project.md` *Logging* line.
-- Option 1 (log the index plus scheme and host) is the least invasive way to meet all three of the issue's "Expected" forms.
+## Security review
 
-Objections:
-
-1. minor: AC1 as worded ("produces a log record that contains the sentinel nowhere") would pass while a second record leaks. Instruction for the Tester:
-   - In every AC1–AC3 test, first assert that the expected record exists (filter on `webhook` == 1 and the message). Then assert that the sentinel appears nowhere in the **whole** captured log buffer, not only in the matched record.
-   - The giving-up path also writes retry records, and in the queue-full test `Notify` fans out to webhook 0 as well; either could leak unseen.
-   - Give webhook 0 a URL without the sentinel so the buffer-wide check stays meaningful.
-
-2. minor: the rate-limited subtest needs setup the plan does not state. Instruction for the Tester:
-   - Configure `NotifyMinIntervalSeconds` > 0.
-   - Put the first fired event for the metric and resource on `n.workers[1]` through a delivery the stub answers with 200, or by seeding `w.lastSent`. Then call `dispatch` with a second fired event inside the interval.
-   - The JSON handler decodes `webhook` as a JSON number (float64 after `json.Unmarshal` into `any`). Compare it to 1 as a number, not as a Go `int`.
+1. (blocking) Fact 6 was wrong: `net/http` quotes response bytes (`malformed HTTP response`, `malformed HTTP
+   status code`), so an echoing endpoint puts the configured path and query into the error text. Decision: keep
+   the code design and document it (Security's recommendation). A guard in `redactError` would have to find the
+   configured path and query inside free text the endpoint chose, which is the string substitution option 5
+   rejects (fails open on any encoding difference), for an endpoint that already holds the secret. Changed: fact 6
+   (refuted original claim, corrected), the *Documentation updates* wording for `notifications.md`, `SECURITY.md`
+   and `.squad/project.md` (scoped to "the notifier never logs …", echo named beside the host-name exception), AC2
+   narrowed to a cause without a URL, record 0007 *Decision* and *Consequences*.
+2. (non-blocking) Invalid proxy values quoted with credentials — out of scope (an environment secret, not the
+   webhook URL); linked follow-up issue under *Out of scope / follow-ups*.
+3. (non-blocking) Option "keep the parser's detail" missing from 0007 — added there as option 7 (it was option 6
+   of this plan already).
