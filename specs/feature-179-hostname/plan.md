@@ -275,3 +275,32 @@ Files read: `specs/feature-179-hostname/spec.md`, `plan.md`, `.squad/project.md`
    - Proposed denylist, every HTML-parsing or script sink the browser offers: `innerHTML`, `outerHTML`, `insertAdjacentHTML`, `document.write`/`writeln`, `createContextualFragment`, `DOMParser`/`parseFromString`, `setHTMLUnsafe`, `srcdoc`, `setAttribute(` (which could set `on*`/`href`), and `eval`/`Function(`.
    - A denylist goes stale, so the stronger form is an allowlist. Extract the body of `function renderHostname` and assert that every write in it is one of `setText(`, `document.title =`, `.title = name`, or `.classList.toggle(`. Assert also that it contains none of the sinks above.
    - Recommendation: fix now. The Tester writes this test in step 5 anyway, so the Lead only has to add the sentence to the AC7 row.
+
+## Challenge notes
+
+I found nothing major in the plan for specs/feature-179-hostname. The plan's facts that I checked hold, and it covers every place the change touches. There are two minor objections.
+
+**Facts checked:**
+- `collectSysInfo` is at `internal/collector/collector.go:447-464`, and `Run` (`:331`) is its only production caller, so the warning really comes once per start.
+- `SystemInfo` is at `types.go:159-164`.
+- The collector config is built inline in `cmd/pimonitor/main.go:51-70`, and `main.go:72` is the only production `collector.New`. So the zero-value `HostnameEnabled` in the test helpers is safe.
+- Nothing else reads `SystemInfo` field by field. The only other reader is `app.js:277-280`, so no Prometheus or webhook output changes.
+- The unit has no `ProcSubset=` or `ProtectProc=` (`packaging/pimonitor.service:44-75`).
+- `install.sh:70-76` never overwrites an existing config, and config loading uses `KnownFields(true)` (`config.go:451`). Old config files simply get the default, as N1 says.
+- No existing test pins the `<h1>` or the `<title>` markup, and `xss_test.go` only scans for `innerHTML`.
+
+**Minor objections** (written for the plan's *Challenge notes*):
+
+1. **Truncation (AC8).** `overflow: hidden` and `text-overflow: ellipsis` do nothing on an inline `<span>`. As written, `.header-hostname-name` and the scan "AC8 name truncates with an ellipsis" would pass while nothing gets cut. `header h1` is a plain block (`internal/web/assets/style.css:59-62`).
+   - Dev: give the name element a `display` that is not inline, and constrain its width. For example, make `header h1` and `.header-hostname` flex rows with `min-width: 0` and the name `flex: 0 1 auto; min-width: 0`.
+   - Dev: keep the closing `)` visible.
+   - Dev: check in manual case 2 that a hidden name still leaves the header looking as it does today.
+   - Tester: also make the AC8 scan require a non-inline `display` (and `min-width: 0`) on the truncating element.
+   - This is minor because manual case 3 would catch it and the plan already gives these properties to the Dev.
+
+2. **Deployment document.** The `ProtectHostname` row in `docs/areas/deployment.md:77` says only "the hostname cannot be changed". The new behavior in S5 comes from this directive. Dev: extend that row's *Effect* cell to say the service keeps the host name it had at start, so `system.hostname` shows a rename only after a restart. Link it to `metrics.md`.
+
+**Files:**
+- /home/user/PiMonitor/specs/feature-179-hostname/plan.md
+- /home/user/PiMonitor/internal/web/assets/style.css
+- /home/user/PiMonitor/docs/areas/deployment.md
