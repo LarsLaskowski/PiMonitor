@@ -26,3 +26,5 @@ are quoted in full.
 | 2026-11-13 14:13 | 8 Security diff | Security | VERDICT: APPROVED; no findings (opus/medium · 33,829 tokens · 5 tool uses · 27 s · 10 in · 2,766 out · 89,659 cache read · 32,234 cache write · 117,231 weighted) |
 | 2026-11-13 14:13 | 7 Gate stamp | Orchestrator | PASS on 4809ba751d4e1d861064efb06f3179cf64494765 (tier security, verbatim): Format check pass; decision-check.py pass; scope-check.py pass |
 | 2026-11-13 14:14 | 8 Verbatim fix | Orchestrator | Applied [NON-BLOCKING, verbatim] docs/areas/dashboard.md Rendering bullet (host name also goes to document.title and the title property), commit 4809ba7; rewrapped; diff, Format check, scope-check and decision-check clean |
+| 2026-11-13 14:14 | 7 Gate stamp | Orchestrator | PASS on a469488340c57f6333f2e7a6383ccc28759e5543 (tier security, verbatim): Format check pass; decision-check.py pass; scope-check.py pass |
+| 2026-11-13 14:14 | 9 PR approval | Orchestrator | approved by checklist; decision record 0006 set to Accepted, stamped --verbatim |
