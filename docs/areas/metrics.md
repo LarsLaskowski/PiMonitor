@@ -40,8 +40,9 @@ such as openHAB that poll single values.
   ticks, from the aggregate `cpu` line and the `cpuN` lines of `/proc/stat`: 100 × (1 − Δ(idle + iowait) / Δ(user +
   nice + system + idle + iowait + irq + softirq + steal)), clamped to 0–100, and 0 when no time elapsed.
   `per_core_percent` follows the order of the `cpuN` lines.
-- A `cpu`/`cpuN` line with fewer than eight counters is skipped. When no `cpu` line remains, or a counter is not a
-  number, `/proc/stat` counts as unparsable: the CPU values are 0 for that tick and a warning is logged.
+- A `cpu`/`cpuN` line with fewer than eight counters is skipped. When neither a `cpu` nor a `cpuN` line remains, or a
+  counter is not a number, `/proc/stat` counts as unparsable: the CPU values are 0 for that tick and a warning is
+  logged.
 - On the first fast tick after start there is no previous sample: `overall_percent` is 0 and `per_core_percent` is
   omitted.
 - `cpu_count` is the number of `cpuN` lines in `/proc/stat` at startup.
