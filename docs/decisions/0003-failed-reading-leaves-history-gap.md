@@ -39,6 +39,6 @@ snapshot keeps its zero or empty value for that tick. The rules are in
   timestamp must not assume equal lengths.
 - A `history.bin` written before this change still holds the zeros; they age out of the window and are not
   migrated.
-- A 0 that is not a failure — `cpu_percent` on the first tick after start, which has no previous sample — is
-  still recorded; whether it should be is a separate question.
+- `cpu_percent` on the first tick after start, which has no previous sample, is no failure but gets no point
+  either: [0009](0009-first-cpu-tick-is-no-reading.md).
 - Revisiting this to keep series aligned means a new API version with a nullable value (option 2).

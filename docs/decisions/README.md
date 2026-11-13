@@ -70,4 +70,5 @@ once in the [area document](../areas/README.md) of the record's area, and the re
 | [0006](0006-publish-host-name-by-default.md) | Publish the host name by default, read once and omitted when unknown | Accepted | 2026-11-13 |
 | [0007](0007-log-webhook-by-index-and-host.md) | Log a webhook by its index and its scheme and host only | Accepted | 2026-11-13 |
 | [0008](0008-reject-non-finite-and-fractional-config-numbers.md) | Reject non-finite numbers, and fractional values of integer options while reading the file | Accepted | 2026-11-13 |
+| [0009](0009-first-cpu-tick-is-no-reading.md) | The first CPU tick after start counts as no reading | Proposed | 2026-11-13 |
 <!-- project:end index -->
