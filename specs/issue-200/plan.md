@@ -40,8 +40,10 @@ Security areas touched: Parsing of local input (the YAML config in `internal/con
 - AC2: A fractional value for `processes_top_n` or `alerts.notify_max_retries` fails `config.Load` with exactly
   `<option> must be a whole number (got <value>)` (`processes_top_n must be a whole number (got 2.5)`,
   `alerts.notify_max_retries must be a whole number (got 0.5)`) — also when the value arrives through an alias
-  (`*n` to `&n 2.5`), a merge key (`alerts: {<<: {notify_max_retries: 1.5}}`) or an explicit `!!float 2.5` tag, and
-  also with `-version` (decision record 0008).
+  whose anchor sits on a known float key, so the file passes the real decode and only the alias carries the fraction
+  (`poll_interval_seconds: &n 2.5` with `processes_top_n: *n`, and with `alerts: {notify_max_retries: *n}`), a merge
+  key (`alerts: {<<: {notify_max_retries: 1.5}}`) or an explicit `!!float 2.5` tag, and also with `-version`
+  (decision record 0008).
 - AC3: Whole values are accepted as before: `processes_top_n` written `5`, `5.0`, `1e1` or `!!float 5` loads as
   5, 5, 10, 5; `alerts.notify_max_retries: 3.0` as 3; `poll_interval_seconds` written `5` or `5.0` as 5.
 - AC4: The AC1 check covers every number option: `poll_interval_seconds`, `updates_check_minutes`,
@@ -58,6 +60,7 @@ Security areas touched: Parsing of local input (the YAML config in `internal/con
 | AC1 | `TestLoad_RejectsNonFiniteNumbers` (subtests "AC1 AC4 …": each YAML form of AC1 on `poll_interval_seconds`, `thresholds.cpu_warn_percent`, `alerts.webhooks[0].timeout_seconds`, `processes_top_n`, `alerts.notify_max_retries`; exact error text) | `internal/config/config_test.go` |
 | AC1 | `TestRun_ConfigErrorNamesOption_AC1` (`run` with a file `poll_interval_seconds: .nan` returns exactly `load config: poll_interval_seconds must be a finite number`) | `cmd/pimonitor/main_test.go` |
 | AC2 | `TestLoad_RejectsFractionalIntegerOptions` (subtests "AC2 …": plain, alias, merge key, `!!float` tag, with `-version`; exact error text) | `internal/config/config_test.go` |
+| AC4 | `TestCheckIntegerOptions_CoversEveryIntField_AC4` (walks `Config` with `reflect`, recursing into `Thresholds`, `Alerts` and `Webhook`, collects the `yaml` key path of every `int`-kind field and asserts set equality with `integerOptionNames`; no hard-coded count) | `internal/config/config_test.go` |
 | AC3 | `TestLoad_AcceptsWholeNumbersWrittenAsDecimals` (subtests "AC3 …", the forms and values of AC3) | `internal/config/config_test.go` |
 | AC4 | `TestValidate_RejectsNonFiniteNumbers` (subtests "AC4 …": every option of AC4 × NaN, +Inf, −Inf set on `Default()`, the webhook at index 1 of two; exact error text) | `internal/config/config_test.go` |
 
@@ -75,7 +78,9 @@ Security areas touched: Parsing of local input (the YAML config in `internal/con
    an `alerts` struct. A decode error or `io.EOF` returns nil (the real decode then reports the error, fact 10). For
    each non-nil value: non-finite → `<option> must be a finite number`; `v != math.Trunc(v)` →
    `fmt.Errorf("%s must be a whole number (got %v)", name, v)`. `loadYAMLFile` returns this error unwrapped (no
-   `parse <file>:` prefix), so the line reads like a validation message.
+   `parse <file>:` prefix), so the line reads like a validation message. The option names it checks are also kept in an
+   unexported package-level slice `integerOptionNames` (`processes_top_n`, `alerts.notify_max_retries`) beside the
+   two-field struct, which the AC4 guard test compares against every `int`-kind field of `Config`.
 3. No other file of production code changes; consumers of the int fields stay as they are.
 
 ## Options considered
@@ -196,7 +201,7 @@ Excerpt of the output (`real` = the real decode, `2nd` = the plan's second decod
 "? processes_top_n\n: 2.5"                 real: N=2 err=false | 2nd: N=2.5
 "\"processes_top_n\": 2.5"                 real: N=2 err=false | 2nd: N=2.5
 "processes_top_n: 2.5\n---\nprocesses_top_n: 3" real: N=2 | 2nd: N=2.5   (first document only, both)
-"﻿processes_top_n: 2.5"               real: N=2 | 2nd: N=2.5
+"U+FEFF processes_top_n: 2.5"          real: N=2 | 2nd: N=2.5
 "processes_top_n: 1_0.5"                   real: N=10 | 2nd: N=10.5
 "processes_top_n: 1e400" / "nan" / "'2.5'" / "!!int 2.5" / "!foo 2.5" / duplicate key / "2.5\nalerts: [1]"
                                             real: err=true | 2nd: err (discarded -> real decode fails anyway)
