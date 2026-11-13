@@ -1,6 +1,6 @@
 # 0007: Log a webhook by its index and its scheme and host only
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-13
 - **Area:** Notifications
 - **Source:** Issue #194
