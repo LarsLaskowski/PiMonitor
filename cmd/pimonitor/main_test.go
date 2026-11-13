@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -287,4 +288,25 @@ func TestCollectorConfig_MapsFields(t *testing.T) {
 			t.Fatal("HostnameEnabled = true for hostname_enabled false, want false")
 		}
 	})
+}
+
+func TestRun_ConfigErrorNamesOption_AC1(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	content := "listen_addr: 127.0.0.1:0\npoll_interval_seconds: .nan\n"
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	done := make(chan error, 1)
+
+	go func() { done <- run([]string{"-config", path}) }()
+
+	select {
+	case err := <-done:
+		want := "load config: poll_interval_seconds must be a finite number"
+		if err == nil || err.Error() != want {
+			t.Fatalf("run error = %v, want %q", err, want)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("run did not return: the config with poll_interval_seconds: .nan was accepted and the server started")
+	}
 }
