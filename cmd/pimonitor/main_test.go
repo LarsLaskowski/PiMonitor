@@ -277,4 +277,14 @@ func TestCollectorConfig_MapsFields(t *testing.T) {
 			{"PersistPath", got.PersistPath, filepath.Join("/srv/pimonitor-data", "history.bin")},
 		})
 	})
+	t.Run("AC3 hostname_enabled false reaches the collector", func(t *testing.T) {
+		cfg := config.Default()
+		cfg.HostnameEnabled = false
+
+		got := collectorConfig(cfg, nil)
+
+		if got.HostnameEnabled {
+			t.Fatal("HostnameEnabled = true for hostname_enabled false, want false")
+		}
+	})
 }
