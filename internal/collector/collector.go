@@ -42,6 +42,8 @@ type Config struct {
 	DistroInfoEnabled bool
 	// PiModelEnabled toggles whether Snapshot.System.PiModel is populated.
 	PiModelEnabled bool
+	// HostnameEnabled toggles whether Snapshot.System.Hostname is populated.
+	HostnameEnabled bool
 	// PersistPath is the file metric history is periodically snapshotted
 	// to and restored from at startup, so sparklines survive restarts.
 	// Empty disables persistence.
@@ -451,6 +453,13 @@ func (c *Collector) collectSysInfo() {
 	}
 	if !c.cfg.PiModelEnabled {
 		info.PiModel = ""
+	}
+	if c.cfg.HostnameEnabled {
+		name, err := c.sysInfo.hostname()
+		if err != nil {
+			c.log.Warn("could not read host name", "error", err)
+		}
+		info.Hostname = name
 	}
 	count, err := c.cpu.CoreCount()
 	if err != nil {

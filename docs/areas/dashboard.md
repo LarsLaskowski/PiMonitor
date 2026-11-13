@@ -77,6 +77,7 @@ client of the [HTTP API](http-api.md) like any third-party integration and has n
 - A failed metrics poll (other than `401`) shows "Connection error" in the header and leaves every card showing its
   last values; the next scheduled poll tries again. A `503` from the API's concurrency limit is handled the same
   way; `Retry-After` is not read.
+- A failed metrics poll and a `401` leave the host name and the tab title as they were.
 - A failed alerts poll leaves the badges and the banner as they were: a failed request is not taken as "cleared".
 - A failed history poll (including a `401`) leaves the charts as they were and makes the next poll fetch the full
   window.
@@ -84,9 +85,16 @@ client of the [HTTP API](http-api.md) like any third-party integration and has n
 ### Rendering
 
 - Text that comes from the server (mountpoints, interface names, package names and versions, Pi-hole versions,
-  kernel, distribution, model) is inserted only as text nodes. The page script never assigns non-empty content to
-  `innerHTML`; clearing a container with an empty string is the only allowed use. `internal/web/xss_test.go` fails
-  the build otherwise.
+  host name, kernel, distribution, model) is inserted only as text nodes; the host name also goes to `document.title`
+  and the `title` property of its header element. The page script never assigns non-empty content to `innerHTML`;
+  clearing a container with an empty string is the only allowed use. `internal/web/xss_test.go` fails the build
+  otherwise.
+- The host name, when the snapshot carries `system.hostname`, is shown in parentheses after the brand in the header,
+  muted and in normal weight, in its original case; a long name is cut with an ellipsis and the full name is its
+  tooltip, while the closing parenthesis stays visible.
+- The tab title is `<host name> – PiMonitor`, or `PiMonitor` without a host name.
+- `Hostname` is the first row of the System card and is hidden without a host name. Header, title and row are
+  evaluated on every snapshot.
 - The page uses no inline script or style, so it runs under the strict Content-Security-Policy of the
   [HTTP API](http-api.md#security-headers).
 - Times shown on the page ("Last updated", "Raspberry Pi time", "Checked …") are instants taken from the Pi

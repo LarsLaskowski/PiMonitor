@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -840,4 +841,68 @@ func TestHealthz_NotGatedByAPIKey(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200 (healthz should not require API key)", rec.Code)
 	}
+}
+
+// metricsSystemObject requests GET /api/v1/metrics with system as the
+// snapshot's SystemInfo and returns the decoded "system" object.
+func metricsSystemObject(t *testing.T, system collector.SystemInfo) map[string]any {
+	t.Helper()
+	s, fm := newTestServer(Config{})
+	fm.snapshot.System = system
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/metrics", nil)
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	var body map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	sys, ok := body["system"].(map[string]any)
+	if !ok {
+		t.Fatalf("system = %#v, want a JSON object", body["system"])
+	}
+	return sys
+}
+
+func TestHandleMetrics_Hostname(t *testing.T) {
+	base := collector.SystemInfo{
+		KernelVersion: "6.1.0",
+		Distribution:  "Raspberry Pi OS",
+		PiModel:       "Raspberry Pi 4 Model B",
+		CPUModel:      "Cortex-A72",
+	}
+	existing := map[string]any{
+		"kernel_version": "6.1.0",
+		"distribution":   "Raspberry Pi OS",
+		"pi_model":       "Raspberry Pi 4 Model B",
+		"cpu_model":      "Cortex-A72",
+	}
+
+	t.Run("AC1 system.hostname present and the four existing system keys unchanged", func(t *testing.T) {
+		withName := base
+		withName.Hostname = "raspberrypi"
+		want := map[string]any{"hostname": "raspberrypi"}
+		for k, v := range existing {
+			want[k] = v
+		}
+
+		got := metricsSystemObject(t, withName)
+
+		if !reflect.DeepEqual(got, want) {
+			t.Fatalf("system = %v, want %v", got, want)
+		}
+	})
+
+	t.Run("AC2 key omitted when the host name is empty", func(t *testing.T) {
+		got := metricsSystemObject(t, base)
+
+		if _, present := got["hostname"]; present {
+			t.Fatalf("system.hostname present = %v, want the key omitted", got["hostname"])
+		}
+		if !reflect.DeepEqual(got, existing) {
+			t.Fatalf("system = %v, want %v", got, existing)
+		}
+	})
 }

@@ -169,6 +169,7 @@ extract the fields you need (e.g. via JSONPath in openHAB's HTTP binding).
     { "chip": "nvme", "label": "Composite", "hwmon": "hwmon1", "celsius": 34.9 }
   ],
   "system": {
+    "hostname": "raspberrypi",
     "kernel_version": "6.6.31+rpt-rpi-v8",
     "distribution": "Raspberry Pi OS Bookworm (Debian 12)",
     "pi_model": "Raspberry Pi 4 Model B Rev 1.4",
@@ -344,10 +345,13 @@ Notes:
     daily refresh was missed. `pihole -up` additionally re-downloads an FTL
     binary whose checksum changed under an unchanged version number; that
     case is not visible in the versions file and is not reported.
+- `system.hostname` is the host name read at startup. The key is omitted when
+  the name is unknown or `hostname_enabled` is off.
 - Fields may read as zero values (`0`, `""`, empty arrays) briefly after
   process start, before the first collection tick completes, or
   permanently on non-Pi/non-Linux systems for hardware-specific fields
   like `temperature` or `pi_model`.
+  `system.hostname` may likewise be absent briefly after process start.
 
 ### `GET /api/v1/metrics/<metric>`
 

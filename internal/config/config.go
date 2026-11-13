@@ -107,6 +107,9 @@ type Config struct {
 	HwmonEnabled      bool `yaml:"hwmon_enabled"`
 	DistroInfoEnabled bool `yaml:"distro_info_enabled"`
 	PiModelEnabled    bool `yaml:"pi_model_enabled"`
+	// HostnameEnabled toggles whether the host name is collected and exposed
+	// as system.hostname.
+	HostnameEnabled bool `yaml:"hostname_enabled"`
 	// PrometheusEnabled toggles GET /metrics, a Prometheus text-exposition
 	// rendering of the current snapshot, served alongside the JSON
 	// /api/v1/... API. It defaults to false — a distinct opt-in rather than
@@ -170,6 +173,7 @@ func Default() Config {
 		HwmonEnabled:                 true,
 		DistroInfoEnabled:            true,
 		PiModelEnabled:               true,
+		HostnameEnabled:              true,
 		PrometheusEnabled:            false,
 		APIKey:                       "",
 		AccessLogEnabled:             true,

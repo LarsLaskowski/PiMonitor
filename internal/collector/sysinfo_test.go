@@ -1,6 +1,8 @@
 package collector
 
 import (
+	"errors"
+	"io/fs"
 	"path/filepath"
 	"runtime"
 	"testing"
@@ -127,4 +129,41 @@ func TestSysInfoCollector_Collect(t *testing.T) {
 	if info.Distribution == "" || info.PiModel == "" {
 		t.Fatalf("expected fixture-sourced fields populated, got %+v", info)
 	}
+}
+
+func TestReadHostname(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+		want    string
+	}{
+		{"AC1 trailing newline trimmed", "raspberrypi\n", "raspberrypi"},
+		{"AC1 surrounding whitespace trimmed", " \t raspberrypi \t\n", "raspberrypi"},
+		{"AC1 original case kept", "RaspberryPi-Lab\n", "RaspberryPi-Lab"},
+		{"AC2 empty file", "", ""},
+		{"AC2 whitespace only", " \t\n\n", ""},
+		{"AC2 kernel placeholder (none)", "(none)\n", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := writeTempFile(t, t.TempDir(), "hostname", tt.content)
+			got, err := readHostname(path)
+			if err != nil {
+				t.Fatalf("readHostname(%q) error = %v, want nil", tt.content, err)
+			}
+			if got != tt.want {
+				t.Fatalf("readHostname(%q) = %q, want %q", tt.content, got, tt.want)
+			}
+		})
+	}
+
+	t.Run("AC2 missing file returns an error", func(t *testing.T) {
+		got, err := readHostname(filepath.Join(t.TempDir(), "missing"))
+		if !errors.Is(err, fs.ErrNotExist) {
+			t.Fatalf("readHostname(missing) error = %v, want one wrapping fs.ErrNotExist", err)
+		}
+		if got != "" {
+			t.Fatalf("readHostname(missing) = %q, want empty", got)
+		}
+	})
 }

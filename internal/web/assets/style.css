@@ -56,9 +56,33 @@ header {
   padding: 1.25rem 1.5rem 0.5rem;
 }
 
+.header-brand {
+  min-width: 0;
+}
+
 header h1 {
+  display: flex;
+  align-items: baseline;
+  min-width: 0;
+  white-space: nowrap;
   margin: 0;
   font-size: 1.375rem;
+}
+
+.header-hostname {
+  display: flex;
+  min-width: 0;
+  font-weight: normal;
+  color: var(--muted);
+  margin-left: 0.35em;
+}
+
+.header-hostname-name {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .header-buttons {

@@ -67,4 +67,5 @@ once in the [area document](../areas/README.md) of the record's area, and the re
 | [0003](0003-failed-reading-leaves-history-gap.md) | A failed reading leaves a gap in the history | Accepted | 2026-11-12 |
 | [0004](0004-final-history-write-waits.md) | The final history write waits for the running one | Accepted | 2026-11-12 |
 | [0005](0005-cleared-event-ends-rate-limit-window.md) | A cleared event ends the webhook rate-limit window | Accepted | 2026-11-12 |
+| [0006](0006-publish-host-name-by-default.md) | Publish the host name by default, read once and omitted when unknown | Accepted | 2026-11-13 |
 <!-- project:end index -->

@@ -161,6 +161,8 @@ type SystemInfo struct {
 	Distribution  string `json:"distribution"`
 	PiModel       string `json:"pi_model"`
 	CPUModel      string `json:"cpu_model"`
+	// Hostname is the kernel host name; empty when disabled or unreadable.
+	Hostname string `json:"hostname,omitempty"`
 }
 
 // PackageUpdate is a single upgradable apt package.

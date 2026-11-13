@@ -213,6 +213,15 @@
     setText('app-version', raw.replace(/^v(?=\d)/, ''));
   }
 
+  function renderHostname(name) {
+    document.title = name ? name + ' – PiMonitor' : 'PiMonitor';
+    document.getElementById('header-hostname').classList.toggle('hidden', !name);
+    setText('header-hostname-name', name);
+    document.getElementById('header-hostname-name').title = name;
+    document.getElementById('sys-hostname-row').classList.toggle('hidden', !name);
+    setText('sys-hostname', name);
+  }
+
   function renderMetrics(snap) {
     latestSnapshot = snap;
     const t = config.thresholds;
@@ -275,6 +284,7 @@
     applyNetworkVisibility(snap);
 
     // System
+    renderHostname(snap.system.hostname || '');
     setText('sys-kernel', snap.system.kernel_version || 'unknown');
     setText('sys-distro', snap.system.distribution || 'unknown');
     setText('sys-model', snap.system.pi_model || 'unknown');

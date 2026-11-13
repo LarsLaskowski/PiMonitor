@@ -22,7 +22,7 @@ automation systems like openHAB). Runs as a systemd service.
 - **Disk I/O throughput** (REST API) - per block device read/write
   bytes-per-second
 - **Network throughput** per interface (optional, can be disabled)
-- **System identity** - kernel version, OS distribution, Raspberry Pi
+- **System identity** - host name, kernel version, OS distribution, Raspberry Pi
   model
 - **Uptime** - device clock and time since boot
 - **Available apt updates** - count and package list, with a staleness

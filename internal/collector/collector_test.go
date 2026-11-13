@@ -1496,3 +1496,110 @@ func TestHistory_JSONKeepsEmptyScalarSeries(t *testing.T) {
 		check(t, c.History().Since(before))
 	})
 }
+
+// newHostnameTestCollector returns a collector whose host name source is
+// path, logging into the returned buffer.
+func newHostnameTestCollector(t *testing.T, enabled bool, path string) (*Collector, *bytes.Buffer) {
+	t.Helper()
+	log, buf := newCapturingLogger()
+	c := New(Config{
+		FastInterval:    time.Second,
+		SlowInterval:    time.Minute,
+		HistoryCapacity: 10,
+		HostnameEnabled: enabled,
+	}, log)
+	sys := NewSysInfoCollector()
+	sys.hostnamePath = path
+	c.sysInfo = sys
+	return c, buf
+}
+
+// checkSnapshotHostname fails the test when c's snapshot does not carry
+// want as System.Hostname; why explains the expectation.
+func checkSnapshotHostname(t *testing.T, c *Collector, want, why string) {
+	t.Helper()
+	if got := c.Snapshot().System.Hostname; got != want {
+		t.Fatalf("System.Hostname = %q, want %q (%s)", got, want, why)
+	}
+}
+
+// checkNoLogLineMentions fails the test when any line logged into buf, at
+// any level, contains one of substrs.
+func checkNoLogLineMentions(t *testing.T, buf *bytes.Buffer, substrs ...string) {
+	t.Helper()
+	out := buf.String()
+	for _, substr := range substrs {
+		if got := countLogLines(out, "", substr); got != 0 {
+			t.Fatalf("log lines with %q = %d, want 0; log:\n%s", substr, got, out)
+		}
+	}
+}
+
+func TestCollector_CollectSysInfo_Hostname(t *testing.T) {
+	const (
+		hostnameWarning = "could not read host name"
+		hostNameMention = "host name"
+	)
+
+	t.Run("AC1 enabled copies the fixture name into System.Hostname", func(t *testing.T) {
+		path := writeTempFile(t, t.TempDir(), "hostname", "raspberrypi\n")
+		c, _ := newHostnameTestCollector(t, true, path)
+
+		c.collectSysInfo()
+
+		checkSnapshotHostname(t, c, "raspberrypi", "copied from the fixture")
+	})
+
+	t.Run("AC1 a fast tick does not re-read the name", func(t *testing.T) {
+		path := writeTempFile(t, t.TempDir(), "hostname", "first-name\n")
+		c, _ := newHostnameTestCollector(t, true, path)
+
+		c.collectSysInfo()
+		overwriteTempFile(t, path, "second-name\n")
+		c.fastTick(context.Background())
+
+		checkSnapshotHostname(t, c, "first-name", "after rename and fastTick (read once at start)")
+	})
+
+	t.Run("AC2 unreadable source logs one warning", func(t *testing.T) {
+		c, buf := newHostnameTestCollector(t, true, filepath.Join(t.TempDir(), "missing"))
+
+		c.collectSysInfo()
+		c.fastTick(context.Background())
+		c.fastTick(context.Background())
+
+		out := buf.String()
+		if got := countLogLines(out, "WARN", hostnameWarning); got != 1 {
+			t.Fatalf("WARN lines with %q = %d, want 1; log:\n%s", hostnameWarning, got, out)
+		}
+		checkSnapshotHostname(t, c, "", "for an unreadable source")
+	})
+
+	t.Run("AC2 empty source logs nothing", func(t *testing.T) {
+		path := writeTempFile(t, t.TempDir(), "hostname", " \n")
+		c, buf := newHostnameTestCollector(t, true, path)
+
+		c.collectSysInfo()
+
+		checkNoLogLineMentions(t, buf, hostNameMention)
+		checkSnapshotHostname(t, c, "", "for a whitespace-only source")
+	})
+
+	t.Run("AC3 disabled leaves Hostname empty for a readable source", func(t *testing.T) {
+		path := writeTempFile(t, t.TempDir(), "hostname", "raspberrypi\n")
+		c, _ := newHostnameTestCollector(t, false, path)
+
+		c.collectSysInfo()
+
+		checkSnapshotHostname(t, c, "", "with HostnameEnabled false")
+	})
+
+	t.Run("AC3 disabled logs nothing for a missing source", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "missing")
+		c, buf := newHostnameTestCollector(t, false, path)
+
+		c.collectSysInfo()
+
+		checkNoLogLineMentions(t, buf, hostNameMention, path)
+	})
+}
