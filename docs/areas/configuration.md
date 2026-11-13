@@ -85,6 +85,7 @@ checked at startup; a value outside it fails startup as described under *Validat
 | `hwmon_enabled` | bool | `true` | — | Whether hwmon sensors are enumerated ([Metrics](metrics.md)). |
 | `distro_info_enabled` | bool | `true` | — | Whether the OS distribution is collected ([Metrics](metrics.md)). |
 | `pi_model_enabled` | bool | `true` | — | Whether the Raspberry Pi model is collected ([Metrics](metrics.md)). |
+| `hostname_enabled` | bool | `true` | — | Whether the host name is read and published ([Metrics](metrics.md)). |
 | `processes_enabled` | bool | `false` | — | Whether `GET /api/v1/processes` exists ([Metrics](metrics.md)). |
 | `processes_top_n` | integer | `5` | 1 to 100; checked even while `processes_enabled` is `false` | Entries per process ranking ([Metrics](metrics.md)). |
 | `prometheus_enabled` | bool | `false` | — | Whether `GET /metrics` exists ([HTTP API](http-api.md)). |

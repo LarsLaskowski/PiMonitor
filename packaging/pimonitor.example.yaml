@@ -59,6 +59,10 @@ hwmon_enabled: true
 distro_info_enabled: true
 pi_model_enabled: true
 
+# Whether the host name is read and shown in the dashboard and the API
+# (system.hostname). The API needs no key unless api_key is set.
+hostname_enabled: true
+
 # Whether to expose GET /metrics: the current snapshot rendered in the
 # Prometheus text exposition format, for a Prometheus server to scrape
 # directly instead of polling GET /api/v1/metrics. Off by default - a

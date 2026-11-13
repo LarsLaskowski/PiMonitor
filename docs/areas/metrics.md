@@ -122,6 +122,10 @@ such as openHAB that poll single values.
 ### System identity and uptime
 
 - `uptime_seconds` is the first field of `/proc/uptime`, refreshed every fast tick.
+- `system.hostname` is `/proc/sys/kernel/hostname` trimmed of surrounding whitespace, read once at startup (a later
+  rename shows after a restart). The key is **omitted** (not empty, unlike the other `system` keys) when the file is
+  unreadable, empty, only whitespace or the kernel's `(none)`, and when `hostname_enabled` is off, in which case the
+  file is not read ([0006](../decisions/0006-publish-host-name-by-default.md)).
 - `system.kernel_version` is the running kernel's release (as `uname -r` prints it), empty off Linux.
 - `system.distribution` is `PRETTY_NAME` from `/etc/os-release`, else `ID` and `VERSION_ID` joined by a space, else
   `ID`, else empty. It is empty when `distro_info_enabled` is off.
@@ -180,7 +184,7 @@ such as openHAB that poll single values.
   tick (fast-tick fields) or keeps the last good value (`updates`, `pihole`, process rankings).
 - These failures are logged as a warning on **every** tick they occur: `cpu`, `load_average`, `memory`/`swap`,
   `disks` (only when `/proc/mounts` cannot be read), `disk_io`, `network`, `uptime`, `updates`, processes (only when
-  `/proc` cannot be listed), and, once at startup, the core count.
+  `/proc` cannot be listed), and, once at startup, the core count and the host name (`could not read host name`).
 - Failures of the optional hardware sources are logged once: a warning on the first failure and whenever the error
   text changes, debug while the same error repeats, and an info line `<message>: recovered` when the source
   recovers. These are `temperature` (including "no CPU thermal zone detected"), `gpu_temperature`,
@@ -193,7 +197,7 @@ such as openHAB that poll single values.
   ([0002](../decisions/0002-bound-vcgencmd-output-in-errors.md)).
 - Not logged at all: a single mountpoint whose `statfs` fails or hangs, a single hwmon channel or cpufreq core that
   cannot be read, cpufreq directories present but no core readable, hwmon chips present but no channel readable, a
-  single unreadable process, and system identity values that cannot be determined.
+  single unreadable process, and other system identity values that cannot be determined.
 - No reading is invented: a value the source did not deliver is reported as 0, empty or absent, as stated per
   metric above. `GET /api/v1/metrics` cannot tell a 0 caused by a failure from a real 0; see
   [`API.md`](../API.md#get-apiv1metrics). The history records no point for such a tick
