@@ -89,9 +89,9 @@ type webhookWorker struct {
 	wh    webhook
 	queue chan Event
 
-	// lastSent tracks the last delivery time per (metric, resource) for rate
-	// limiting. Only this webhook's own goroutine touches it, so it needs no
-	// lock.
+	// lastSent tracks the time of the last delivered fired event per
+	// (metric, resource) for rate limiting; a cleared event removes the key.
+	// Only this webhook's own goroutine touches it, so it needs no lock.
 	lastSent map[string]time.Time
 }
 
@@ -215,8 +215,13 @@ func (n *Notifier) dispatch(ctx context.Context, w *webhookWorker, ev Event) {
 	// cleared events bypass the rate limiter: a recovery signal must always be
 	// delivered so a state-based consumer (e.g. a Home Assistant
 	// binary_sensor) can never get stuck reporting an alert that has actually
-	// cleared. The limiter only coalesces repeated firings.
-	if ev.Kind != KindCleared && n.rateLimited(w, ev) {
+	// cleared. A cleared event also ends the rate-limit window of its metric and
+	// resource, whatever the outcome of its delivery, so the next fired event
+	// is always delivered. The limiter only coalesces a fired event that follows
+	// a delivered fired event with no cleared event between them.
+	if ev.Kind == KindCleared {
+		delete(w.lastSent, rateLimitKey(ev))
+	} else if n.rateLimited(w, ev) {
 		n.log.Warn("alert notification rate-limited, dropping event",
 			"url", w.wh.url, "metric", ev.Metric, "resource", ev.Resource, "kind", ev.Kind)
 		return
@@ -226,19 +231,20 @@ func (n *Notifier) dispatch(ctx context.Context, w *webhookWorker, ev Event) {
 		n.log.Error("alert notification render failed", "url", w.wh.url, "error", err)
 		return
 	}
-	if n.deliver(ctx, w.wh, body) {
+	if n.deliver(ctx, w.wh, body) && ev.Kind != KindCleared {
 		n.recordSent(w, ev)
 	}
 }
 
 // rateLimited reports whether delivering ev to w should be suppressed because
-// the previous successful delivery of the same metric to the same webhook was
-// too recent. The state lives on the worker and is keyed per
-// (metric, resource) so a fast-flapping metric can't flood a webhook, while a
-// distinct metric alerting in the same tick is still delivered. Only firing
-// events reach here (cleared events bypass the limiter in dispatch), so it
-// purely coalesces repeated escalations. The event timestamp (not wall clock)
-// drives the decision so it is deterministic and testable.
+// the last delivered fired event of the same metric and resource to the same
+// webhook was too recent. The state lives on the worker and is keyed per
+// (metric, resource), so a distinct metric alerting in the same tick is still
+// delivered. Only firing events reach here (cleared events bypass the limiter
+// in dispatch and end the window), so it purely coalesces a fired event after
+// a delivered fired event with no cleared event between them. The event
+// timestamp (not wall clock) drives the decision so it is deterministic and
+// testable.
 func (n *Notifier) rateLimited(w *webhookWorker, ev Event) bool {
 	if n.minInterval <= 0 {
 		return false
@@ -248,8 +254,8 @@ func (n *Notifier) rateLimited(w *webhookWorker, ev Event) bool {
 }
 
 // recordSent stamps the last-delivery time for (metric, resource) after a
-// successful delivery, so the rate limiter counts deliveries rather than
-// attempts: a failed delivery must not suppress the next firing.
+// successful delivery of a fired event, so the rate limiter counts deliveries
+// rather than attempts: a failed delivery must not suppress the next firing.
 //
 // It also drops every entry whose window has already run out relative to
 // ev. Keys are per resource, so without this a host whose mountpoints churn

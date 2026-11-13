@@ -744,3 +744,145 @@ func TestNotifierRecordSent_KeepsEntriesInsideWindow(t *testing.T) {
 		t.Error("/other not rate-limited 1s after its own delivery")
 	}
 }
+
+// clearedStep is one dispatched event of TestNotifier_ClearedEndsRateLimitWindow.
+type clearedStep struct {
+	kind   string
+	from   Level
+	to     Level
+	offset time.Duration
+}
+
+func clearedFired(offset time.Duration) clearedStep {
+	return clearedStep{kind: KindFired, from: LevelOK, to: LevelCrit, offset: offset}
+}
+
+func clearedEscalated(offset time.Duration) clearedStep {
+	return clearedStep{kind: KindFired, from: LevelWarn, to: LevelCrit, offset: offset}
+}
+
+func clearedCleared(offset time.Duration) clearedStep {
+	return clearedStep{kind: KindCleared, from: LevelCrit, to: LevelOK, offset: offset}
+}
+
+// newRateLimitHarness starts a webhook server that records every accepted event
+// on the returned channel and answers 400 for events of rejectKind (when set),
+// and a notifier with a 60s rate-limit interval aimed at it.
+func newRateLimitHarness(t *testing.T, rejectKind string) (*Notifier, *webhookWorker, chan eventView) {
+	t.Helper()
+	ch := make(chan eventView, 16)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		var v eventView
+		if err := json.Unmarshal(body, &v); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		if rejectKind != "" && v.Kind == rejectKind {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		ch <- v
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(srv.Close)
+
+	n, err := NewNotifier(config.Alerts{
+		Webhooks:                 []config.Webhook{{URL: srv.URL}},
+		NotifyMinIntervalSeconds: 60,
+	}, nil)
+	if err != nil {
+		t.Fatalf("NewNotifier: %v", err)
+	}
+	return n, n.workers[0], ch
+}
+
+// dispatchSteps dispatches the steps in order; after the step at noKeyAfterAt
+// it fails the test if the worker holds a rate-limit window for the event.
+func dispatchSteps(t *testing.T, n *Notifier, w *webhookWorker, base time.Time, steps []clearedStep, noKeyAfterAt int) {
+	t.Helper()
+	for i, s := range steps {
+		ev := Event{Metric: "cpu", Kind: s.kind, From: s.from, To: s.to, Value: 90, At: base.Add(s.offset)}
+		n.dispatch(context.Background(), w, ev)
+		if i != noKeyAfterAt {
+			continue
+		}
+		if _, held := w.lastSent[rateLimitKey(ev)]; held {
+			t.Errorf("step %d (%s): lastSent holds a window after a cleared event, want none", i, s.kind)
+		}
+	}
+}
+
+// deliveredOffsets closes ch and returns the offsets from base of its events.
+func deliveredOffsets(ch chan eventView, base time.Time) []time.Duration {
+	close(ch)
+	var got []time.Duration
+	for v := range ch {
+		got = append(got, v.At.Sub(base))
+	}
+	return got
+}
+
+// A cleared event ends the rate-limit window of its metric and resource and
+// never starts one: only a delivered fired event does (issue #199).
+func TestNotifier_ClearedEndsRateLimitWindow(t *testing.T) {
+	fired, escalated, cleared := clearedFired, clearedEscalated, clearedCleared
+
+	cases := []struct {
+		name         string
+		steps        []clearedStep
+		rejectKind   string
+		want         []time.Duration
+		noKeyAfterAt int // index of a step after which no window may be held, -1 for none
+	}{
+		{
+			name:         "AC1 cleared without earlier firing starts no window",
+			steps:        []clearedStep{cleared(0), fired(time.Second)},
+			want:         []time.Duration{0, time.Second},
+			noKeyAfterAt: 0,
+		},
+		{
+			name:         "AC1 cleared does not extend the window",
+			steps:        []clearedStep{fired(0), cleared(50 * time.Second), fired(70 * time.Second)},
+			want:         []time.Duration{0, 50 * time.Second, 70 * time.Second},
+			noKeyAfterAt: -1,
+		},
+		{
+			name:         "AC2 firing after delivered cleared inside window is delivered",
+			steps:        []clearedStep{fired(0), cleared(time.Second), fired(2 * time.Second)},
+			want:         []time.Duration{0, time.Second, 2 * time.Second},
+			noKeyAfterAt: -1,
+		},
+		{
+			name:         "AC3 repeated firing after a refire is dropped",
+			steps:        []clearedStep{fired(0), cleared(time.Second), fired(2 * time.Second), escalated(3 * time.Second)},
+			want:         []time.Duration{0, time.Second, 2 * time.Second},
+			noKeyAfterAt: -1,
+		},
+		{
+			name:         "AC4 cleared after a dropped firing is delivered",
+			steps:        []clearedStep{fired(0), fired(time.Second), cleared(2 * time.Second)},
+			want:         []time.Duration{0, 2 * time.Second},
+			noKeyAfterAt: -1,
+		},
+		{
+			name:         "AC6 firing after rejected cleared inside window is delivered",
+			steps:        []clearedStep{fired(0), cleared(time.Second), fired(2 * time.Second)},
+			rejectKind:   KindCleared,
+			want:         []time.Duration{0, 2 * time.Second},
+			noKeyAfterAt: -1,
+		},
+	}
+
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			n, w, ch := newRateLimitHarness(t, tc.rejectKind)
+			dispatchSteps(t, n, w, base, tc.steps, tc.noKeyAfterAt)
+			got := deliveredOffsets(ch, base)
+			if fmt.Sprint(got) != fmt.Sprint(tc.want) {
+				t.Errorf("delivered events at offsets %v, want %v", got, tc.want)
+			}
+		})
+	}
+}

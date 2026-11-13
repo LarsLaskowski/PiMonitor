@@ -106,10 +106,14 @@ resource, and the value rounded to one decimal — for example `cpu fired: ok ->
 - The rate limit is kept per webhook and per `metric` + `resource` pair; different metrics and different
   mountpoints never limit each other, and one webhook's limit never affects another.
 - A `fired` event is dropped (with a warning) when its `at` is less than `alerts.notify_min_interval_seconds` after
-  the `at` of the last **successful** delivery of the same metric and resource to the same webhook — whether that
-  delivery was a `fired` or a `cleared` event. An event exactly at the interval is delivered.
+  the `at` of the last **successful** delivery of a `fired` event of the same metric and resource to the same
+  webhook. An event exactly at the interval is delivered.
 - `cleared` events are never rate-limited.
-- Only successful deliveries count: a rejected, given-up or unrendered delivery does not hold back the next event.
+- A `cleared` event ends the window of its metric and resource, also when its delivery fails, so the next `fired`
+  event is always delivered. What the limit still coalesces is a `fired` event after another `fired` event with no
+  `cleared` event between them (`ok` to `warn` to `crit`); a flapping alert is bounded by the debounce only.
+- Only successful deliveries of a `fired` event count: a rejected, given-up or unrendered delivery does not hold
+  back the next event.
 - The interval is measured between event timestamps, not between delivery times, so time spent queued or retrying
   does not change the decision.
 - `alerts.notify_min_interval_seconds: 0` disables the rate limit.
@@ -156,7 +160,7 @@ Implemented in `internal/alert/notify.go`.
 
 ## Related decisions
 
-None yet.
+- [0005 A cleared event ends the rate-limit window](../decisions/0005-cleared-event-ends-rate-limit-window.md)
 
 ## Not here
 
@@ -169,10 +173,4 @@ None yet.
 
 ## Open questions
 
-- A `fired` event that follows a delivered `cleared` event of the same metric and resource within
-  `alerts.notify_min_interval_seconds` is dropped, which leaves a state-based consumer showing "ok" while the alert
-  is active again. This can only happen when `alerts.for_seconds` plus one poll interval is shorter than the
-  rate-limit interval. Is that intended, or should a delivered `cleared` event not count for the rate limit?
-- The comments in `packaging/pimonitor.example.yaml` describe the rate limit as applying per metric "to the same
-  webhook URL"; the code applies it per metric and resource and per webhook entry, and counts delivered `cleared`
-  events too. Should the example be brought in line?
+None.
