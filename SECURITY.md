@@ -49,6 +49,11 @@ reporters and reviewers have context:
   (`/dev/vcio_gencmd` on current releases, `/dev/vchiq` on older ones). The group grants access to GPU,
   framebuffer, camera (V4L2) and firmware-mailbox devices (the mailbox also
   accepts write-type property calls), but not to root.
+- **Webhook URLs are often the webhook's credential** (Slack, Discord, ntfy tokens in the path or query). The full
+  URLs live only in the configuration file (mode `640 root:pimonitor`). The service log names a webhook by its index
+  in `alerts.webhooks` and the URL's scheme and host; the notifier never logs userinfo, path, query or fragment
+  itself, error texts included. Not covered: a service that puts its secret in the host name, and an endpoint that
+  echoes the request line back in a malformed response, which `net/http` quotes in the error text.
 - **Only apt cache refresh runs as root**, via a separate, narrowly-scoped
   systemd timer/service (`pimonitor-apt-update.timer`) that runs exactly one
   command (`apt-get update`) on a schedule. This unit performs no other

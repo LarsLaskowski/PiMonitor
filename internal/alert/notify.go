@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"sync"
 	"text/template"
 	"time"
@@ -61,6 +62,8 @@ var templateFuncs = template.FuncMap{
 // the template pre-parsed and defaults applied.
 type webhook struct {
 	url         string
+	index       int    // position in alerts.webhooks, what the log names the webhook by
+	endpoint    string // scheme and host of url (redactURL), the only part of it that is logged
 	minLevel    Level
 	tmpl        *template.Template // nil for the default JSON payload
 	timeout     time.Duration
@@ -111,6 +114,8 @@ func NewNotifier(cfg config.Alerts, log *slog.Logger) (*Notifier, error) {
 	for i, w := range cfg.Webhooks {
 		wh := webhook{
 			url:         w.URL,
+			index:       i,
+			endpoint:    redactURL(w.URL),
 			minLevel:    parseMinLevel(w.MinLevel),
 			timeout:     time.Duration(w.TimeoutSeconds * float64(time.Second)),
 			contentType: w.ContentType,
@@ -203,7 +208,7 @@ func (n *Notifier) Notify(events []Event) {
 			case w.queue <- ev:
 			default:
 				n.log.Warn("alert notification queue full, dropping event",
-					"url", w.wh.url, "metric", ev.Metric, "resource", ev.Resource, "kind", ev.Kind)
+					"webhook", w.wh.index, "endpoint", w.wh.endpoint, "metric", ev.Metric, "resource", ev.Resource, "kind", ev.Kind)
 			}
 		}
 	}
@@ -223,12 +228,13 @@ func (n *Notifier) dispatch(ctx context.Context, w *webhookWorker, ev Event) {
 		delete(w.lastSent, rateLimitKey(ev))
 	} else if n.rateLimited(w, ev) {
 		n.log.Warn("alert notification rate-limited, dropping event",
-			"url", w.wh.url, "metric", ev.Metric, "resource", ev.Resource, "kind", ev.Kind)
+			"webhook", w.wh.index, "endpoint", w.wh.endpoint, "metric", ev.Metric, "resource", ev.Resource, "kind", ev.Kind)
 		return
 	}
 	body, err := renderBody(w.wh, ev)
 	if err != nil {
-		n.log.Error("alert notification render failed", "url", w.wh.url, "error", err)
+		n.log.Error("alert notification render failed",
+			"webhook", w.wh.index, "endpoint", w.wh.endpoint, "error", err)
 		return
 	}
 	if n.deliver(ctx, w.wh, body) && ev.Kind != KindCleared {
@@ -298,21 +304,53 @@ func (n *Notifier) deliver(ctx context.Context, wh webhook, body []byte) bool {
 			// be rejected again identically, so burning the retry budget only
 			// delays this webhook's remaining events for no benefit.
 			n.log.Error("alert notification rejected, not retrying",
-				"url", wh.url, "attempts", attempt+1, "error", err)
+				"webhook", wh.index, "endpoint", wh.endpoint, "attempts", attempt+1, "error", redactError(err))
 			return false
 		case attempt >= n.maxRetries:
 			n.log.Error("alert notification giving up after retries",
-				"url", wh.url, "attempts", attempt+1, "error", err)
+				"webhook", wh.index, "endpoint", wh.endpoint, "attempts", attempt+1, "error", redactError(err))
 			return false
 		default:
 			n.log.Warn("alert notification delivery failed, will retry",
-				"url", wh.url, "attempt", attempt+1, "error", err)
+				"webhook", wh.index, "endpoint", wh.endpoint, "attempt", attempt+1, "error", redactError(err))
 		}
 		if !sleepCtx(ctx, backoff) {
 			return false // context canceled during backoff
 		}
 		backoff *= 2
 	}
+}
+
+// invalidURL is what the log shows instead of a URL that is unusable as an
+// endpoint, so that no part of it is quoted.
+const invalidURL = "[invalid URL]"
+
+// redactURL reduces a URL to scheme and host (with port), the only parts that
+// are safe to log: userinfo, path, query and fragment are often the webhook's
+// credential. A URL that does not parse, or has no scheme or no host, yields
+// invalidURL.
+func redactURL(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		return invalidURL
+	}
+	return u.Scheme + "://" + u.Host
+}
+
+// redactError renders err for the log. A *url.Error, which net/http returns
+// with the full request URL, is rebuilt with the redacted endpoint in place of
+// the URL; for a parse failure the parser's detail (which can quote bytes of
+// the URL) is replaced by a fixed text. Other errors carry no URL.
+func redactError(err error) string {
+	var ue *url.Error
+	if !errors.As(err, &ue) {
+		return err.Error()
+	}
+	inner := ue.Err
+	if ue.Op == "parse" {
+		inner = errors.New("invalid URL")
+	}
+	return (&url.Error{Op: ue.Op, URL: redactURL(ue.URL), Err: inner}).Error()
 }
 
 // statusError is a non-2xx webhook response.

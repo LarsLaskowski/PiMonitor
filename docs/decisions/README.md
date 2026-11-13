@@ -68,4 +68,5 @@ once in the [area document](../areas/README.md) of the record's area, and the re
 | [0004](0004-final-history-write-waits.md) | The final history write waits for the running one | Accepted | 2026-11-12 |
 | [0005](0005-cleared-event-ends-rate-limit-window.md) | A cleared event ends the webhook rate-limit window | Accepted | 2026-11-12 |
 | [0006](0006-publish-host-name-by-default.md) | Publish the host name by default, read once and omitted when unknown | Accepted | 2026-11-13 |
+| [0007](0007-log-webhook-by-index-and-host.md) | Log a webhook by its index and its scheme and host only | Accepted | 2026-11-13 |
 <!-- project:end index -->

@@ -131,15 +131,22 @@ not logged.
 | Level | Message | Fields |
 | ----- | ------- | ------ |
 | warn | `alert webhooks configured but alerts.enabled is false — no notifications will be sent` (startup) | — |
-| warn | `alert notification queue full, dropping event` | `url`, `metric`, `resource`, `kind` |
-| warn | `alert notification rate-limited, dropping event` | `url`, `metric`, `resource`, `kind` |
-| warn | `alert notification delivery failed, will retry` | `url`, `attempt`, `error` |
-| error | `alert notification rejected, not retrying` | `url`, `attempts`, `error` |
-| error | `alert notification giving up after retries` | `url`, `attempts`, `error` |
-| error | `alert notification render failed` | `url`, `error` |
+| warn | `alert notification queue full, dropping event` | `webhook`, `endpoint`, `metric`, `resource`, `kind` |
+| warn | `alert notification rate-limited, dropping event` | `webhook`, `endpoint`, `metric`, `resource`, `kind` |
+| warn | `alert notification delivery failed, will retry` | `webhook`, `endpoint`, `attempt`, `error` |
+| error | `alert notification rejected, not retrying` | `webhook`, `endpoint`, `attempts`, `error` |
+| error | `alert notification giving up after retries` | `webhook`, `endpoint`, `attempts`, `error` |
+| error | `alert notification render failed` | `webhook`, `endpoint`, `error` |
 
-- The webhook URL is logged in full, and transport error texts repeat it. A URL that carries a secret in its path
-  or query (Slack, Discord and ntfy tokens) therefore appears in the service log; protect the log accordingly.
+- `webhook` is the position of the webhook in `alerts.webhooks` (a number, counted from 0). `endpoint` is the URL's
+  scheme and host, with the port when the URL has one (`https://hooks.example:8443`), or `[invalid URL]` when the URL
+  does not parse or has no scheme or no host.
+- The notifier never logs the URL's userinfo, path, query or fragment, also not in the URL part of an error text
+  (Slack, Discord and ntfy tokens live there). A transport error reads `Post "<endpoint>": <cause>` (after a redirect, the redirect target's scheme and host in place of `<endpoint>`); a URL that
+  does not parse reads `parse "[invalid URL]": invalid URL`, without the parser's detail.
+- Two exceptions: the host name is logged, so a secret in a host name is not protected; and the `<cause>` quotes
+  bytes the endpoint itself sends, as received (an unparsable redirect `Location`, a malformed status line), so an
+  endpoint that echoes the request line back puts the configured path and query into the log.
 - Neither the request body nor the response body is logged.
 
 Implemented in `internal/alert/notify.go`.
@@ -148,7 +155,8 @@ Implemented in `internal/alert/notify.go`.
 
 - At startup a webhook needs a non-empty `url`, a valid `min_level` and a non-negative `timeout_seconds`
   ([Configuration](configuration.md)). Beyond that the URL is not checked: a malformed or unsupported URL is
-  accepted and every delivery to it fails with a transport error, which is retried until the budget is used up.
+  accepted and every delivery to it fails with a transport error, which is retried until the budget is used up. The
+  failure of a malformed URL is logged with `endpoint` `[invalid URL]`.
 - A `template` that does not parse stops startup with exit status 1; the error names
   `alerts.webhooks[<index>].template`.
 - A template that fails when rendered for an event (for example a field that does not exist), or an event whose
@@ -161,6 +169,7 @@ Implemented in `internal/alert/notify.go`.
 ## Related decisions
 
 - [0005 A cleared event ends the rate-limit window](../decisions/0005-cleared-event-ends-rate-limit-window.md)
+- [0007 Log a webhook by its index and its scheme and host only](../decisions/0007-log-webhook-by-index-and-host.md)
 
 ## Not here
 
