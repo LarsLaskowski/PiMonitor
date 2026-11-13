@@ -240,3 +240,26 @@ Devil's Advocate, two minor objections, both accepted:
    webhook URL); linked follow-up issue under *Out of scope / follow-ups*.
 3. (non-blocking) Option "keep the parser's detail" missing from 0007 — added there as option 7 (it was option 6
    of this plan already).
+
+## Security notes
+
+Security review, mode plan, second round: confirming the Lead's revision of specs/issue-194
+
+**Verdict: approved.** All three findings from my first round are resolved, and the revision introduces no new security defect. I read the diff of commit b7da5a4 ("Revise plan for issue 194"), which changes /home/user/PiMonitor/specs/issue-194/plan.md and /home/user/PiMonitor/docs/decisions/0007-log-webhook-by-index-and-host.md. I ran nothing new: the revision only changes wording and adds no code-level claim beyond what my round-1 run already covered.
+
+**Finding 1 (blocking, wrong fact 6): resolved.**
+- **Fact 6** now names both cases where the error text quotes what the endpoint sent back: an unparsable redirect `Location` and a malformed status line or response. It says an endpoint that echoes the request line puts the configured path and query into the log. It cites my round-1 echo measurement and states the original claim was wrong.
+- **Documentation updates** now say "the notifier never logs …" instead of "never logged" in all three places:
+  - In `docs/areas/notifications.md`, the echoed-response case is a stated exception beside the host-name exception.
+  - In the `.squad/project.md` *Logging* line, the echo case is named.
+  - In `SECURITY.md`, both cases are listed under "not covered".
+- **Decision record 0007**: *Decision* has the same narrower wording, and the *Consequences* bullet names both malformed-response texts and the echo leak.
+- **Approach**: the description of what the guard covers now includes the echo case.
+- **AC2** is narrowed to a transport error whose own text holds no URL, which is correct.
+- **Choice made**: the Lead documents the gap instead of filtering it in code (new option 8). That was my recommended fix.
+
+**Finding 2 (non-blocking, proxy credentials): resolved.** The follow-up issue is planned under *Out of scope / follow-ups*, with its exact title and body.
+
+**Finding 3 (non-blocking, option missing from 0007): resolved.** Option 7 of 0007 now covers keeping the parser's detail.
+
+**New in the revision:** nothing blocking. One cosmetic point: the option numbers differ between the plan (6 parse detail, 7 debug level, 8 filter echoed text) and 0007 (6 filter, 7 parse detail, 8 debug level). The plan says the reasons are in 0007 but does not refer to the options by number there, so nothing breaks. The Lead can renumber the plan to match 0007 or leave it. This is not a security matter.
