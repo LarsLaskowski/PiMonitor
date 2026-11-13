@@ -47,6 +47,23 @@ func TestParseProcStat_MalformedField(t *testing.T) {
 	}
 }
 
+func TestParseProcStat_SevenCounters(t *testing.T) {
+	t.Run("AC1 only cpu line has seven counters: error, no panic", func(t *testing.T) {
+		if _, err := parseProcStat("cpu  100 0 100 700 0 0 0\n"); err == nil {
+			t.Fatal("got nil error, want error for a cpu line with seven counters")
+		}
+	})
+	t.Run("AC2 cpuN line with seven counters is skipped, eight counters parse", func(t *testing.T) {
+		lines, err := parseProcStat("cpu  100 0 100 700 0 0 0 0\ncpu0 50 0 50 350 0 0 0\ncpu1 50 0 50 350 0 0 0 0\n")
+		if err != nil {
+			t.Fatalf("parseProcStat: got error %v, want nil", err)
+		}
+		if len(lines) != 2 || lines[0].name != "cpu" || lines[1].name != "cpu1" {
+			t.Fatalf("got %d lines %+v, want cpu and cpu1", len(lines), lines)
+		}
+	})
+}
+
 func TestUsagePercent(t *testing.T) {
 	prev, err := parseProcStat(procStatFixture1)
 	if err != nil {
