@@ -721,7 +721,7 @@ func (c *Collector) Processes() Processes {
 // alerting is disabled it reports enabled=false with no states or events.
 func (c *Collector) Alerts() alert.Report {
 	if c.alerts == nil {
-		return alert.Report{Enabled: false}
+		return alert.Report{Enabled: false, States: []alert.State{}, Events: []alert.Event{}}
 	}
 	return c.alerts.Report()
 }
