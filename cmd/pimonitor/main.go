@@ -174,6 +174,7 @@ func collectorConfig(cfg config.Config, notifier *alert.Notifier) collector.Conf
 		UpdatesStaleThreshold: cfg.UpdatesStaleThreshold(),
 		DistroInfoEnabled:     cfg.DistroInfoEnabled,
 		PiModelEnabled:        cfg.PiModelEnabled,
+		HostnameEnabled:       cfg.HostnameEnabled,
 		HistoryWindow:         cfg.HistoryWindow(),
 		AlertsEnabled:         cfg.Alerts.Enabled,
 		AlertFor:              cfg.AlertFor(),

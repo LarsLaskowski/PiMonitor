@@ -454,6 +454,13 @@ func (c *Collector) collectSysInfo() {
 	if !c.cfg.PiModelEnabled {
 		info.PiModel = ""
 	}
+	if c.cfg.HostnameEnabled {
+		name, err := c.sysInfo.hostname()
+		if err != nil {
+			c.log.Warn("could not read host name", "error", err)
+		}
+		info.Hostname = name
+	}
 	count, err := c.cpu.CoreCount()
 	if err != nil {
 		c.log.Warn("could not determine CPU core count", "error", err)

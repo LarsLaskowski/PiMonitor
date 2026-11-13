@@ -173,6 +173,7 @@ func Default() Config {
 		HwmonEnabled:                 true,
 		DistroInfoEnabled:            true,
 		PiModelEnabled:               true,
+		HostnameEnabled:              true,
 		PrometheusEnabled:            false,
 		APIKey:                       "",
 		AccessLogEnabled:             true,

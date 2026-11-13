@@ -2,7 +2,7 @@ package collector
 
 import (
 	"bufio"
-	"errors"
+	"fmt"
 	"os"
 	"strings"
 )
@@ -12,6 +12,8 @@ const (
 	deviceTreeModelPath = "/proc/device-tree/model"
 	cpuinfoPath         = "/proc/cpuinfo"
 	hostnamePath        = "/proc/sys/kernel/hostname"
+	// kernelUnsetHostname is what the kernel reports when no name is set.
+	kernelUnsetHostname = "(none)"
 )
 
 // parseOSRelease parses /etc/os-release (or /usr/lib/os-release) content
@@ -141,7 +143,15 @@ func (c *SysInfoCollector) Collect() SystemInfo {
 // readHostname returns the trimmed host name read from path, or "" when the
 // file holds nothing usable.
 func readHostname(path string) (string, error) {
-	return "", errors.New("not implemented")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("read host name: %w", err)
+	}
+	name := strings.TrimSpace(string(data))
+	if name == kernelUnsetHostname {
+		return "", nil
+	}
+	return name, nil
 }
 
 // hostname returns the host name read from the collector's host name path.
