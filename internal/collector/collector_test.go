@@ -469,6 +469,26 @@ func TestCollector_Alerts_DisabledByDefault(t *testing.T) {
 	}
 }
 
+func TestCollector_Alerts_EncodesEmptyArrays(t *testing.T) {
+	cases := []struct {
+		name    string
+		enabled bool
+		want    string
+	}{
+		{"AC1 AC3 alerts disabled", false, `{"enabled":false,"states":[],"events":[]}`},
+		{"AC2 AC3 alerts enabled, nothing evaluated", true, `{"enabled":true,"states":[],"events":[]}`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c := New(Config{FastInterval: time.Second, SlowInterval: time.Minute, HistoryCapacity: 10, AlertsEnabled: tc.enabled}, nil)
+			got, err := json.Marshal(c.Alerts())
+			if err != nil || string(got) != tc.want {
+				t.Fatalf("encoded alerts = %s (err %v), want %s", got, err, tc.want)
+			}
+		})
+	}
+}
+
 func TestCollector_Alerts_EvaluatedOnFastTick(t *testing.T) {
 	c := New(Config{
 		FastInterval:    time.Second,

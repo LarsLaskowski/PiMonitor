@@ -103,7 +103,7 @@ In every other case the level stays as it is.
 The response shape is defined in [`../API.md`](../API.md#get-apiv1alerts); its fields mean:
 
 - `enabled` is `true` when the engine runs. When `alerts.enabled` is false it is `false` and `states` and
-  `events` carry no entries (both are encoded as `null`).
+  `events` carry no entries (both are encoded as empty arrays, `[]`).
 - `states` holds one entry per metric (and per mountpoint for `disk`) that has been evaluated at least once and
   not removed since, sorted by `metric` and then by `resource`, both ascending. It is empty until the first sample
   has been evaluated.
@@ -140,6 +140,4 @@ None yet.
 
 ## Open questions
 
-- `../API.md` (`GET /api/v1/alerts`, notes) says that with `alerts.enabled: false` the response has "empty
-  `states`/`events`"; the code encodes both as `null`, not as empty arrays. Should the code send `[]`, or should
-  the API document say `null`?
+None.
