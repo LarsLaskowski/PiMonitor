@@ -1,6 +1,6 @@
 # 0009: The first CPU tick after start counts as no reading
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-13
 - **Area:** Metrics
 - **Source:** Issue #241
