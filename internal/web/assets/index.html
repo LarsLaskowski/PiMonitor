@@ -10,8 +10,8 @@
 </head>
 <body>
 <header>
-  <div>
-    <h1>🖥️ PiMonitor</h1>
+  <div class="header-brand">
+    <h1>🖥️ PiMonitor<span class="header-hostname hidden" id="header-hostname">(<span class="header-hostname-name" id="header-hostname-name"></span>)</span></h1>
     <div class="subtitle" id="header-subtitle">Loading&hellip;</div>
   </div>
   <div class="header-buttons">
@@ -31,6 +31,7 @@
 <main>
   <section class="card accent-system" id="card-system">
     <h2><span class="card-icon">🖥️</span> System</h2>
+    <div class="kv-row hidden" id="sys-hostname-row"><span class="kv-key">Hostname</span><span class="kv-val" id="sys-hostname"></span></div>
     <div class="kv-row"><span class="kv-key">Model</span><span class="kv-val" id="sys-model">&ndash;</span></div>
     <div class="kv-row"><span class="kv-key">Distribution</span><span class="kv-val" id="sys-distro">&ndash;</span></div>
     <div class="kv-row"><span class="kv-key">Kernel</span><span class="kv-val" id="sys-kernel">&ndash;</span></div>
