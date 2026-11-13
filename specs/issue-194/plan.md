@@ -197,3 +197,34 @@ log fields). The *Logging* security-area line is updated as listed above.
 - Validating the URL at startup (failing fast on an unparsable URL) would change configuration behavior; not
   requested here.
 - The redirect `Location` text in `failed to parse Location header` is the endpoint's own and stays as received.
+
+## Challenge notes
+
+Devil's Advocate, mode plan, specs/issue-194 (issue #194, tier security)
+
+I checked the plan's claims against the code and against the Go 1.27.4 standard library, and they hold:
+- `notify.go` has six log calls that pass `"url"`, at lines 206, 226, 231, 300–301, 304–305 and 308–309. Only the three in `deliver` pass the raw `err`.
+- `post` (lines 344–363) returns the error of `http.NewRequestWithContext` and of `client.Do` unchanged.
+- `request.go` 912–914 returns `url.Parse`'s `&Error{"parse", u, err}` (`url.go` 399–411).
+- `client.go` 634–650 builds `url.Error{Op: urlErrorOp(...), URL: stripPassword(...)}`, and `stripPassword` (1064–1070) masks only the password.
+- So AC2's exact text `Post "https://hooks.example:8443": stub transport failure` and AC3's `parse "[invalid URL]": invalid URL` match what `url.Error.Error()` would print after the rebuild.
+- `renderBody` runs the template against the struct `eventView` (`notify.go` 398–423). `{{.Nope}}` therefore parses but fails when executed, so the render-failed path is reachable as the plan says.
+- Config validation (`internal/config/config.go` 402–411) rejects only an empty URL. A malformed URL does reach `post`, so AC3 tests a real path.
+
+Need, scope and alternatives all hold:
+- No other code logs or serves the webhook URL. I searched `cmd/` and `internal/httpapi`.
+- `ARCHITECTURE.md`, `README.md`, `SECURITY.md` and `API.md` say nothing about logged URLs.
+- The plan covers `docs/areas/notifications.md` 131–142 and the `.squad/project.md` *Logging* line.
+- Option 1 (log the index plus scheme and host) is the least invasive way to meet all three of the issue's "Expected" forms.
+
+Objections:
+
+1. minor: AC1 as worded ("produces a log record that contains the sentinel nowhere") would pass while a second record leaks. Instruction for the Tester:
+   - In every AC1–AC3 test, first assert that the expected record exists (filter on `webhook` == 1 and the message). Then assert that the sentinel appears nowhere in the **whole** captured log buffer, not only in the matched record.
+   - The giving-up path also writes retry records, and in the queue-full test `Notify` fans out to webhook 0 as well; either could leak unseen.
+   - Give webhook 0 a URL without the sentinel so the buffer-wide check stays meaningful.
+
+2. minor: the rate-limited subtest needs setup the plan does not state. Instruction for the Tester:
+   - Configure `NotifyMinIntervalSeconds` > 0.
+   - Put the first fired event for the metric and resource on `n.workers[1]` through a delivery the stub answers with 200, or by seeding `w.lastSent`. Then call `dispatch` with a second fired event inside the interval.
+   - The JSON handler decodes `webhook` as a JSON number (float64 after `json.Unmarshal` into `any`). Compare it to 1 as a number, not as a Go `int`.
