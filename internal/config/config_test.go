@@ -1,9 +1,13 @@
 package config
 
 import (
+	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
+	"strings"
 	"testing"
 	"time"
 )
@@ -652,4 +656,199 @@ func TestLoad_HostnameEnabledFromYAML(t *testing.T) {
 			t.Fatal("HostnameEnabled = true for hostname_enabled: false, want false")
 		}
 	})
+}
+
+// loadYAMLText writes content to a config file, loads it with the extra args
+// and returns the result and error.
+func loadYAMLText(t *testing.T, content string, extraArgs ...string) (Result, error) {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	writeFile(t, path, content)
+	return Load(append([]string{"-config", path}, extraArgs...))
+}
+
+// numberOptionYAML maps each option of AC1/AC4 to a YAML document with %s as
+// the value, and the option name the error must use.
+var numberOptionYAML = []struct {
+	option string
+	doc    string
+}{
+	{"poll_interval_seconds", "poll_interval_seconds: %s\n"},
+	{"thresholds.cpu_warn_percent", "thresholds:\n  cpu_warn_percent: %s\n"},
+	{"alerts.webhooks[0].timeout_seconds", "alerts:\n  webhooks:\n    - url: http://example.invalid/hook\n      min_level: warn\n      timeout_seconds: %s\n"},
+	{"processes_top_n", "processes_top_n: %s\n"},
+	{"alerts.notify_max_retries", "alerts:\n  notify_max_retries: %s\n"},
+}
+
+func TestLoad_RejectsNonFiniteNumbers(t *testing.T) {
+	literals := []string{
+		".nan", ".NaN", ".NAN",
+		".inf", ".Inf", ".INF",
+		"+.inf", "+.Inf", "+.INF",
+		"-.inf", "-.Inf", "-.INF",
+	}
+	for _, opt := range numberOptionYAML {
+		for _, lit := range literals {
+			t.Run(fmt.Sprintf("AC1 AC4 %s %s", opt.option, lit), func(t *testing.T) {
+				_, err := loadYAMLText(t, fmt.Sprintf(opt.doc, lit))
+
+				want := opt.option + " must be a finite number"
+				if err == nil || err.Error() != want {
+					t.Fatalf("Load error = %v, want %q", err, want)
+				}
+			})
+		}
+	}
+}
+
+func TestLoad_RejectsFractionalIntegerOptions(t *testing.T) {
+	tests := []struct {
+		name string
+		yaml string
+		args []string
+		want string
+	}{
+		{"AC2 plain processes_top_n", "processes_top_n: 2.5\n", nil,
+			"processes_top_n must be a whole number (got 2.5)"},
+		{"AC2 plain notify_max_retries", "alerts:\n  notify_max_retries: 0.5\n", nil,
+			"alerts.notify_max_retries must be a whole number (got 0.5)"},
+		{"AC2 alias into processes_top_n", "poll_interval_seconds: &n 2.5\nprocesses_top_n: *n\n", nil,
+			"processes_top_n must be a whole number (got 2.5)"},
+		{"AC2 alias into notify_max_retries", "poll_interval_seconds: &n 2.5\nalerts: {notify_max_retries: *n}\n", nil,
+			"alerts.notify_max_retries must be a whole number (got 2.5)"},
+		{"AC2 merge key", "alerts: {<<: {notify_max_retries: 1.5}}\n", nil,
+			"alerts.notify_max_retries must be a whole number (got 1.5)"},
+		{"AC2 float tag", "processes_top_n: !!float 2.5\n", nil,
+			"processes_top_n must be a whole number (got 2.5)"},
+		{"AC2 with -version processes_top_n", "processes_top_n: 2.5\n", []string{"-version"},
+			"processes_top_n must be a whole number (got 2.5)"},
+		{"AC2 with -version notify_max_retries", "alerts:\n  notify_max_retries: 0.5\n", []string{"-version"},
+			"alerts.notify_max_retries must be a whole number (got 0.5)"},
+		{"AC1 AC2 with -version non-finite integer option", "processes_top_n: .nan\n", []string{"-version"},
+			"processes_top_n must be a finite number"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := loadYAMLText(t, tt.yaml, tt.args...)
+
+			if err == nil || err.Error() != tt.want {
+				t.Fatalf("Load error = %v, want %q", err, tt.want)
+			}
+		})
+	}
+}
+
+func TestLoad_AcceptsWholeNumbersWrittenAsDecimals(t *testing.T) {
+	tests := []struct {
+		name string
+		yaml string
+		get  func(Config) float64
+		want float64
+	}{
+		{"AC3 processes_top_n 5", "processes_top_n: 5\n", func(c Config) float64 { return float64(c.ProcessesTopN) }, 5},
+		{"AC3 processes_top_n 5.0", "processes_top_n: 5.0\n", func(c Config) float64 { return float64(c.ProcessesTopN) }, 5},
+		{"AC3 processes_top_n 1e1", "processes_top_n: 1e1\n", func(c Config) float64 { return float64(c.ProcessesTopN) }, 10},
+		{"AC3 processes_top_n float tag", "processes_top_n: !!float 5\n", func(c Config) float64 { return float64(c.ProcessesTopN) }, 5},
+		{"AC3 notify_max_retries 3.0", "alerts:\n  notify_max_retries: 3.0\n", func(c Config) float64 { return float64(c.Alerts.NotifyMaxRetries) }, 3},
+		{"AC3 poll_interval_seconds 5", "poll_interval_seconds: 5\n", func(c Config) float64 { return c.PollIntervalSeconds }, 5},
+		{"AC3 poll_interval_seconds 5.0", "poll_interval_seconds: 5.0\n", func(c Config) float64 { return c.PollIntervalSeconds }, 5},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := loadYAMLText(t, tt.yaml)
+
+			if err != nil {
+				t.Fatalf("Load: %v", err)
+			}
+			if got := tt.get(result.Config); got != tt.want {
+				t.Fatalf("value = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+// floatOptionSetters set every float option of AC4 on a Config; the webhook
+// options set the webhook at index 1.
+var floatOptionSetters = []struct {
+	option string
+	set    func(*Config, float64)
+}{
+	{"poll_interval_seconds", func(c *Config, v float64) { c.PollIntervalSeconds = v }},
+	{"updates_check_minutes", func(c *Config, v float64) { c.UpdatesCheckMinutes = v }},
+	{"updates_stale_threshold_minutes", func(c *Config, v float64) { c.UpdatesStaleThresholdMinutes = v }},
+	{"history_window_minutes", func(c *Config, v float64) { c.HistoryWindowMinutes = v }},
+	{"healthz_max_staleness_seconds", func(c *Config, v float64) { c.HealthzMaxStalenessSeconds = v }},
+	{"thresholds.temperature_warn_c", func(c *Config, v float64) { c.Thresholds.TemperatureWarnC = v }},
+	{"thresholds.temperature_crit_c", func(c *Config, v float64) { c.Thresholds.TemperatureCritC = v }},
+	{"thresholds.cpu_warn_percent", func(c *Config, v float64) { c.Thresholds.CPUWarnPercent = v }},
+	{"thresholds.cpu_crit_percent", func(c *Config, v float64) { c.Thresholds.CPUCritPercent = v }},
+	{"thresholds.disk_warn_percent", func(c *Config, v float64) { c.Thresholds.DiskWarnPercent = v }},
+	{"thresholds.disk_crit_percent", func(c *Config, v float64) { c.Thresholds.DiskCritPercent = v }},
+	{"thresholds.swap_warn_percent", func(c *Config, v float64) { c.Thresholds.SwapWarnPercent = v }},
+	{"thresholds.swap_crit_percent", func(c *Config, v float64) { c.Thresholds.SwapCritPercent = v }},
+	{"thresholds.memory_warn_percent", func(c *Config, v float64) { c.Thresholds.MemoryWarnPercent = v }},
+	{"thresholds.memory_crit_percent", func(c *Config, v float64) { c.Thresholds.MemoryCritPercent = v }},
+	{"alerts.for_seconds", func(c *Config, v float64) { c.Alerts.ForSeconds = v }},
+	{"alerts.notify_retry_backoff_seconds", func(c *Config, v float64) { c.Alerts.NotifyRetryBackoffSeconds = v }},
+	{"alerts.notify_min_interval_seconds", func(c *Config, v float64) { c.Alerts.NotifyMinIntervalSeconds = v }},
+	{"alerts.webhooks[1].timeout_seconds", func(c *Config, v float64) { c.Alerts.Webhooks[1].TimeoutSeconds = v }},
+	{"alerts.webhooks[0].timeout_seconds", func(c *Config, v float64) { c.Alerts.Webhooks[0].TimeoutSeconds = v }},
+}
+
+func TestValidate_RejectsNonFiniteNumbers(t *testing.T) {
+	values := map[string]float64{"NaN": math.NaN(), "+Inf": math.Inf(1), "-Inf": math.Inf(-1)}
+	for _, opt := range floatOptionSetters {
+		for label, v := range values {
+			t.Run(fmt.Sprintf("AC4 %s %s", opt.option, label), func(t *testing.T) {
+				cfg := Default()
+				cfg.Alerts.Webhooks = []Webhook{
+					{URL: "http://example.invalid/a", MinLevel: "warn"},
+					{URL: "http://example.invalid/b", MinLevel: "warn"},
+				}
+				opt.set(&cfg, v)
+
+				err := cfg.Validate()
+
+				want := opt.option + " must be a finite number"
+				if err == nil || err.Error() != want {
+					t.Fatalf("Validate() error = %v, want %q", err, want)
+				}
+			})
+		}
+	}
+}
+
+// intOptionPaths collects the yaml key path of every int-kind field of typ.
+func intOptionPaths(typ reflect.Type, prefix string) []string {
+	var paths []string
+	for i := 0; i < typ.NumField(); i++ {
+		f := typ.Field(i)
+		key := strings.Split(f.Tag.Get("yaml"), ",")[0]
+		if key == "" {
+			continue
+		}
+		ft := f.Type
+		if ft.Kind() == reflect.Slice {
+			ft = ft.Elem()
+			key += "[]"
+		}
+		switch ft.Kind() {
+		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+			paths = append(paths, prefix+key)
+		case reflect.Struct:
+			paths = append(paths, intOptionPaths(ft, prefix+key+".")...)
+		}
+	}
+	return paths
+}
+
+func TestCheckIntegerOptions_CoversEveryIntField_AC4(t *testing.T) {
+	got := intOptionPaths(reflect.TypeOf(Config{}), "")
+	want := slices.Clone(integerOptionNames)
+	slices.Sort(got)
+	slices.Sort(want)
+
+	if !slices.Equal(got, want) {
+		t.Fatalf("integerOptionNames = %v, want every int field of Config = %v", want, got)
+	}
 }

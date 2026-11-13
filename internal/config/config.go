@@ -9,6 +9,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"time"
 
@@ -306,6 +307,9 @@ var validLogLevels = map[string]bool{
 // it misbehave. It returns a descriptive error for the first violation so a
 // daemon fails fast at startup rather than later at runtime.
 func (c Config) Validate() error {
+	if err := c.validateFinite(); err != nil {
+		return err
+	}
 	if err := c.validateTiming(); err != nil {
 		return err
 	}
@@ -325,6 +329,51 @@ func (c Config) Validate() error {
 		return fmt.Errorf("processes_top_n must be between 1 and %d (got %v)", maxProcessesTopN, c.ProcessesTopN)
 	}
 	return nil
+}
+
+// validateFinite rejects NaN and infinite values for every number option.
+// Every range check is a comparison, which NaN passes and +Inf mostly passes,
+// so this runs before any of them.
+func (c Config) validateFinite() error {
+	t := c.Thresholds
+	checks := []struct {
+		name  string
+		value float64
+	}{
+		{"poll_interval_seconds", c.PollIntervalSeconds},
+		{"updates_check_minutes", c.UpdatesCheckMinutes},
+		{"updates_stale_threshold_minutes", c.UpdatesStaleThresholdMinutes},
+		{"history_window_minutes", c.HistoryWindowMinutes},
+		{"healthz_max_staleness_seconds", c.HealthzMaxStalenessSeconds},
+		{"thresholds.temperature_warn_c", t.TemperatureWarnC},
+		{"thresholds.temperature_crit_c", t.TemperatureCritC},
+		{"thresholds.cpu_warn_percent", t.CPUWarnPercent},
+		{"thresholds.cpu_crit_percent", t.CPUCritPercent},
+		{"thresholds.disk_warn_percent", t.DiskWarnPercent},
+		{"thresholds.disk_crit_percent", t.DiskCritPercent},
+		{"thresholds.swap_warn_percent", t.SwapWarnPercent},
+		{"thresholds.swap_crit_percent", t.SwapCritPercent},
+		{"thresholds.memory_warn_percent", t.MemoryWarnPercent},
+		{"thresholds.memory_crit_percent", t.MemoryCritPercent},
+		{"alerts.for_seconds", c.Alerts.ForSeconds},
+		{"alerts.notify_retry_backoff_seconds", c.Alerts.NotifyRetryBackoffSeconds},
+		{"alerts.notify_min_interval_seconds", c.Alerts.NotifyMinIntervalSeconds},
+	}
+	for _, ck := range checks {
+		if !isFinite(ck.value) {
+			return fmt.Errorf("%s must be a finite number", ck.name)
+		}
+	}
+	for i, w := range c.Alerts.Webhooks {
+		if !isFinite(w.TimeoutSeconds) {
+			return fmt.Errorf("alerts.webhooks[%d].timeout_seconds must be a finite number", i)
+		}
+	}
+	return nil
+}
+
+func isFinite(v float64) bool {
+	return !math.IsNaN(v) && !math.IsInf(v, 0)
 }
 
 // validateTiming checks the poll/update/history interval and window fields.
@@ -451,12 +500,54 @@ func loadYAMLFile(path string, cfg *Config) error {
 	if err != nil {
 		return fmt.Errorf("read %s: %w", path, err)
 	}
+	if err := checkIntegerOptions(data); err != nil {
+		return err
+	}
 	dec := yaml.NewDecoder(bytes.NewReader(data))
 	dec.KnownFields(true)
 	// An empty or comment-only file has nothing to decode; Decode reports
 	// that as io.EOF, but it's not an error here since cfg is left as-is.
 	if err := dec.Decode(cfg); err != nil && !errors.Is(err, io.EOF) {
 		return fmt.Errorf("parse %s: %w", path, err)
+	}
+	return nil
+}
+
+// integerOptionNames are the YAML key paths of the int-typed options. The
+// decoder truncates a fractional value for them, so checkIntegerOptions
+// inspects each one before the real decode.
+var integerOptionNames = []string{"processes_top_n", "alerts.notify_max_retries"}
+
+// checkIntegerOptions decodes data a second time, with the same decoder and
+// so the same alias, merge-key and tag resolution, into float64 fields for the
+// integer options, and rejects a non-finite or fractional value. A decode
+// error is ignored: the real decode fails on the same input and reports it.
+func checkIntegerOptions(data []byte) error {
+	var shadow struct {
+		ProcessesTopN *float64 `yaml:"processes_top_n"`
+		Alerts        struct {
+			NotifyMaxRetries *float64 `yaml:"notify_max_retries"`
+		} `yaml:"alerts"`
+	}
+	if err := yaml.NewDecoder(bytes.NewReader(data)).Decode(&shadow); err != nil {
+		// Not this check's error to report; see the doc comment.
+		return nil //nolint:nilerr
+	}
+	values := map[string]*float64{
+		"processes_top_n":           shadow.ProcessesTopN,
+		"alerts.notify_max_retries": shadow.Alerts.NotifyMaxRetries,
+	}
+	for _, name := range integerOptionNames {
+		v := values[name]
+		if v == nil {
+			continue
+		}
+		if !isFinite(*v) {
+			return fmt.Errorf("%s must be a finite number", name)
+		}
+		if *v != math.Trunc(*v) {
+			return fmt.Errorf("%s must be a whole number (got %v)", name, *v)
+		}
 	}
 	return nil
 }
