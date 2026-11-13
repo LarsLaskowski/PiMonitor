@@ -43,9 +43,12 @@ limits, patterns or sequences.
   [History](../docs/areas/history.md)
 - Outbound calls: webhook delivery (`text/template` bodies with the `json` helper, retries, per-webhook queues) in
   `internal/alert/notify.go` — [Notifications](../docs/areas/notifications.md)
-- Logging: `slog` calls across `internal/` and `cmd/pimonitor`; no call logs the API key, the notifier logs the
-  configured webhook URL (`internal/alert/notify.go`), which can carry a token in its path — keep secrets out of
-  new log fields (`.squad/stack.md`, *Logger arguments*)
+- Logging: `slog` calls across `internal/` and `cmd/pimonitor`; no call logs the API key; the notifier names a
+  webhook by its index in `alerts.webhooks` and by its URL's scheme and host, and redacts the URL in `*url.Error`
+  texts, so it never logs the URL's userinfo, path, query or fragment itself — except where the endpoint echoes
+  them back in a malformed response, which `net/http` quotes (`internal/alert/notify.go`); see
+  [Notifications](../docs/areas/notifications.md#what-is-logged). Keep secrets out of new log fields
+  (`.squad/stack.md`, *Logger arguments*)
 
 ## Guarantees
 
