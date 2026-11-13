@@ -466,24 +466,24 @@ func (a Alerts) validate() error {
 // cutoff does not exceed its critical counterpart.
 func (t Thresholds) validate() error {
 	pairs := []struct {
-		name       string
-		warn, crit float64
+		warnKey, critKey string
+		warn, crit       float64
 	}{
-		{"temperature", t.TemperatureWarnC, t.TemperatureCritC},
-		{"cpu", t.CPUWarnPercent, t.CPUCritPercent},
-		{"disk", t.DiskWarnPercent, t.DiskCritPercent},
-		{"swap", t.SwapWarnPercent, t.SwapCritPercent},
-		{"memory", t.MemoryWarnPercent, t.MemoryCritPercent},
+		{"temperature_warn_c", "temperature_crit_c", t.TemperatureWarnC, t.TemperatureCritC},
+		{"cpu_warn_percent", "cpu_crit_percent", t.CPUWarnPercent, t.CPUCritPercent},
+		{"disk_warn_percent", "disk_crit_percent", t.DiskWarnPercent, t.DiskCritPercent},
+		{"swap_warn_percent", "swap_crit_percent", t.SwapWarnPercent, t.SwapCritPercent},
+		{"memory_warn_percent", "memory_crit_percent", t.MemoryWarnPercent, t.MemoryCritPercent},
 	}
 	for _, p := range pairs {
 		if p.warn < 0 {
-			return fmt.Errorf("thresholds.%s_warn must be >= 0 (got %v)", p.name, p.warn)
+			return fmt.Errorf("thresholds.%s must be >= 0 (got %v)", p.warnKey, p.warn)
 		}
 		if p.crit < 0 {
-			return fmt.Errorf("thresholds.%s_crit must be >= 0 (got %v)", p.name, p.crit)
+			return fmt.Errorf("thresholds.%s must be >= 0 (got %v)", p.critKey, p.crit)
 		}
 		if p.warn > p.crit {
-			return fmt.Errorf("thresholds.%s_warn (%v) must be <= %s_crit (%v)", p.name, p.warn, p.name, p.crit)
+			return fmt.Errorf("thresholds.%s (%v) must be <= thresholds.%s (%v)", p.warnKey, p.warn, p.critKey, p.crit)
 		}
 	}
 	return nil
