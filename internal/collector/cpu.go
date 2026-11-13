@@ -32,7 +32,7 @@ func parseProcStat(data string) ([]cpuStatLine, error) {
 	var lines []cpuStatLine
 	for _, raw := range strings.Split(data, "\n") {
 		fields := strings.Fields(raw)
-		if len(fields) < 8 || !strings.HasPrefix(fields[0], "cpu") {
+		if len(fields) < 9 || !strings.HasPrefix(fields[0], "cpu") {
 			continue
 		}
 		vals := make([]uint64, 8)
