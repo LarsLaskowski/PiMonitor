@@ -142,7 +142,7 @@ not logged.
   scheme and host, with the port when the URL has one (`https://hooks.example:8443`), or `[invalid URL]` when the URL
   does not parse or has no scheme or no host.
 - The notifier never logs the URL's userinfo, path, query or fragment, also not in the URL part of an error text
-  (Slack, Discord and ntfy tokens live there). A transport error reads `Post "<endpoint>": <cause>`; a URL that
+  (Slack, Discord and ntfy tokens live there). A transport error reads `Post "<endpoint>": <cause>` (after a redirect, the redirect target's scheme and host in place of `<endpoint>`); a URL that
   does not parse reads `parse "[invalid URL]": invalid URL`, without the parser's detail.
 - Two exceptions: the host name is logged, so a secret in a host name is not protected; and the `<cause>` quotes
   bytes the endpoint itself sends, as received (an unparsable redirect `Location`, a malformed status line), so an
