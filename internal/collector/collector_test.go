@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -500,7 +501,11 @@ func TestCollector_Alerts_EvaluatedOnFastTick(t *testing.T) {
 		// wiring is observable regardless of the host's actual metrics.
 		Thresholds: config.Thresholds{},
 	}, nil)
+	// The first CPU tick has no previous sample and is not evaluated, so the
+	// collector ticks twice.
+	c.cpu = &CPUCollector{path: writeStatFile(t, procStatFixture1)}
 
+	c.fastTick(context.Background())
 	c.fastTick(context.Background())
 
 	report := c.Alerts()
@@ -1403,7 +1408,7 @@ func TestCollector_FastTick_FailedReadingAddsNoHistoryPoint(t *testing.T) {
 		{
 			name: "AC1 cpu failure leaves cpu_percent empty",
 			break_: func(_ *testing.T, c *Collector, missing string) {
-				c.cpu = &CPUCollector{path: missing}
+				c.cpu.path = missing
 			},
 			affected: []string{"cpu_percent"},
 			zero:     func(s Snapshot) bool { return s.CPU.OverallPercent == 0 },
@@ -1445,6 +1450,12 @@ func TestCollector_FastTick_FailedReadingAddsNoHistoryPoint(t *testing.T) {
 
 			c := newTestCollector()
 			c.temp = &TemperatureCollector{zoneGlob: filepath.Join(root, "thermal_zone*")}
+			// Prime the CPU collector so the tick under test is not its first
+			// one, which records no point either.
+			c.cpu = &CPUCollector{path: writeStatFile(t, procStatFixture1)}
+			if _, err := c.cpu.Collect(); !errors.Is(err, errNoPreviousSample) {
+				t.Fatalf("prime cpu collector: error = %v, want errNoPreviousSample", err)
+			}
 			tc.break_(t, c, filepath.Join(t.TempDir(), "missing"))
 
 			c.fastTick(context.Background())
@@ -1637,8 +1648,13 @@ func TestCollector_FastTick_MissingAggregateCPULine_AC4(t *testing.T) {
 	}, log)
 	c.cpu = &CPUCollector{path: path}
 
+	// The first tick has no previous sample and records no point.
+	c.fastTick(context.Background())
 	c.fastTick(context.Background())
 	before := len(c.History().CPUPercent)
+	if before != 1 {
+		t.Fatalf("cpu_percent points after two valid ticks = %d, want 1", before)
+	}
 	if got := countLogLines(buf.String(), "WARN", "cpu collection failed"); got != 0 {
 		t.Fatalf("warnings after a valid tick = %d, want 0; log:\n%s", got, buf.String())
 	}
@@ -1658,5 +1674,85 @@ func TestCollector_FastTick_MissingAggregateCPULine_AC4(t *testing.T) {
 	}
 	if got := countLogLines(buf.String(), "WARN", "cpu collection failed"); got != 1 {
 		t.Errorf("cpu collection failed warnings = %d, want 1; log:\n%s", got, buf.String())
+	}
+}
+
+// TestCollector_FastTick_FirstCPUTickIsNoReading_AC3 covers issue #241: the
+// first tick has no previous cpu sample, so it adds no cpu_percent point,
+// logs no warning and leaves the snapshot's cpu at zero; the second tick
+// adds one point.
+func TestCollector_FastTick_FirstCPUTickIsNoReading_AC3(t *testing.T) {
+	path := writeStatFile(t, procStatFixture1)
+	log, buf := newCapturingLogger()
+	c := New(Config{
+		FastInterval:    time.Second,
+		SlowInterval:    time.Minute,
+		HistoryCapacity: 10,
+	}, log)
+	c.cpu = &CPUCollector{path: path}
+
+	c.fastTick(context.Background())
+
+	if got := len(c.History().CPUPercent); got != 0 {
+		t.Errorf("cpu_percent points after the first tick = %d, want 0", got)
+	}
+	if got := countLogLines(buf.String(), "WARN", "cpu collection failed"); got != 0 {
+		t.Errorf("cpu collection failed warnings after the first tick = %d, want 0; log:\n%s", got, buf.String())
+	}
+	cpu := c.Snapshot().CPU
+	if cpu.OverallPercent != 0 {
+		t.Errorf("snapshot overall_percent = %v, want 0", cpu.OverallPercent)
+	}
+	if cpu.PerCorePercent != nil {
+		t.Errorf("snapshot per_core_percent = %v, want none", cpu.PerCorePercent)
+	}
+
+	rewriteStatFile(t, path, procStatFixture2)
+	c.fastTick(context.Background())
+
+	if got := len(c.History().CPUPercent); got != 1 {
+		t.Errorf("cpu_percent points after the second tick = %d, want 1", got)
+	}
+}
+
+// cpuAlertState returns the alert state of the cpu metric, if any.
+func cpuAlertState(c *Collector) (alert.State, bool) {
+	for _, st := range c.Alerts().States {
+		if st.Metric == "cpu" {
+			return st, true
+		}
+	}
+	return alert.State{}, false
+}
+
+// TestCollector_FastTick_FirstCPUTickNotEvaluated_AC4 covers issue #241: with
+// alerts enabled the first tick produces no cpu alert state, the second one
+// produces a state carrying the second tick's value.
+func TestCollector_FastTick_FirstCPUTickNotEvaluated_AC4(t *testing.T) {
+	path := writeStatFile(t, procStatFixture1)
+	c := New(Config{
+		FastInterval:    time.Second,
+		SlowInterval:    time.Minute,
+		HistoryCapacity: 10,
+		AlertsEnabled:   true,
+		AlertFor:        0,
+		Thresholds:      config.Thresholds{},
+	}, nil)
+	c.cpu = &CPUCollector{path: path}
+
+	c.fastTick(context.Background())
+	if st, ok := cpuAlertState(c); ok {
+		t.Fatalf("cpu alert state after the first tick = %+v, want none", st)
+	}
+
+	rewriteStatFile(t, path, procStatFixture2)
+	c.fastTick(context.Background())
+
+	st, ok := cpuAlertState(c)
+	if !ok {
+		t.Fatalf("no cpu alert state after the second tick: %+v", c.Alerts().States)
+	}
+	if diffFloat(st.Value, 66.67) > 0.01 {
+		t.Errorf("cpu alert value = %v, want about 66.67", st.Value)
 	}
 }
