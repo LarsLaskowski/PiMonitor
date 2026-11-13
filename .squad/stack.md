@@ -47,8 +47,9 @@ profile and owned by this repository: keep it true when the build changes.
 `golangci-lint run --new-from-merge-base=origin/main --whole-files ./...`, which reports every issue
 anywhere in a file changed since the merge base with `origin/main`. Fixable style findings are the Code Officer's; findings that need a
 code change go to the Dev or Tester. `.golangci.yml` seeds `gocognit` with `min-complexity: 15` as a stand-in
-for SonarQube `go:S3776` (cognitive complexity above 15), so those findings surface here instead of after the PR
-is open. `gocognit` also counts the bare `if err != nil` check, which SonarQube ignores: where that alone puts an
+for SonarQube `go:S3776` (cognitive complexity above 15), test files included — SonarQube analyzes `_test.go`
+files as tests (`sonar.test.inclusions`) and reports the rule on them — so those findings surface here instead of
+after the PR is open. `gocognit` also counts the bare `if err != nil` check, which SonarQube ignores: where that alone puts an
 existing function over the limit, add a named exclusion in `.golangci.yml` and note it in `.squad/project.md`.
 Other SonarQube Cloud findings (and hotspots, duplication) have no local Go equivalent: the *Sonar gate* below reports their issues and hotspots and the quality gate, duplication
 included, on the draft pull request.
