@@ -219,3 +219,29 @@ Forms covered and the outcome:
 **Findings**
 - Blocking: none.
 - Non-blocking, for the Tester; no plan change needed. Measured: the input `x: &n 2.5\nprocesses_top_n: *n` fails the real decode on the unknown key `x`. For AC2's alias case, put the anchor on a known key (e.g. `processes_top_n: &n 2.5` with `alerts: {notify_max_retries: *n}`), or document that the test relies on `checkIntegerOptions` running before the real decode. Otherwise the test can pass for the wrong reason. Recommendation: fix now, in the test as written.
+
+## Challenge notes
+
+I found one minor gap and no major ones. The plan's factual claims match the code and yaml.v3 v3.0.1, the scope matches issue #200 (there is no numeric flag and no other YAML decode), and the approach is sound. I checked it by reading the code and by running the planned second decode against the real one with yaml.v3 v3.0.1.
+
+**Checks against the plan:**
+- **Facts 3, 6 and 7:** confirmed in `$GOMODCACHE/gopkg.in/yaml.v3@v3.0.1/decode.go:621-709` and `resolve.go:55-58`. The `int` case converts a resolved float64 with `int64(resolved)` after only a `<= math.MaxInt64` check, so `processes_top_n: -.inf` decodes to -9223372036854775808 with no error on amd64.
+- **Fact 10 (the second decode sees what the real decode sees):** confirmed by experiment. I decoded the same input into a struct with two `*float64` fields (no `KnownFields`) and into a `KnownFields(true)` struct with `int` fields:
+
+  | Input | Second decode | Real decode |
+  | ----- | ------------- | ----------- |
+  | `processes_top_n: 2.5`, `!!float 2.5`, alias `*n` to `&n 2.5`, `alerts: {<<: {notify_max_retries: 1.5}}`, merge inside an `alerts` block | the fraction | truncated, no error |
+  | `!!float 5`, `1e1`, `0x10` | 5, 10, 16 | the same values |
+  | duplicate `alerts` key | error | the same error |
+  | multi-document input | first document | first document |
+
+  Every case the second decode treats as an error, the real decode also rejects, so discarding that error loses nothing.
+- **Order and messages:** `checkIntegerOptions` runs before the real decode, so AC1's text holds for `.nan`/`+.inf` on an `int` field, which would otherwise fail inside the decode (fact 7). Because `loadYAMLFile` (`internal/config/config.go:449-462`) runs before the `-version` short-circuit (`config.go:562`), the plan's -version behaviour (AC2 and the first consequence in record 0008) follows from the code. `validateFinite` running first in `Validate()` keeps NaN away from the ratio check at `config.go:350` and from the `>= 0` messages.
+- **Error path (fact 9):** `cmd/pimonitor/main.go:27-30` and `:36` print `pimonitor: load config: <reason>` and exit 1.
+- **Fact 8 (NaN breaks `GET /api/v1/config`):** `writeJSON` at `internal/httpapi/handlers.go:13-17` only logs the encode error after the Content-Type header is set.
+- **Coverage of options:** the only `int` fields are `config.go:56` and `config.go:158`. The float list in AC4 matches the float64 fields at `config.go:24-33, 46, 59, 66, 88, 95-98, 143`. `load()` defines no numeric flag (`config.go:503-508`).
+- **Need and scope:** `docs/areas/configuration.md:184-189` lists both behaviours as open questions, and the issue records the decision to reject them. No accepted record covers them, and nothing outside the issue rides along.
+
+**Objections:**
+
+1. `minor`: Record 0008's consequence ("A new integer option needs its field in the second decode, or a fraction is truncated again unnoticed") is left to memory. Instruction for the Tester: add one guard test in `internal/config/config_test.go`. It walks `Config` with `reflect`, recursing into the `Thresholds`, `Alerts` and `Webhook` structs, collects the `yaml` key path of every `int`-kind field, and asserts that this set equals the set of options `checkIntegerOptions` checks. Today that set is `processes_top_n` and `alerts.notify_max_retries`; state the comparison as set equality, not a hard-coded count. Instruction for the Dev: expose that set (for example an unexported list of option names next to the shadow struct) so the test can read it.
