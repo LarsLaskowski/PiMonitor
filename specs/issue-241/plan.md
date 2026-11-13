@@ -157,3 +157,24 @@ v1 response shapes and `history.bin` layout are unchanged.
   (`prometheus.go:75`): proposed follow-up issue below.
 - `.squad/project.md` (*Guarantees*) points to *Open questions* in `docs/areas/metrics.md`, which has no such
   section: proposed follow-up issue below.
+
+## Challenge notes
+
+I'm challenging `/home/user/PiMonitor/specs/issue-241/plan.md` in mode `plan`. The plan holds up apart from one documentation gap.
+
+**What I checked and found correct**
+- **Root cause:** in `internal/collector/cpu.go`, lines 116-135 return `CPUUsage{}, nil` when `c.prev` is nil.
+- **Single call site:** `internal/collector/collector.go:512` is the only place that calls `CPUCollector.Collect`. Because of that, filtering the warning in `collectFastTickSamples` is enough.
+- **The fast tick already drops an errored reading:** `fastTick` adds no history point for it (line 604) and passes `CPUValid` false (line 628). The alert engine then skips `cpu` (`internal/alert/alert.go:197`), and per `docs/areas/alerts.md` a metric never evaluated has no state.
+- **The first tick runs immediately:** `Run` calls `fastTick` with no interval before it (`collector.go:339`). That supports rejecting option 2.
+- **A broken first sample still fails before `c.prev` is used:** read, parse and aggregate-line errors come first (`cpu.go:101-111`), and a failure leaves `prev` unset. So AC2's "still the first sample" holds.
+- **The list of existing tests to adapt is complete.** I checked every `fastTick` and `Run` caller in `internal/collector/*_test.go`:
+  - The tests the plan names are the only ones that assert a `cpu_percent` count, a `cpu` alert state or the absence of a `cpu collection failed` warning after a single tick: `assertFailedTickSeries` at line 1375, `TestCollector_Alerts_EvaluatedOnFastTick` at line 491 and `..._MissingAggregateCPULine_AC4` at line 1632.
+  - `TestHistory_JSONKeepsEmptyScalarSeries` (line 1487) already expects `cpu_percent` to be `[]`.
+  - The persist `Run` tests (`persist_test.go:281`, `400`) assert only memory points.
+- **The adapted `_AC4` test works:** ticking twice on the same fixture gives a delta of 0, which `usagePercent` (lines 70-71) turns into a valid 0 point, so `before` is 1 and the test still means something.
+- **The decision record exists:** record 0009 is in `docs/decisions/` and listed in the index.
+
+**Objections**
+
+1. **minor: `docs/API.md` needs an edit, though the plan's sweep says it needs none.** The plan says API.md has "no CPU first-tick statement". But `docs/API.md:430-432`, in the history contract that third-party clients such as openHAB rely on, reads: "A scalar series has no point for a tick whose reading failed, so the series may differ in length or be empty". After this change `cpu_percent` also has no point for the first tick after start, which is not a failure, so the client-facing contract becomes incomplete. Instruction for the Dev: extend that sentence in `docs/API.md` to say that `cpu_percent` also has no point for the first fast tick after start, because no previous sample exists yet. Separately, `docs/API.md:107-109` ("It is empty until the first sample has been evaluated") stays correct as written, but you may add that `cpu` gets its state only from the second fast tick.
