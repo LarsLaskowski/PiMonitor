@@ -1,6 +1,6 @@
 # 0006: Publish the host name by default, read once and omitted when unknown
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-13
 - **Area:** Metrics
 - **Source:** Issue #179
