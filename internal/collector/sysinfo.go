@@ -2,6 +2,7 @@ package collector
 
 import (
 	"bufio"
+	"errors"
 	"os"
 	"strings"
 )
@@ -10,6 +11,7 @@ const (
 	osReleasePath       = "/etc/os-release"
 	deviceTreeModelPath = "/proc/device-tree/model"
 	cpuinfoPath         = "/proc/cpuinfo"
+	hostnamePath        = "/proc/sys/kernel/hostname"
 )
 
 // parseOSRelease parses /etc/os-release (or /usr/lib/os-release) content
@@ -110,6 +112,7 @@ type SysInfoCollector struct {
 	osReleasePath       string
 	deviceTreeModelPath string
 	cpuinfoPath         string
+	hostnamePath        string
 }
 
 // NewSysInfoCollector creates a SysInfoCollector using the standard Linux
@@ -119,6 +122,7 @@ func NewSysInfoCollector() *SysInfoCollector {
 		osReleasePath:       osReleasePath,
 		deviceTreeModelPath: deviceTreeModelPath,
 		cpuinfoPath:         cpuinfoPath,
+		hostnamePath:        hostnamePath,
 	}
 }
 
@@ -132,4 +136,15 @@ func (c *SysInfoCollector) Collect() SystemInfo {
 		PiModel:       piModel(c.deviceTreeModelPath, c.cpuinfoPath),
 		CPUModel:      cpuModel(c.cpuinfoPath),
 	}
+}
+
+// readHostname returns the trimmed host name read from path, or "" when the
+// file holds nothing usable.
+func readHostname(path string) (string, error) {
+	return "", errors.New("not implemented")
+}
+
+// hostname returns the host name read from the collector's host name path.
+func (c *SysInfoCollector) hostname() (string, error) {
+	return readHostname(c.hostnamePath)
 }

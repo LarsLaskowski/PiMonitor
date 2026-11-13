@@ -49,26 +49,7 @@ func run(args []string) error {
 	}
 	warnIfNotifierInert(log, cfg.Alerts, notifier)
 
-	collCfg := collector.Config{
-		FastInterval:          cfg.FastInterval(),
-		SlowInterval:          cfg.SlowInterval(),
-		HistoryCapacity:       cfg.HistoryCapacity(),
-		NetworkEnabled:        cfg.NetworkEnabled,
-		HwmonEnabled:          cfg.HwmonEnabled,
-		UpdatesStaleThreshold: cfg.UpdatesStaleThreshold(),
-		DistroInfoEnabled:     cfg.DistroInfoEnabled,
-		PiModelEnabled:        cfg.PiModelEnabled,
-		HistoryWindow:         cfg.HistoryWindow(),
-		AlertsEnabled:         cfg.Alerts.Enabled,
-		AlertFor:              cfg.AlertFor(),
-		Thresholds:            cfg.Thresholds,
-		Notifier:              notifier,
-		ProcessesEnabled:      cfg.ProcessesEnabled,
-		ProcessesTopN:         cfg.ProcessesTopN,
-	}
-	if cfg.HistoryPersistEnabled {
-		collCfg.PersistPath = filepath.Join(cfg.DataDir, "history.bin")
-	}
+	collCfg := collectorConfig(cfg, notifier)
 	coll := collector.New(collCfg, log)
 
 	staticHandler, err := web.Handler()
@@ -180,4 +161,29 @@ func newLogger(level string) *slog.Logger {
 		lvl = slog.LevelInfo
 	}
 	return slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: lvl}))
+}
+
+// collectorConfig maps the loaded configuration onto the collector's.
+func collectorConfig(cfg config.Config, notifier *alert.Notifier) collector.Config {
+	collCfg := collector.Config{
+		FastInterval:          cfg.FastInterval(),
+		SlowInterval:          cfg.SlowInterval(),
+		HistoryCapacity:       cfg.HistoryCapacity(),
+		NetworkEnabled:        cfg.NetworkEnabled,
+		HwmonEnabled:          cfg.HwmonEnabled,
+		UpdatesStaleThreshold: cfg.UpdatesStaleThreshold(),
+		DistroInfoEnabled:     cfg.DistroInfoEnabled,
+		PiModelEnabled:        cfg.PiModelEnabled,
+		HistoryWindow:         cfg.HistoryWindow(),
+		AlertsEnabled:         cfg.Alerts.Enabled,
+		AlertFor:              cfg.AlertFor(),
+		Thresholds:            cfg.Thresholds,
+		Notifier:              notifier,
+		ProcessesEnabled:      cfg.ProcessesEnabled,
+		ProcessesTopN:         cfg.ProcessesTopN,
+	}
+	if cfg.HistoryPersistEnabled {
+		collCfg.PersistPath = filepath.Join(cfg.DataDir, "history.bin")
+	}
+	return collCfg
 }
