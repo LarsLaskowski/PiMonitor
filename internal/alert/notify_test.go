@@ -1,13 +1,16 @@
 package alert
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -883,6 +886,264 @@ func TestNotifier_ClearedEndsRateLimitWindow(t *testing.T) {
 			if fmt.Sprint(got) != fmt.Sprint(tc.want) {
 				t.Errorf("delivered events at offsets %v, want %v", got, tc.want)
 			}
+		})
+	}
+}
+
+// logSentinel marks every secret-bearing part of the webhook URLs of the log
+// redaction tests (issue #194). It never appears in a subtest name.
+const logSentinel = "SNTL"
+
+// sentinelWebhookURL holds logSentinel in its user name, password, path,
+// query and fragment.
+const sentinelWebhookURL = "https://SNTL:SNTL@hooks.example:8443/services/T0/B0/SNTL?token=SNTL#SNTL"
+
+// plainWebhookURL is webhook 0 of the redaction tests: a URL without the sentinel.
+const plainWebhookURL = "https://hooks.other.example/plain"
+
+// stubTransport answers every request with status, or fails with err when set,
+// so no test resolves the webhook host.
+type stubTransport struct {
+	status int
+	err    error
+}
+
+func (s stubTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	return &http.Response{
+		StatusCode: s.status,
+		Header:     http.Header{},
+		Body:       io.NopCloser(strings.NewReader("")),
+		Request:    req,
+	}, nil
+}
+
+// newLogNotifier builds a notifier whose webhook 0 has plainWebhookURL and
+// webhook 1 has url1 (with template tmpl1), logging JSON records to the
+// returned buffer and sending through rt. The workers are never started, so
+// every log call runs on the test goroutine.
+func newLogNotifier(t *testing.T, cfg config.Alerts, url1, tmpl1 string, rt http.RoundTripper) (*Notifier, *bytes.Buffer) {
+	t.Helper()
+	cfg.Webhooks = []config.Webhook{{URL: plainWebhookURL}, {URL: url1, Template: tmpl1}}
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	n, err := NewNotifier(cfg, logger)
+	if err != nil {
+		t.Fatalf("NewNotifier: %v", err)
+	}
+	n.client.Transport = rt
+	return n, &buf
+}
+
+// logRecords decodes every JSON log line in buf.
+func logRecords(t *testing.T, buf *bytes.Buffer) []map[string]any {
+	t.Helper()
+	var records []map[string]any
+	for _, line := range strings.Split(strings.TrimSpace(buf.String()), "\n") {
+		if line == "" {
+			continue
+		}
+		var rec map[string]any
+		if err := json.Unmarshal([]byte(line), &rec); err != nil {
+			t.Fatalf("decode log line %q: %v", line, err)
+		}
+		records = append(records, rec)
+	}
+	return records
+}
+
+// webhookRecord returns the record with message msg and webhook = 1 (a JSON
+// number), failing the test when there is none.
+func webhookRecord(t *testing.T, buf *bytes.Buffer, msg string) map[string]any {
+	t.Helper()
+	records := logRecords(t, buf)
+	for _, rec := range records {
+		if rec["msg"] == msg && rec["webhook"] == float64(1) {
+			return rec
+		}
+	}
+	t.Fatalf("no log record with msg %q and webhook 1 (a number); got records %v", msg, records)
+	return nil
+}
+
+// assertNoSentinel fails the test when the sentinel appears anywhere in the log.
+func assertNoSentinel(t *testing.T, buf *bytes.Buffer) {
+	t.Helper()
+	if strings.Contains(buf.String(), logSentinel) {
+		t.Errorf("log output contains the URL sentinel; got %s", buf.String())
+	}
+}
+
+// assertRedacted checks the AC1 shape of rec: no url attribute and the endpoint
+// of sentinelWebhookURL.
+func assertRedacted(t *testing.T, rec map[string]any, wantEndpoint string) {
+	t.Helper()
+	if v, ok := rec["url"]; ok {
+		t.Errorf("record has url attribute %v, want none", v)
+	}
+	if got := rec["endpoint"]; got != wantEndpoint {
+		t.Errorf("endpoint = %v, want %q", got, wantEndpoint)
+	}
+}
+
+// assertErrorText checks the error attribute of rec against want exactly.
+func assertErrorText(t *testing.T, rec map[string]any, want string) {
+	t.Helper()
+	if got := rec["error"]; got != want {
+		t.Errorf("error = %v, want %q", got, want)
+	}
+}
+
+const (
+	msgQueueFull   = "alert notification queue full, dropping event"
+	msgRateLimited = "alert notification rate-limited, dropping event"
+	msgRenderFail  = "alert notification render failed"
+	msgRejected    = "alert notification rejected, not retrying"
+	msgGivingUp    = "alert notification giving up after retries"
+	msgRetry       = "alert notification delivery failed, will retry"
+)
+
+// redactionRun drives one of the six log calls for webhook 1 with the sentinel URL.
+type redactionRun func(t *testing.T) *bytes.Buffer
+
+func runQueueFull(t *testing.T) *bytes.Buffer {
+	n, buf := newLogNotifier(t, config.Alerts{}, sentinelWebhookURL, "", stubTransport{status: http.StatusOK})
+	events := make([]Event, defaultNotifyQueueSize+1)
+	for i := range events {
+		events[i] = firedEvent(time.Date(2026, 1, 1, 0, 0, i, 0, time.UTC))
+	}
+	n.Notify(events)
+	return buf
+}
+
+func runRateLimited(t *testing.T) *bytes.Buffer {
+	cfg := config.Alerts{NotifyMinIntervalSeconds: 60}
+	n, buf := newLogNotifier(t, cfg, sentinelWebhookURL, "", stubTransport{status: http.StatusOK})
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	n.dispatch(context.Background(), n.workers[1], firedEvent(base))
+	n.dispatch(context.Background(), n.workers[1], firedEvent(base.Add(time.Second)))
+	return buf
+}
+
+func runRenderFailed(t *testing.T) *bytes.Buffer {
+	n, buf := newLogNotifier(t, config.Alerts{}, sentinelWebhookURL, "{{.Nope}}", stubTransport{status: http.StatusOK})
+	n.dispatch(context.Background(), n.workers[1], firedEvent(time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)))
+	return buf
+}
+
+func runWithStatus(status int) redactionRun {
+	return func(t *testing.T) *bytes.Buffer {
+		cfg := config.Alerts{NotifyMaxRetries: 1}
+		n, buf := newLogNotifier(t, cfg, sentinelWebhookURL, "", stubTransport{status: status})
+		n.dispatch(context.Background(), n.workers[1], firedEvent(time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)))
+		return buf
+	}
+}
+
+// Each of the six notifier log calls names webhook 1 by index and endpoint and
+// never logs any part of its URL beyond scheme and host (issue #194, AC1).
+func TestNotifier_LogRedactsWebhookURL(t *testing.T) {
+	cases := []struct {
+		name string
+		msg  string
+		run  redactionRun
+	}{
+		{"AC1 queue full", msgQueueFull, runQueueFull},
+		{"AC1 rate-limited", msgRateLimited, runRateLimited},
+		{"AC1 render failed", msgRenderFail, runRenderFailed},
+		{"AC1 rejected", msgRejected, runWithStatus(http.StatusBadRequest)},
+		{"AC1 giving up", msgGivingUp, runWithStatus(http.StatusInternalServerError)},
+		{"AC1 retry", msgRetry, runWithStatus(http.StatusInternalServerError)},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			buf := tc.run(t)
+			rec := webhookRecord(t, buf, tc.msg)
+			assertRedacted(t, rec, "https://hooks.example:8443")
+			assertNoSentinel(t, buf)
+		})
+	}
+}
+
+// A transport error is logged as its *url.Error text with the endpoint in place
+// of the URL, in the retry and the giving-up record (issue #194, AC2).
+func TestNotifier_LogRedactsTransportError(t *testing.T) {
+	const want = `Post "https://hooks.example:8443": stub transport failure`
+	cases := []struct {
+		name string
+		msg  string
+	}{
+		{"AC2 retry", msgRetry},
+		{"AC2 giving up", msgGivingUp},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := config.Alerts{NotifyMaxRetries: 1}
+			rt := stubTransport{err: errors.New("stub transport failure")}
+			n, buf := newLogNotifier(t, cfg, sentinelWebhookURL, "", rt)
+			n.dispatch(context.Background(), n.workers[1], firedEvent(time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)))
+			rec := webhookRecord(t, buf, tc.msg)
+			assertRedacted(t, rec, "https://hooks.example:8443")
+			assertErrorText(t, rec, want)
+			assertNoSentinel(t, buf)
+		})
+	}
+}
+
+// A URL that does not parse is logged with endpoint [invalid URL] and an error
+// that quotes no byte of it (issue #194, AC3).
+func TestNotifier_LogRedactsUnparsableURL(t *testing.T) {
+	cases := []struct {
+		name     string
+		url      string
+		contains string
+	}{
+		{"AC3 invalid escape", "https://hooks.example:8443/services/%SNTL", "/%" + logSentinel},
+		{"AC3 control character", "https://hooks.example:8443/services/SNTL\x7f", "\x7f"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if !strings.Contains(tc.url, tc.contains) {
+				t.Fatalf("test URL %q does not contain %q", tc.url, tc.contains)
+			}
+			cfg := config.Alerts{NotifyMaxRetries: 1}
+			n, buf := newLogNotifier(t, cfg, tc.url, "", stubTransport{status: http.StatusOK})
+			n.dispatch(context.Background(), n.workers[1], firedEvent(time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)))
+			for _, msg := range []string{msgRetry, msgGivingUp} {
+				rec := webhookRecord(t, buf, msg)
+				assertRedacted(t, rec, "[invalid URL]")
+				assertErrorText(t, rec, `parse "[invalid URL]": invalid URL`)
+			}
+			assertNoSentinel(t, buf)
+		})
+	}
+}
+
+// endpoint is scheme://host[:port], or [invalid URL] when the parsed URL has
+// no scheme or no host (issue #194, AC4).
+func TestNotifier_LogEndpointForms(t *testing.T) {
+	cases := []struct {
+		name string
+		url  string
+		want string
+	}{
+		{"AC4 userinfo path query fragment dropped", "https://u:p@hooks.example/x?t=1#f", "https://hooks.example"},
+		{"AC4 IPv6 literal with port", "http://[::1]:8080/x", "http://[::1]:8080"},
+		{"AC4 no scheme", "hooks.example/x/SNTL", "[invalid URL]"},
+		{"AC4 opaque", "https:SNTL@hooks.example/x", "[invalid URL]"},
+		{"AC4 empty host", "https:///SNTL", "[invalid URL]"},
+		{"AC4 scheme-relative", "//hooks.example/SNTL", "[invalid URL]"},
+		{"AC4 empty string", "", "[invalid URL]"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			n, buf := newLogNotifier(t, config.Alerts{}, tc.url, "{{.Nope}}", stubTransport{status: http.StatusOK})
+			n.dispatch(context.Background(), n.workers[1], firedEvent(time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)))
+			rec := webhookRecord(t, buf, msgRenderFail)
+			assertRedacted(t, rec, tc.want)
+			assertNoSentinel(t, buf)
 		})
 	}
 }
