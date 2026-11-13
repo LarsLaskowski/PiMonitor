@@ -147,3 +147,68 @@ reading" (`AGENTS.md`, *Code style*; `.squad/project.md`, *Guarantees*); it reus
   tick should count as no reading.
 - Related, minor: a `cpuN` line missing from the previous sample (a core hot-plugged in) is skipped
   (`cpu.go:114`), so `per_core_percent` shifts for one tick; real Pis do not hot-plug cores. No issue proposed.
+
+## Challenge notes
+
+I found no major objections and one minor one. I checked the plan's claims against `internal/collector/cpu.go`, `internal/collector/collector.go`, `docs/areas/metrics.md` and the issue text (fetched over REST), and they hold:
+
+- **Root cause:** `Collect` sets `OverallPercent` only for `l.name == "cpu"` (`cpu.go:115-116`). `parseProcStat` fails only when no lines are left (`cpu.go:58-60`), and a line with fewer than 9 fields is skipped (`cpu.go:35`).
+- **Fast tick:** it logs only when `cpuErr != nil` (`collector.go:512-515`), records history through `addPoint`, which skips on an error (`collector.go:598-604`), and sets `CPUValid: s.cpuErr == nil` (`collector.go:627-628`). So returning an error from `Collect` is enough, and `collector.go` needs no change.
+- **Callers:** `Collect` has one production caller (`collector.go:512`) and `CoreCount` one (`collector.go:464`). Leaving `parseProcStat` and `CoreCount` unchanged is right, because `cpu_count` is defined by the `cpuN` lines alone (`metrics.md:48`).
+- **Tests fail on today's code:**
+  - AC1 "after a valid sample": today it returns per-core values and a nil error.
+  - AC3: today the middle call overwrites `c.prev` without a `cpu` entry, so sample B gives `OverallPercent` 0.
+  - AC4 history: today the first tick records a point of 0.
+  - The AC2 seven-counter line matches the existing fixture style in `TestParseProcStat_SevenCounters` (`cpu_test.go:50-65`).
+- **Choices:** dropping the per-core values matches what the issue left to the plan and the existing "unparsable" wording at `metrics.md:43-45`. The error text contains none of the file content.
+
+Minor (for the Tester): the snapshot part of AC4 cannot fail on today's code if the test runs only one fast tick. On the first tick `per_core_percent` is omitted anyway (`cpu.go:112`, nothing to diff against), so "no `per_core_percent`" passes before and after the fix. Run one tick on valid `/proc/stat` content (`procStatFixture1`) first, then rewrite the same file with the cpuN-only fixture and run a second tick. Then assert that the second tick adds no `cpu_percent` point (the count stays as it was after the first tick), that the snapshot has `overall_percent` 0 and no `per_core_percent`, and that the `cpu collection failed` warning is logged. Why minor: AC1 "after a valid sample" already covers dropping the per-core values at unit level, so this only makes the fast-tick test catch the defect as well, with no change to the plan.
+
+Relevant files:
+- /home/user/PiMonitor/specs/issue-233/plan.md
+- /home/user/PiMonitor/internal/collector/cpu.go
+- /home/user/PiMonitor/internal/collector/collector.go
+- /home/user/PiMonitor/internal/collector/cpu_test.go
+- /home/user/PiMonitor/internal/collector/collector_test.go
+- /home/user/PiMonitor/docs/areas/metrics.md
+
+## Security notes
+
+Security plan review: specs/issue-233/plan.md (issue #233). Round 1.
+
+I found no blocking findings and no non-blocking findings.
+
+**Tier and listed areas**
+- `standard` is the right tier. The change adds a validity check inside the existing failed-reading path. It creates, changes and removes no security control: no limit, no authentication, nothing written, no outbound call.
+- *Security areas touched* lists parsing of local input (`/proc/stat`). That matches `.squad/project.md` line 38 and covers everything the plan touches.
+- The plan touches no other security area. The new error goes to the existing `cpu collection failed` warning in `internal/collector/collector.go:512-515`, a logger call that does not change. No CI, Docker, build or dependency change.
+
+**What I checked against the code**
+- `internal/collector/cpu.go:31-61` (`parseProcStat`). It only accepts lines that split into at least 9 whitespace fields and whose first field starts with `cpu`. Lines with fewer than 8 counters are skipped, and a non-numeric counter fails the whole file. So "no aggregate line remains" covers both cases the plan names: the line is missing (AC1) or too short (AC2).
+- I listed the input forms the parser accepts, for whether the new check can be bypassed:
+  - CRLF line endings: `strings.Fields` treats `\r` as whitespace, so they parse normally.
+  - A BOM before `cpu`: that line is skipped, so the check fails. That is the safe direction.
+  - Case variants like `CPU`: skipped by the prefix test, so the check fails. Also safe.
+  - Duplicate `cpu` lines: the check passes and the last one wins in `c.prev`. That is existing behavior and still a real kernel counter, not an invented value.
+  - Names like `cpufoo`: still count as `cpuN`. That is existing behavior, untouched by the plan.
+  - None of these lets the fix's target through: a 0 % reported as valid when no aggregate line exists.
+- The check returns before `c.mu` is taken and before `c.prev` is replaced. So after the fix, any non-nil `c.prev` always holds a `cpu` entry, and a later call can no longer return a delta with no aggregate value. AC3 pins this.
+- Downstream in `collector.go:598-604` and `:627-628`, the existing `s.cpuErr` handling means a failed collection adds no history point and the alert engine gets `CPUValid: false`. The 0 can therefore no longer clear a real CPU alert, which is the alerting side of the fix.
+- Error text: the new message is a constant, `no aggregate cpu line in /proc/stat content`. It includes no file content and is never returned to API clients.
+- No resource bound is claimed, and no new limit or parser change is made, so the change needs no bound test.
+
+**Measurement (fact 6: the kernel always prints the aggregate line)**
+I ran `head -3 /proc/stat` on this host. Output:
+```
+cpu  1041 0 362 88061 9788 0 153 53 0 0
+cpu0 256 0 80 21761 2706 0 69 16 0 0
+cpu1 228 0 107 21960 2520 0 35 15 0 0
+```
+This confirms the plan's fact. No security property depends on library or measured behavior beyond this.
+
+Files read:
+- /home/user/PiMonitor/specs/issue-233/plan.md
+- /home/user/PiMonitor/internal/collector/cpu.go
+- /home/user/PiMonitor/internal/collector/collector.go (lines 505-632)
+- /home/user/PiMonitor/.squad/project.md
+- /home/user/PiMonitor/docs/areas/metrics.md (lines 38-50)
