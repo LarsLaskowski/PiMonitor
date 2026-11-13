@@ -1,6 +1,6 @@
 # 0008: Reject non-finite numbers, and fractional values of integer options while reading the file
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-13
 - **Area:** Configuration
 - **Source:** Issue #200
