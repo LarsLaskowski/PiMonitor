@@ -1,6 +1,7 @@
 package collector
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"slices"
@@ -10,6 +11,10 @@ import (
 )
 
 const procStatPath = "/proc/stat"
+
+// errNoPreviousSample is returned by CPUCollector.Collect for the first usable
+// sample: it only becomes the baseline, so there is no reading yet.
+var errNoPreviousSample = errors.New("no previous cpu sample")
 
 // cpuStatLine holds the raw jiffie counters for one "cpu"/"cpuN" line of
 // /proc/stat. Only the fields needed for a busy/idle usage calculation are
@@ -92,11 +97,12 @@ func NewCPUCollector() *CPUCollector {
 	return &CPUCollector{path: procStatPath}
 }
 
-// Collect returns the current CPU usage. The first call after process
-// start has no prior sample to diff against, so it returns all-zero
-// values; subsequent calls return meaningful deltas. It fails, leaving the
-// stored previous sample unchanged, when the content holds no usable
-// aggregate "cpu" line.
+// Collect returns the current CPU usage. The first call with usable content
+// has no prior sample to diff against: it stores the sample as the baseline
+// and returns a zero CPUUsage with errNoPreviousSample, which is no reading;
+// subsequent calls return meaningful deltas. It fails, leaving the stored
+// previous sample unchanged, when the content holds no usable aggregate "cpu"
+// line.
 func (c *CPUCollector) Collect() (CPUUsage, error) {
 	data, err := os.ReadFile(c.path)
 	if err != nil {
@@ -113,26 +119,35 @@ func (c *CPUCollector) Collect() (CPUUsage, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	usage := CPUUsage{}
-	if c.prev != nil {
-		for _, l := range lines {
-			if p, ok := c.prev[l.name]; ok {
-				pct := usagePercent(p, l)
-				if l.name == "cpu" {
-					usage.OverallPercent = pct
-				} else {
-					usage.PerCorePercent = append(usage.PerCorePercent, pct)
-				}
-			}
-		}
-	}
-
+	prev := c.prev
 	c.prev = make(map[string]cpuStatLine, len(lines))
 	for _, l := range lines {
 		c.prev[l.name] = l
 	}
 
-	return usage, nil
+	if prev == nil {
+		return CPUUsage{}, errNoPreviousSample
+	}
+	return cpuUsageSince(prev, lines), nil
+}
+
+// cpuUsageSince diffs the current lines against the previous sample; a line
+// without a previous counterpart is left out.
+func cpuUsageSince(prev map[string]cpuStatLine, lines []cpuStatLine) CPUUsage {
+	usage := CPUUsage{}
+	for _, l := range lines {
+		p, ok := prev[l.name]
+		if !ok {
+			continue
+		}
+		pct := usagePercent(p, l)
+		if l.name == "cpu" {
+			usage.OverallPercent = pct
+		} else {
+			usage.PerCorePercent = append(usage.PerCorePercent, pct)
+		}
+	}
+	return usage
 }
 
 // CoreCount returns the number of per-core lines in /proc/stat (excluding

@@ -91,7 +91,8 @@ In every other case the level stays as it is.
 - A metric whose reading failed in a sample is skipped for that sample: its level, timers, `value` and `since` stay
   as they were, and no event is produced for it. A failed reading is never treated as a value of `0`, so it can
   never clear an alert. A metric that has never been read successfully since startup (for example `temperature`
-  on hardware without a readable sensor) has no state at all.
+  on hardware without a readable sensor) has no state at all. `cpu` has no state until the second sample after
+  start, because the first fast tick has no previous CPU sample and counts as no reading.
 - When the filesystem reading fails, all `disk` states are left untouched — neither evaluated nor removed.
 - When the filesystem reading succeeds, the state of every mountpoint missing from it is removed. If that state was
   `warn` or `crit`, a final `cleared` event to `ok` is produced first, with `value` set to the last reading before
@@ -125,7 +126,7 @@ The response shape is defined in [`../API.md`](../API.md#get-apiv1alerts); its f
 
 ## Related decisions
 
-None yet.
+- [0009](../decisions/0009-first-cpu-tick-is-no-reading.md): the first CPU tick is no reading and is not evaluated.
 
 ## Not here
 

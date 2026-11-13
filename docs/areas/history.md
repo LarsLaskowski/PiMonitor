@@ -29,8 +29,8 @@ it; the operator relies on the file rules.
   `cpu_percent` when the CPU statistics cannot be read, `load1`, `load5` and `load15` when the load average
   cannot, `temperature` when there is no CPU thermal zone or it cannot be read, `memory_used_percent` and
   `swap_used_percent` when `/proc/meminfo` cannot. A host without a thermal zone therefore has an empty
-  `temperature` series, and series can differ in length. `cpu_percent` on the first tick after start is not a
-  failure and is still recorded as 0.
+  `temperature` series, and series can differ in length. `cpu_percent` also gets no point on the first tick
+  after start, which has no previous sample to diff against ([Metrics](metrics.md#cpu-and-load)).
 - A per-device series gets a point only on ticks whose snapshot lists that device. Its series is created the first
   time the device appears. So there is no network history while `network_enabled` is off, and no disk I/O or
   network point on the first tick after start.
@@ -129,6 +129,7 @@ The format is `PIMH` version 1. All integers are little-endian.
 ## Related decisions
 
 - [0003](../decisions/0003-failed-reading-leaves-history-gap.md): a failed reading leaves a gap in the history.
+- [0009](../decisions/0009-first-cpu-tick-is-no-reading.md): the first CPU tick is no reading and leaves no point.
 - [0004](../decisions/0004-final-history-write-waits.md): the final history write waits for a running write.
 
 ## Not here
