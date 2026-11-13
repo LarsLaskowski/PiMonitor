@@ -228,3 +228,50 @@ service gains no privilege (the file is world-readable). `docs/ARCHITECTURE.md` 
 ## Out of scope / follow-ups
 
 As the spec's *Out of scope*; no follow-up issue.
+
+## Security notes
+
+Security plan review: feature 179 (host name), round 1, mode `plan`
+
+I approve the plan. There are no blocking findings and one non-blocking finding.
+
+Files read: `specs/feature-179-hostname/spec.md`, `plan.md`, `.squad/project.md` (*Security areas*), `internal/web/assets/app.js` (`setText` at :136-139, the System block at :277-280, the three `innerHTML` uses), `internal/web/assets/index.html` (header, `#card-system`), `internal/web/xss_test.go`, `internal/httpapi/middleware.go` (CSP), `internal/collector/collector.go` (`collectSysInfo`, `Run`), `internal/collector/sysinfo.go`, `packaging/pimonitor.service`, `docs/decisions/0006-publish-host-name-by-default.md`, and `.squad/stack.md` (*Logger arguments*).
+
+**Tier and areas**
+- The `security` tier is right. The plan adds a disclosure opt-out and a new sink for server text in the dashboard.
+- *Security areas touched* lists Dashboard XSS and Parsing of local input, which matches what the plan changes.
+- No other area is affected:
+  - No new log field holds secrets.
+  - There are no subprocesses, file writes or outbound calls.
+  - The HTTP surface does not change: there is no new route, and the `system` key has no sub-resource (`metricsSubResources`).
+  - Privileges do not change: `/proc/sys/kernel/hostname` is world-readable, and the unit's `ProtectKernelTunables=true` keeps it readable.
+
+**Dashboard XSS**
+- The proposed `renderHostname` writes the name only through `textContent` (via `setText`), `document.title` and the `title` property. None of these parses HTML.
+- The static markup in `index.html` has no inline style, so the CSP (`style-src 'self'`) is unaffected.
+- The single caller in `renderMetrics` matches how the other system fields are accessed. `snap.system.kernel_version` at :278 already relies on `snap.system` being present.
+- Not filtering bidi or control characters is acceptable. Only root on the host can set the name, and it is displayed as text.
+
+**Parsing of local input**
+- `readHostname` does `os.ReadFile` on a constant path, then `TrimSpace`, then maps empty or `(none)` to no name.
+- The kernel limits the source to 65 bytes, so there is no unbounded allocation.
+- No parser has bypass forms to enumerate: the value is used as one opaque string.
+- The new YAML bool needs no validation rule. A file without the key keeps the default.
+- With `hostname_enabled: false` the file is never read, because the read moves out of `Collect()` into `collectSysInfo` behind the flag. That makes the opt-out real rather than cosmetic, and AC3 plus `TestCollectorConfig_MapsFields` pin it end to end.
+
+**Logger arguments**
+- The planned call `c.log.Warn("could not read host name", "error", err)` passes only `err`, whose text is the `os.ReadFile` path error.
+- No argument name matches the sensitive-name list, and the host name itself is never logged.
+
+**Measurements**
+- No security property here depends on measured or library behavior. The XSS guard is the text-only DOM API, not `encoding/json` escaping (fact 17 is defense in depth only).
+- Fact 11 (the service sees the host's name under `ProtectHostname`) is about whether the feature works, not about security. Leaving it to the Product Manager's after-merge check is acceptable.
+- I ran no probes.
+
+**Findings**
+
+1. Non-blocking: the AC7 static test is underspecified (`plan.md`, *Tests per criterion*, AC7: `TestAppJS_HostnameOnlyAsText` "AC7 renderHostname uses no HTML sink").
+   - The plan does not say which sinks the test rejects, and the existing `xss_test.go` only scans for `innerHTML`.
+   - Proposed denylist, every HTML-parsing or script sink the browser offers: `innerHTML`, `outerHTML`, `insertAdjacentHTML`, `document.write`/`writeln`, `createContextualFragment`, `DOMParser`/`parseFromString`, `setHTMLUnsafe`, `srcdoc`, `setAttribute(` (which could set `on*`/`href`), and `eval`/`Function(`.
+   - A denylist goes stale, so the stronger form is an allowlist. Extract the body of `function renderHostname` and assert that every write in it is one of `setText(`, `document.title =`, `.title = name`, or `.classList.toggle(`. Assert also that it contains none of the sinks above.
+   - Recommendation: fix now. The Tester writes this test in step 5 anyway, so the Lead only has to add the sentence to the AC7 row.
