@@ -163,3 +163,59 @@ follow-up issue — title "[Config] Threshold validation errors name keys that d
 (`internal/config/config.go`) reports e.g. `thresholds.cpu_warn must be >= 0`, but the key is
 `thresholds.cpu_warn_percent` (`temperature_warn_c` for temperature). Name the real YAML key in all three messages and
 update `docs/areas/configuration.md` if it quotes one."
+
+## Security notes
+
+Security plan review, round 1. The plan is `/home/user/PiMonitor/specs/issue-200/plan.md` (branch head 673ebfb), with decision record `/home/user/PiMonitor/docs/decisions/0008-reject-non-finite-and-fractional-config-numbers.md`.
+
+**Tier and areas**
+- Tier `standard` is correct. The finiteness check and the whole-number check only keep malformed input from breaking the program. They are input handling, not a guard over what an attacker can reach, so no security control is created, changed or removed (`.squad/routing.md`, `security` row).
+- *Security areas touched* ("Parsing of local input", the YAML config) is complete:
+  - There are no new log calls, so the Logging area is untouched.
+  - The `api_key` handling and the `KnownFields(true)` guard against unknown keys in the real decode are unchanged.
+  - No dependency, CI or build file changes.
+
+**Bypass enumeration for the second decode**
+I read `loadYAMLFile`/`load`/`Validate` in `/home/user/PiMonitor/internal/config/config.go`. I then measured the plan's central claim: the second decode, with no `KnownFields` and `*float64` fields, sees exactly what the real decode sees, and any error it discards also fails the real decode.
+
+Measurement:
+- Command: `GOFLAGS=-mod=mod GOPROXY=off go run .`
+- Program: `/tmp/claude-0/-home-user-PiMonitor/091a2e5e-3780-5e9e-8eaa-5bad4a980d46/scratchpad/m/main.go`, using gopkg.in/yaml.v3 v3.0.1 from the module cache.
+- It decodes each input twice: once into a `Config`-shaped struct (int fields, `KnownFields(true)`) and once into the plan's two-field `*float64` struct.
+
+Excerpt of the output (`real` = the real decode, `2nd` = the plan's second decode):
+```
+"processes_top_n: 2.5"                     real: N=2 err=false | 2nd: N=2.5 err=<nil>
+"processes_top_n: .nan"                    real: err=true      | 2nd: N=NaN err=<nil>
+"processes_top_n: +.inf"                   real: err=true      | 2nd: N=+Inf err=<nil>
+"processes_top_n: -.INF"                   real: N=-9223372036854775808 err=false | 2nd: N=-Inf err=<nil>
+"processes_top_n: !!float 2.5"             real: N=2 err=false | 2nd: N=2.5 err=<nil>
+"alerts: {<<: {notify_max_retries: 1.5}}"  real: R=1 err=false | 2nd: R=1.5 err=<nil>
+"alerts: {<<: [{notify_max_retries: 1.5}, {notify_max_retries: 2}]}" real: R=1 | 2nd: R=1.5
+"alerts: {<<: {notify_max_retries: 1.5}, notify_max_retries: 2}"     real: R=2 | 2nd: R=2
+"? processes_top_n\n: 2.5"                 real: N=2 err=false | 2nd: N=2.5
+"\"processes_top_n\": 2.5"                 real: N=2 err=false | 2nd: N=2.5
+"processes_top_n: 2.5\n---\nprocesses_top_n: 3" real: N=2 | 2nd: N=2.5   (first document only, both)
+"﻿processes_top_n: 2.5"               real: N=2 | 2nd: N=2.5
+"processes_top_n: 1_0.5"                   real: N=10 | 2nd: N=10.5
+"processes_top_n: 1e400" / "nan" / "'2.5'" / "!!int 2.5" / "!foo 2.5" / duplicate key / "2.5\nalerts: [1]"
+                                            real: err=true | 2nd: err (discarded -> real decode fails anyway)
+"processes_top_n: 18446744073709551615" / "9.3e18"  real: err=true | 2nd: whole -> passes, real decode fails
+"poll_interval_seconds: .NaN"              real: P=NaN err=false   (fact 1: reaches Validate today)
+```
+
+Forms covered and the outcome:
+- **Forms the second decode catches as the plan intends:** plain value, explicit tag, alias, single merge key, merge-key list, an explicit key overriding a merged one, complex `?` key, quoted key, BOM, multiple documents, underscore digits, hex.
+- **Forms where the second decode errors:** in every one the real decode also errors, so there is no case where the second decode errors and the real decode succeeds. Discarding the second decode's error therefore lets nothing through.
+- **The `-.inf` case:** the real decode silently gives `MinInt64` today, and the planned non-finite check catches it.
+- **Facts 1, 3, 6, 7 and 10:** confirmed by this run.
+- **Fractional values above 2^53:** a float64 there is always whole, the real decode rounds the same way, and the range check in `Validate()` rejects the result. No bypass.
+
+**Other checks**
+- **Error text:** both messages are built from fixed option names plus a float64 formatted with `%v`. No file text and no `api_key` reaches the error. Discarding the second decode's error leaks nothing.
+- **Resource use:** the file is read once and parsed twice. yaml.v3's alias-expansion limit applies to both decodes, so the cost stays bounded at twice today's. The file is root-owned local input. No new bound is needed.
+- **Other ways a non-finite value could get in:** none. No numeric flag exists (fact 5) and the only environment variable is `PIMONITOR_API_KEY`. `Validate()` runs on the merged config, so `validateFinite()` covers every float source.
+
+**Findings**
+- Blocking: none.
+- Non-blocking, for the Tester; no plan change needed. Measured: the input `x: &n 2.5\nprocesses_top_n: *n` fails the real decode on the unknown key `x`. For AC2's alias case, put the anchor on a known key (e.g. `processes_top_n: &n 2.5` with `alerts: {notify_max_retries: *n}`), or document that the test relies on `checkIntegerOptions` running before the real decode. Otherwise the test can pass for the wrong reason. Recommendation: fix now, in the test as written.
