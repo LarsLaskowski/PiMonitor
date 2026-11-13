@@ -109,3 +109,27 @@ name either, because `GET /api/v1/metrics` does not carry it. Details and the pr
   the `Hostname` row of the System card, truncation with tooltip, and the host name added to the list of server
   text inserted only as text.
 - `docs/API.md` (the shape document, not an area): `hostname` in the example `system` object with a short note.
+
+## Challenge notes
+
+I found no major objections to the spec for issue 179 (`specs/feature-179-hostname/spec.md`). I checked its factual claims against the code and they hold:
+- **No `system` sub-resource:** `metricsSubResources` (`internal/httpapi/routes.go:104-140`) has no `system` entry.
+- **Startup read:** `SystemInfo` is built once in `collectSysInfo` (`internal/collector/collector.go:447-464`), and the toggles blank fields there.
+- **Prometheus and webhooks unaffected:** nothing outside the collector uses `SystemInfo` (grep over `internal` and `cmd`), so N3 holds without extra work.
+- **Unit hardening:** `packaging/pimonitor.service:51,75` has `ProtectKernelTunables=true` and `ProtectHostname=true`, with no `ProcSubset=` or `ProtectProc=`, so `/proc/sys/kernel/hostname` stays readable.
+- **Logging:** E1's single warning matches decision record 0001.
+- **README:** the Configuration section lists no individual options.
+
+There are five minor objections, each written as an instruction for the spec's *Challenge notes*:
+
+1. **minor:** AC4's "without one the header markup and text are exactly as today" rules out a static empty `<span id="header-hostname">` in `internal/web/assets/index.html:14`, which is the approach the issue itself suggests. That makes the criterion depend on the implementation. Reword AC4 to: "without a host name the header *renders* exactly as today: no parentheses, no extra text, no extra space, no empty tooltip."
+
+2. **minor:** S4 and E5 contradict each other when a `401` arrives after a host name was shown. That case is real: `pollMetrics` handles a key rotated server-side by calling `openAPIKeyModal()` (`internal/web/assets/app.js:1164-1167`, `773`). S4 reads as "clear the host name", E5 as "keep it". State one rule: S4 covers only a dashboard that has not yet received a snapshot, and a `401` after one keeps the host name and tab title as last received, like the cards.
+
+3. **minor:** E1 and AC2 don't say what happens with `hostname_enabled: false` and an unreadable source. Today `collectSysInfo` reads every source and blanks it afterwards (`collector.go:448-454`), so a straight copy of that pattern would log the E1 warning even with the option off. Add to AC2 and AC3: "with `hostname_enabled: false` no warning is logged" (preferably the source is not read at all). Also add that the warning comes once per process start, never per poll.
+
+4. **minor:** This repository has no JavaScript test framework. `docs/UNIT_TESTS.md` (section 3, lines 33-43) allows only static scans of `app.js`, so AC4-AC8 can't be checked by running code. Each criterion should name how it is verified:
+   - **Static scans:** host name set through `textContent`, `document.title` and `title`; the `Hostname` row present; the existing `xss_test.go` still passing.
+   - **Manual browser check:** AC4's muted style, AC5's title switch and AC8's phone-width truncation with tooltip. The plan must name it as a manual test, with the build it runs on (`.squad/routing.md`, *Criteria verified only in CI*).
+
+5. **minor:** `system.hostname` will be the only `system` key that is left out rather than sent as `""`. The other three have no `omitempty` (`internal/collector/types.go:159-164`), and `docs/areas/metrics.md:126-131` calls them "empty". The *Area documents* section should require `docs/areas/metrics.md` and `docs/API.md` to say "omitted", not "empty". The note at `docs/API.md:347-350` ("may read as zero values … briefly after process start") should also cover the key being absent for a moment: the HTTP server and `coll.Run` start concurrently (`cmd/pimonitor/main.go:85-92`), so an early snapshot can lack the host name until the next poll. AC4-AC6 must therefore re-evaluate the host name on every snapshot.
