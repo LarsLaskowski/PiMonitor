@@ -618,3 +618,26 @@ func writeFile(t *testing.T, path, content string) {
 		t.Fatalf("write %s: %v", path, err)
 	}
 }
+
+func TestDefault_HostnameEnabled(t *testing.T) {
+	t.Run("AC3 defaults to true", func(t *testing.T) {
+		if !Default().HostnameEnabled {
+			t.Fatal("Default().HostnameEnabled = false, want true")
+		}
+	})
+}
+
+func TestLoad_HostnameEnabledFromYAML(t *testing.T) {
+	t.Run("AC3 a file without the key keeps true", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "config.yaml")
+		writeFile(t, path, "pi_model_enabled: false\n")
+
+		result, err := Load([]string{"-config", path})
+		if err != nil {
+			t.Fatalf("Load: %v", err)
+		}
+		if !result.Config.HostnameEnabled {
+			t.Fatal("HostnameEnabled = false for a file without hostname_enabled, want true (default)")
+		}
+	})
+}

@@ -1496,3 +1496,64 @@ func TestHistory_JSONKeepsEmptyScalarSeries(t *testing.T) {
 		check(t, c.History().Since(before))
 	})
 }
+
+// newHostnameTestCollector returns a collector whose host name source is
+// path, logging into the returned buffer.
+func newHostnameTestCollector(t *testing.T, enabled bool, path string) (*Collector, *bytes.Buffer) {
+	t.Helper()
+	log, buf := newCapturingLogger()
+	c := New(Config{
+		FastInterval:    time.Second,
+		SlowInterval:    time.Minute,
+		HistoryCapacity: 10,
+		HostnameEnabled: enabled,
+	}, log)
+	sys := NewSysInfoCollector()
+	sys.hostnamePath = path
+	c.sysInfo = sys
+	return c, buf
+}
+
+func TestCollector_CollectSysInfo_Hostname(t *testing.T) {
+	const hostnameWarning = "could not read host name"
+
+	t.Run("AC1 enabled copies the fixture name into System.Hostname", func(t *testing.T) {
+		path := writeTempFile(t, t.TempDir(), "hostname", "raspberrypi\n")
+		c, _ := newHostnameTestCollector(t, true, path)
+
+		c.collectSysInfo()
+
+		if got := c.Snapshot().System.Hostname; got != "raspberrypi" {
+			t.Fatalf("System.Hostname = %q, want %q", got, "raspberrypi")
+		}
+	})
+
+	t.Run("AC1 a fast tick does not re-read the name", func(t *testing.T) {
+		path := writeTempFile(t, t.TempDir(), "hostname", "first-name\n")
+		c, _ := newHostnameTestCollector(t, true, path)
+
+		c.collectSysInfo()
+		overwriteTempFile(t, path, "second-name\n")
+		c.fastTick(context.Background())
+
+		if got := c.Snapshot().System.Hostname; got != "first-name" {
+			t.Fatalf("System.Hostname after rename and fastTick = %q, want %q (read once at start)", got, "first-name")
+		}
+	})
+
+	t.Run("AC2 unreadable source logs one warning", func(t *testing.T) {
+		c, buf := newHostnameTestCollector(t, true, filepath.Join(t.TempDir(), "missing"))
+
+		c.collectSysInfo()
+		c.fastTick(context.Background())
+		c.fastTick(context.Background())
+
+		out := buf.String()
+		if got := countLogLines(out, "WARN", hostnameWarning); got != 1 {
+			t.Fatalf("WARN lines with %q = %d, want 1; log:\n%s", hostnameWarning, got, out)
+		}
+		if got := c.Snapshot().System.Hostname; got != "" {
+			t.Fatalf("System.Hostname = %q, want empty for an unreadable source", got)
+		}
+	})
+}

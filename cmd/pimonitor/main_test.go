@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -216,5 +217,64 @@ func TestAwaitCollector(t *testing.T) {
 		if !awaitCollector(context.Background(), done) {
 			t.Error("awaitCollector = false for a finished collector, want true")
 		}
+	})
+}
+
+// mappedField is one collector.Config field compared by
+// TestCollectorConfig_MapsFields.
+type mappedField struct {
+	name string
+	got  any
+	want any
+}
+
+func checkMappedFields(t *testing.T, fields []mappedField) {
+	t.Helper()
+	for _, f := range fields {
+		if f.got != f.want {
+			t.Errorf("%s = %v, want %v", f.name, f.got, f.want)
+		}
+	}
+}
+
+// TestCollectorConfig_MapsFields guards the config.Config ->
+// collector.Config mapping, in particular that hostname_enabled, the host
+// name's privacy opt-out, reaches the collector.
+func TestCollectorConfig_MapsFields(t *testing.T) {
+	t.Run("AC3 default true reaches the collector", func(t *testing.T) {
+		cfg := config.Default()
+		cfg.PollIntervalSeconds = 7
+		cfg.UpdatesCheckMinutes = 20
+		cfg.UpdatesStaleThresholdMinutes = 90
+		cfg.HistoryWindowMinutes = 45
+		cfg.HistoryPersistEnabled = true
+		cfg.DataDir = "/srv/pimonitor-data"
+		cfg.ProcessesEnabled = true
+		cfg.ProcessesTopN = 9
+		cfg.Alerts.ForSeconds = 12
+		cfg.Thresholds.CPUWarnPercent = 77
+		notifier := newTestNotifier(t)
+
+		got := collectorConfig(cfg, notifier)
+
+		checkMappedFields(t, []mappedField{
+			{"HostnameEnabled", got.HostnameEnabled, true},
+			{"FastInterval", got.FastInterval, 7 * time.Second},
+			{"SlowInterval", got.SlowInterval, 20 * time.Minute},
+			{"HistoryCapacity", got.HistoryCapacity, cfg.HistoryCapacity()},
+			{"NetworkEnabled", got.NetworkEnabled, true},
+			{"HwmonEnabled", got.HwmonEnabled, true},
+			{"UpdatesStaleThreshold", got.UpdatesStaleThreshold, 90 * time.Minute},
+			{"DistroInfoEnabled", got.DistroInfoEnabled, true},
+			{"PiModelEnabled", got.PiModelEnabled, true},
+			{"HistoryWindow", got.HistoryWindow, 45 * time.Minute},
+			{"AlertsEnabled", got.AlertsEnabled, true},
+			{"AlertFor", got.AlertFor, 12 * time.Second},
+			{"Thresholds", got.Thresholds, cfg.Thresholds},
+			{"Notifier", got.Notifier, notifier},
+			{"ProcessesEnabled", got.ProcessesEnabled, true},
+			{"ProcessesTopN", got.ProcessesTopN, 9},
+			{"PersistPath", got.PersistPath, filepath.Join("/srv/pimonitor-data", "history.bin")},
+		})
 	})
 }
