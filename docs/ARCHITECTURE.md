@@ -483,7 +483,9 @@ future caller ever constructs a `collector.Config` without going through `Valida
 
 `-version` skips only value validation, so `pimonitor -version` reports the version even when a value in the
 config file is out of range; the file named by `-config` is still read and parsed, so a missing or unparsable file
-still fails ([Configuration](areas/configuration.md#command-line-flags)).
+still fails ([Configuration](areas/configuration.md#command-line-flags)). A fractional or non-finite value for an
+integer option still fails too, because it is checked while the file is read
+([decision 0008](decisions/0008-reject-non-finite-and-fractional-config-numbers.md)).
 
 ## Privilege separation and deployment
 

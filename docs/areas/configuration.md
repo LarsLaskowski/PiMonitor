@@ -32,6 +32,9 @@ here instead of restating them.
 - A key given twice in the same mapping is an error.
 - A value of the wrong YAML type is an error, for example a quoted string (`"5"`) for a number option or a list for a
   string option. An unquoted scalar is accepted for a string option and taken as its text.
+- A fractional or non-finite value for an integer option (`processes_top_n`, `alerts.notify_max_retries`) is an error
+  while the file is read, also when it arrives through an alias, a merge key or an explicit `!!float` tag; the
+  decoder would otherwise truncate it.
 - Only the first YAML document of the file is read; further documents after a `---` separator are ignored.
 - A file that cannot be read (missing, no permission) is an error.
 
@@ -52,7 +55,8 @@ here instead of restating them.
 - Flag parsing stops at the first argument that is not a flag; that argument and everything after it, flags
   included, are ignored without an error.
 - `-version` skips value validation, so it succeeds with a config whose values are out of range. It does not skip
-  reading the file: with `-config`, a missing, unreadable or unparsable file still fails as below.
+  reading the file: with `-config`, a missing, unreadable or unparsable file still fails as below, and so does a
+  fractional or non-finite value for an integer option, which is checked while the file is read.
 
 ### Environment
 
@@ -65,7 +69,9 @@ here instead of restating them.
 
 ### Options
 
-Types: *string*, *bool* (YAML `true`/`false`), *number* (integer or decimal), *integer*. Every range below is
+Types: *string*, *bool* (YAML `true`/`false`), *number* (integer or decimal, and finite: `.nan` and `.inf` in any case or
+sign are rejected), *integer* (may be written with a zero fraction such as `5.0` or `1e1`; a fractional value is
+rejected). Every range below is
 checked at startup; a value outside it fails startup as described under *Validation and startup failure*.
 
 #### Top level
@@ -146,6 +152,12 @@ The values of this section are validated even while `alerts.enabled` is `false`.
 
 - All values are validated once, after all four sources are merged and before anything is started; the first
   violation found ends startup.
+- The finiteness check runs first: a NaN or infinite value of any number option fails with
+  `<option> must be a finite number`, naming the key as written in the file (`thresholds.cpu_warn_percent`,
+  `alerts.webhooks[0].timeout_seconds`), before any range is compared. The two integer options are checked while the
+  file is read, before it is decoded: a non-finite value fails with the same message, a fractional one with
+  `<option> must be a whole number (got <value>)`, for example
+  `pimonitor: load config: processes_top_n must be a whole number (got 2.5)`.
 - After validation, each webhook `template` is parsed; a template that does not parse ends startup.
 - A startup failure writes one line `pimonitor: <reason>` to standard error and exits with status 1 before any
   port is opened or any metric is collected. The reason names the option, for example
@@ -169,7 +181,7 @@ The values of this section are validated even while `alerts.enabled` is `false`.
 
 ## Related decisions
 
-None yet.
+- [0008: Reject non-finite numbers, and fractional values of integer options while reading the file](../decisions/0008-reject-non-finite-and-fractional-config-numbers.md)
 
 ## Not here
 
@@ -183,7 +195,4 @@ None yet.
 
 ## Open questions
 
-- Non-finite numbers pass validation: `poll_interval_seconds: .nan` or `.inf` (YAML) is accepted, yielding a nonsensical
-  negative interval. Should every number option reject NaN and infinity?
-- A fractional value for an integer option is accepted and truncated (`processes_top_n: 2.5` becomes `2`). Should it be
-  rejected?
+None.
