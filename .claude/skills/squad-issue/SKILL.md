@@ -124,8 +124,8 @@ every Git and GitHub action yourself, including follow-up issues the Lead decide
    genuinely needs a live external system — then the PR says so.
 6. **Implement and cover.** For a change without production or test code this is the Dev's edits and the
    Tester's share the plan names (*Changes without production or test code*). Otherwise launch `squad-dev` in mode `implement` with the plan and
-   the test names. If the Dev disputes a test, launch `squad-lead` in mode `decide`; the Tester changes a test only if the Lead says
-   so. Run *Test with coverage* and the *Coverage gate* yourself. Launch `squad-tester` in mode `coverage`,
+   the test names. If the Dev disputes a test, launch `squad-lead` in mode `decide` (a fresh agent: `squad-next.py`'s step-6 output
+   names the launch); the Tester changes a test only if the Lead says so. Run *Test with coverage* and the *Coverage gate* yourself. Launch `squad-tester` in mode `coverage`,
    with the reason, only when the gate fails, the Dev reports uncovered new lines, a resource bound of the
    plan has no test yet, a deferred test or test documentation is open (also when the gate passes) or a reviewer
    asks for a test;
@@ -147,7 +147,7 @@ every Git and GitHub action yourself, including follow-up issues the Lead decide
    an *Early draft PR*, open it once the stamp passes, as that section says (`create-pr` step 8 without its review
    loop), and subscribe to its activity.
 8. **Review.** Launch the review set `squad-next.py` prints, in parallel, with the base ref, the stamp's code
-   SHA, the work folder (tiers `docs` and `patch`: the first `log.md` row) and the stamp's gate output; tell
+   SHA, the work folder (tiers `docs` and `patch`: `result.md`) and the stamp's gate output; tell
    them that later commits may only touch `specs/`, and avoid commits while the round runs (*The stop hook*). A
    report for another code head is a stale round (`squad-next.py` compares the SHA of the Reviewer's verdict line
    with the stamp). Then:
@@ -200,7 +200,7 @@ every Git and GitHub action yourself, including follow-up issues the Lead decide
     Each fix goes through steps 7–8 again (the stamp with `--stdin`, a delta review), logged at step 11 like every
     launch (`squad-next.py --launch squad-<role> <mode>` prints the exact launch), within the limit of *Loop limits*,
     and gets the re-approval of step 9. The work folder is gone: give the Reviewer, Security and the Lead
-    the plan (tiers `docs` and `patch`: the first log row; for a feature also `spec.md`, `tasks.md`) from the
+    the plan (tiers `docs` and `patch`: `result.md`; for a feature also `spec.md`, `tasks.md`) from the
     working-record comment or `git show
     <commit-before-removal>:specs/<folder>/<file>`, and edit that comment in one batch. Never skip, disable or
     weaken a test to get green.
@@ -209,7 +209,8 @@ every Git and GitHub action yourself, including follow-up issues the Lead decide
     contradictory rule, a misbehaving tool, an agent that could not be launched, a step you had to improvise —
     each with the role it concerns and a concrete proposal, and check your log for the lesson candidates of *Squad
     lessons* (`squad-log.py … --summary` lists those it finds while the lessons row is missing). File the lessons
-    and log the lessons row as *Squad lessons* says, and link them from the working-record comment. Run
+    with the label `lesson-label.py` prints for the files each fix changes, and log the lessons row as *Squad
+    lessons* says, and link them from the working-record comment. Run
     `python3 .squad/tools/squad-log.py issue-<number> --summary` (`--stdin` with the comment's log table) until it
     exits 0, completing what another exit code names (`--help`): launch rows without usage, commits after the PR
     without a step-11 delta review or verbatim row, the lessons row, a passing gate stamp (step 7). Append the tables

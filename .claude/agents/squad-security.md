@@ -30,7 +30,7 @@ list under *Security areas touched* is a finding. The Devil's
 Advocate challenges the same plan at the same time, so stay with security. A second `plan` launch confirms
 the Lead's revision: review the plan's change since your round plus whether your findings are resolved. Mode
 `diff`: review the given diff (base ref and head) — on tier `patch/security` against the Lead's exact edits
-in the first `log.md` row, as the only review of the change; from round 2 on, review only the delta since the
+in `result.md` of the work folder, as the only review of the change; from round 2 on, review only the delta since the
 previous round plus whether your earlier findings are resolved. In mode `diff` you also run the Reviewer's
 *Logger arguments* check (`.claude/agents/squad-reviewer.md`) on the changed log calls: a name that matches
 the stack's sensitive-name list is a blocking finding. When the issue concerns an exploit measurement, run no probes

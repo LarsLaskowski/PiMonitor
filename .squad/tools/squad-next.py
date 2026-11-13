@@ -125,6 +125,10 @@ NOTE = r"(?:\s*\((?:[^()]|\([^()]*\))*\))?"
 REVIEW = re.compile(r"VERDICT:\s*(?:(?P<approve>APPROVE)\b(?!D)" + NOTE + r"|BLOCKING\s+(?P<blocking>\d+)" + NOTE +
                     r"(?:\s*\\?\|\s*NON-BLOCKING\s+(?P<nonblocking>\d+)" + NOTE + r")?|NON-BLOCKING\s+(?P<only>\d+)"
                     + NOTE + r")(?:\s+on\s+`?(?P<sha>[0-9a-f]{7,40})\b)?", re.I)
+# A Lead result that keeps a spec over its size warning and says why (`kept the length: …`, `size: …`).
+SIZE_REASON = re.compile(r"\b(?:size|length|word count|words)\b", re.I)
+# The ` on <sha>` that ends a Reviewer's verdict clause.
+VERDICT_SHA = re.compile(r"\bon\s+`?[0-9a-f]{7,40}\b")
 SECURITY_VERDICT = re.compile(r"VERDICT:\s*(APPROVED|CHANGES_REQUIRED)", re.I)
 OBJECTIONS = re.compile(r"VERDICT:\s*(?:(?P<none>NO OBJECTIONS)|OBJECTIONS\s+(?P<major>\d+)\s+major" + NOTE +
                         r",\s*(?P<minor>\d+)\s+minor)", re.I)
@@ -427,10 +431,12 @@ def verdict_problem(agent, result):
 
 def partial_review(found, result):
     """True when a Reviewer's verdict line holds a non-blocking count or a code SHA the match left out: a note the
-    pattern cannot read cut it short."""
+    pattern cannot read cut it short. A non-blocking count is looked for in the verdict clause only (up to ` on
+    <sha>`): "no blocking or non-blocking findings" after it is prose (PiMonitor#215, Censio#185)."""
     line = result[found.start():].split("\n", 1)[0]
-    lost_count = "NON-BLOCKING" in line.upper() and found.group("nonblocking") is None and found.group("only") is None
-    lost_sha = re.search(r"\bon\s+`?[0-9a-f]{7,40}\b", line) is not None and found.group("sha") is None
+    clause = VERDICT_SHA.split(line, 1)[0].upper()
+    lost_count = "NON-BLOCKING" in clause and found.group("nonblocking") is None and found.group("only") is None
+    lost_sha = VERDICT_SHA.search(line) is not None and found.group("sha") is None
     return lost_count or lost_sha
 
 
@@ -551,7 +557,10 @@ def spec_check(run, challenge):
     if (challenge and run.of(LEAD, {"2b"})) or not os.path.isdir(run.folder):
         return None
     errors, warnings = plan_check().check_spec_only(run.folder)
-    sized = run.of(LEAD, {"2a"}, word="size")
+    # Vandox#440: a reason for the length in the Lead's last result settles the warning without another launch.
+    # The first spec row was written before the warning was shown: only a later row's reason counts.
+    sized = run.of(LEAD, {"2a"}, word="size") or [row for row in run.of(LEAD, {"2a"})[1:][-1:]
+                                                  if SIZE_REASON.search(row.result)]
     if not errors and (not warnings or sized):
         return None
     since = max([row.index for row in challenge + run.of(MANAGER, {"2a"})] + [-1])
@@ -654,7 +663,36 @@ def plan_findings(run):
         return lines + launch(run, LEAD, "decide", f"{run.plan_step} Decide (plan-check)",
                               "the findings left after two revisions: it fixes them or escalates")
     scope = "the findings only, the approved scope unchanged" if approved is not None else "the findings only"
+    if approved is None and open_plan_verdicts(run):
+        # DockerUpdateGuard#439: plan check and challenge came back together; one revision answers both, and
+        # `revision` counts its row as the answer to the challenge and to Security.
+        scope = ("the findings, all objections (minor ones included) and Security's CHANGES_REQUIRED findings logged "
+                 "before it: one revision answers them together")
     return lines + launch(run, LEAD, "revise", f"{run.plan_step} Plan revise (plan-check)", f"{scope} (no challenge round)")
+
+
+def plan_revisions(run):
+    """The Lead's revise and decide rows of the plan; a plan-check revise only when it answered the verdicts too."""
+    return [row for row in run.of(LEAD, {run.plan_step, "2", "3"}) if re.search(r"revise|decide", row.step, re.I)
+            and (not re.search("plan-check", row.step, re.I) or answers_verdicts(run, row))]
+
+
+def answers_verdicts(run, revise):
+    """True when a plan-check revise came after a major objection or a CHANGES_REQUIRED: its hand-over named them, so
+    it answers them too (DockerUpdateGuard#439); otherwise it answers the findings alone."""
+    return any(row.index < revise.index for row in open_plan_verdicts(run, before=revise.index))
+
+
+def open_plan_verdicts(run, before=None):
+    """The plan challenge's major objections and Security's CHANGES_REQUIRED that no Lead revision (before the row
+    index `before`, when given) answered yet."""
+    revised = max([row.index for row in run.of(LEAD, {run.plan_step, "2", "3"})
+                   if re.search(r"revise|decide", row.step, re.I) and (before is None or row.index < before)] + [-1])
+    challenge = [row for row in run.of(ADVOCATE, {run.plan_step, "2"}) if row.index > revised
+                 and (objections(row) or (0, 0))[0]]
+    rejected = [row for row in run.of(SECURITY, {"3"}) if row.index > revised
+                and security_verdict(row) == "CHANGES_REQUIRED"]
+    return challenge + rejected
 
 
 def challenge_and_security(run):
@@ -693,8 +731,7 @@ def revision(run, challenge, reviews, security_due):
             "  a major objection or CHANGES_REQUIRED: the Lead (mode revise) with all of them; minor objections only: "
             "append them verbatim as *Challenge notes*; APPROVED with notes: append them as *Security notes* (both with "
             f"{NOTES_TOOL})"]
-    revisions = [row for row in run.of(LEAD, {run.plan_step, "2", "3"}) if re.search(r"revise|decide", row.step, re.I)
-                 and not re.search("plan-check", row.step, re.I)]
+    revisions = plan_revisions(run)
     answered = [row for row in revisions if reviews and row.index > reviews[-1].index]
     rejected = bool(security) and security[-1] == "CHANGES_REQUIRED" and not answered
     major_open = bool(verdict[0]) and not [row for row in revisions if row.index > challenge[-1].index]
@@ -776,6 +813,28 @@ def group_owners(run, group):
             if check.cell_at(row, index) == group:
                 found |= check.owners(check.cell_at(row, owner))
     return found
+
+
+def trivial_tests_first(run, group, tag, rows):
+    """Tier trivial: tests first when tasks.md puts the group's Tester rows before the Dev's (Vandox#440)."""
+    if run.base_tier != "trivial" or not tester_first(run, group) or tests_first_ended(run, group):
+        return None
+    return heading(f"step 5 — Tests first{tag} (tier trivial: tasks.md puts the Tester first)") + launch(
+        run, TESTER, "tests-first", f"5 Tests first{tag}", f"{rows}, the tests of *Tests per criterion*, "
+        f"{BASE_HANDOVER}")
+
+
+def tester_first(run, group):
+    """True when the first task row of `group` that names the Dev or the Tester names the Tester (and not the Dev)."""
+    check = plan_check()
+    for header, rows in check.tables(run.tasks or ""):
+        index, owner = check.column(header, "group"), check.column(header, "owner")
+        for row in rows:
+            named = check.owners(check.cell_at(row, owner)) & {"dev", "tester"} if check.cell_at(row, index) == group \
+                else set()
+            if named:
+                return named == {"tester"}
+    return False
 
 
 def task_rows(tasks):
@@ -911,6 +970,9 @@ def group_step(run, group, skeleton, docs_only=False):
                                        "  Not due when the group adds no production behaviour (a limit change that "
                                        "was not due, say): " + orchestrator_log(
                                            run, f"5 Tests first skipped{tag}", "skipped — <why>").strip()]
+    trivial = trivial_tests_first(run, group, tag, rows)
+    if trivial:
+        return trivial
     if run.base_tier == "tests":
         if not group_rows(run, TESTER, "6", group):
             return heading(f"step 6 — the Tester writes the plan's tests{tag} (tier tests: no Dev)") + launch(
@@ -922,10 +984,19 @@ def group_step(run, group, skeleton, docs_only=False):
             run, DEV, "implement", f"6 Implement{tag}", f"{rows}, the test names (the deferred ones marked), "
             f"{BASE_HANDOVER}") + [
             "  Not due when steps 4 and 5 left the group no production code to write (the skeleton was the whole "
-            "change): " + orchestrator_log(run, f"6 Implement skipped{tag}", "skipped — <what steps 4–5 did>").strip()]
+            "change): " + orchestrator_log(run, f"6 Implement skipped{tag}", "skipped — <what steps 4–5 did>").strip(),
+            decide_pointer(run, tag)]
     if not coverage_ended(run, group):
-        return coverage_pass(run, tag, rows, deferred_tests(run, group))
+        return coverage_pass(run, tag, rows, deferred_tests(run, group)) + [decide_pointer(run, tag)]
     return None
+
+
+def decide_pointer(run, tag):
+    """Where a step-6 question for the Lead goes: a disputed test or lines reported as not unit-testable are a Lead
+    `decide`, a fresh launch the orchestrator would otherwise make without this tool (Censio#180)."""
+    return (f"  A disputed test or lines reported as not unit-testable: the Lead in mode decide, step \"6 Decide{tag}\" — "
+            f"`python3 .squad/tools/squad-next.py {run.name} --launch squad-lead decide` prints the launch (a fresh "
+            "agent, never a continuation of the spec or plan agent)")
 
 
 def documentation_group(run, group, tag):
@@ -995,10 +1066,11 @@ def quick_edits(run):
     if stamp_tool().branch_changes_code(run.root) or stamp_tool().uncommitted(run.root):
         return None
     extra = ["  For patch: when the Lead names a test to add, launch squad-tester once (the only extra launch):"] + \
-        launch(run, TESTER, "coverage", "2 Patch test", f"the Lead's result row and the test it names, {BASE_HANDOVER}") \
+        launch(run, TESTER, "coverage", "2 Patch test", f"result.md and the test it names, {BASE_HANDOVER}") \
         if run.base_tier == "patch" else []
     return heading(f"tier {run.tier} — apply the Lead's exact edits (*Tiers*)") + [
-        DO + "apply the edits of the Lead's result row yourself, run *Format* on them, commit"] + extra + [
+        DO + f"write the Lead's whole result to result.md with `python3 {NOTES_TOOL} {run.name} result --agent-id <the "
+        "Lead's id>` (never retyped), apply its edits yourself, run *Format* on them, commit"] + extra + [
         THEN + "the gate stamp (step 7)"]
 
 
@@ -1153,6 +1225,24 @@ def early_pr(run):
         orchestrator_log(run, "7 Early draft PR", "<PR url>")]
 
 
+def manual_check(run):
+    """Before the review set: a criterion the plan verifies by a manual test (`manual:`, a Product Manager's dry run)
+    runs on the stamped head first, so a document the run corrects is reviewed once (Censio#176, Vandox#440)."""
+    if run.after_pr or run.plan is None or run.base_tier in ("docs", "patch") or not stamp_ok(run):
+        return None
+    if run.of(MANAGER, {"7", "8", "9"}, word="manual") or any(review_rows(run, agent, -1) for agent, _ in review_set(run)):
+        return None
+    planned = plan_check().planned_verifications(plan_check().sections(run.plan))
+    manual = sorted((criterion for criterion, row in planned.items() if row[0] == "manual"),
+                    key=plan_check().criterion_number)
+    if not manual:
+        return None
+    return heading(f"step 7 — the manual test of {', '.join(manual)} before the review") + [
+        DO + "ask the Product Manager (or the stand-in the plan names) to run it on the stamped head, as the plan "
+        "says, and wait; a document the run corrects is committed and stamped again before step 8",
+        f"  Log: {LOG_TOOL} {run.name} \"7 Manual test\" \"Product Manager\" \"<the result per criterion>\""]
+
+
 def review_set(run):
     """The launches of a review round by tier (*Tiers*): (agent, mode)."""
     if run.tier == "patch/security":
@@ -1263,16 +1353,21 @@ def unmatched_review(run, stamp_index, rows):
 
 def names_stamped_code(run, sha, stamp):
     """True when the SHA a Reviewer names is the stamp's, or a commit with the same code (one that touched only
-    `specs/` after it)."""
+    `specs/` after it), or a later commit that adds only documentation to the stamped code: the Reviewer read the
+    stamped code and the documentation edit with it (Censio#176)."""
     if stamp.startswith(sha.lower()):
         return True
-    return stamp_tool().git(run.root, "diff", "--quiet", stamp, sha, *stamp_tool().OUTSIDE_SPECS)[0] == 0
+    tool = stamp_tool()
+    if tool.git(run.root, "diff", "--quiet", stamp, sha, *tool.OUTSIDE_SPECS)[0] == 0:
+        return True
+    later = tool.git(run.root, "merge-base", "--is-ancestor", stamp, sha)[0] == 0
+    return later and tool.documentation_only(run.root, stamp, sha)
 
 
 def work_record(run):
     """What the reviewers read of the work folder."""
     if run.base_tier in ("docs", "patch"):
-        record = "the first log.md row"
+        record = "result.md (the Lead's whole result; the first log.md row carries its RESULT line)"
     else:
         record = "spec.md, plan.md and tasks.md" if run.feature else "plan.md"
     return record + (" from the working-record comment" if run.after_pr else "")
@@ -1454,7 +1549,8 @@ def finished(run):
 
 
 STAGES = (intake, escalation, waiting, no_change, spec_stage, plan_written, challenge_and_security, code_steps,
-          quick_edits, matrix_check, code_check, early_pr, review, approval, pull_request, after_pr, wrap_up, finished)
+          quick_edits, matrix_check, code_check, early_pr, manual_check, review, approval, pull_request, after_pr, wrap_up,
+          finished)
 
 
 def run_header(run):

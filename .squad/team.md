@@ -76,7 +76,8 @@ no security boundary: an interpreter or a shell redirect gets past them, and the
 
 **Reporting against a SHA.** Before the PR the orchestrator may commit your edits as work in progress while
 you work (`orchestration.md`, *The stop hook*), so a clean `git status` at hand-back is expected: report your
-changes against the head SHA you were given (`git diff <sha>`).
+changes against the head SHA you were given (`git diff <sha>`). Your report is one final reply (or one
+`SubagentHandback` call where the harness offers it), never split across several.
 
 **A real check before "done".** A change to code that can be run, built or type-checked is exercised by a
 real check before it is reported done: the project's tests, type-checker or build, or the changed command

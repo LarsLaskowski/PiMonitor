@@ -31,6 +31,8 @@ Mode `tests-first`:
    base input), never as an absolute duration; the limit is at least three times the highest ratio you
    measured, with the instrumentation of *Test with coverage* included (`docs/UNIT_TESTS.md`).
    A case about an escape keeps its backslash on disk and asserts it (*Escapes in files* in `.squad/team.md`).
+   Test code meets the analyzer's cognitive-complexity limit like production code (SonarQube analyzes the tests
+   too): keep a table test's body flat, with helpers for setup and result collection instead of nesting in its loop.
    For a documented shell procedure derive the cases from the plan's list of what happens when the lines are
    pasted at once or one at a time, one fails or a variable is lost; a test that reads a repository document
    normalizes `\r\n` (`docs/UNIT_TESTS.md`); for a script only CI can run, run the local smoke substitute
