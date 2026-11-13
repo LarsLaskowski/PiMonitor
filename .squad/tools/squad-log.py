@@ -23,7 +23,9 @@ mechanics out of the orchestrator's hands:
   `.squad/orchestration.md`, *Launch model* (read against the *Tier* line of the folder's `plan.md`), the row is
   written with what the launch ran on and a warning names the difference. An agent whose transcript holds more
   than one round was continued: its latest round is logged with `--continued` or `--continued-from`, a single
-  round without them;
+  round without them. A round logged late, after the agent was already continued (a Lead's `ESCALATE` answered by
+  a continuation before its row was written), is logged with `--round N`, its N-th round: round 1 as the fresh
+  launch, a later one with `--continued`;
 - outside Claude Code (no transcript), the notification path: `--agent squad-<role>` (model and effort read from
   `.claude/agents/squad-<role>.md`, so nothing is typed from memory) or `--launch MODEL/EFFORT` (a launch that
   overrode the agent file; a default override of *Launch model* is refused with `--agent`), with
@@ -897,6 +899,9 @@ def build_parser():
                              "it as unreported (with --agent or --launch, without numbers)")
     parser.add_argument("--agent-id", metavar="ID", help="the launched agent's id (the Agent tool's result): model, "
                         "effort, tokens per kind, tool uses and seconds of its latest round come from its transcript")
+    parser.add_argument("--round", type=int, metavar="N", help="with --agent-id: log the agent's N-th round instead "
+                        "of its latest (a round logged late, after the agent was continued; round 1 is the fresh "
+                        "launch, a later one is logged with --continued)")
     parser.add_argument("--session", metavar="SESSION", help="the Claude Code session whose transcripts --agent-id "
                         "and --summary read (default: CLAUDE_CODE_SESSION_ID)")
     parser.add_argument("--agent", metavar="squad-ROLE", help="the launched agent; model and effort come from its file")
@@ -1008,8 +1013,10 @@ def transcript_launch(parser, root, args, path):
                  "or --session): outside Claude Code, log the launch from its task notification (--agent with "
                  "--tokens, --tool-uses and --seconds)")
     agent = transcript_agent(parser, args, reader.agent_type(found))
-    check_rounds(parser, args, len(rounds))
-    last = rounds[-1]
+    if args.round is not None and not 1 <= args.round <= len(rounds):
+        parser.error(f"agent '{args.agent_id}' ran {len(rounds)} round(s): --round {args.round} names none of them")
+    check_rounds(parser, args, args.round or len(rounds))
+    last = rounds[(args.round or len(rounds)) - 1]
     expected, overridden = expected_launch(root, path, agent)
     model = max(last["models"], key=last["models"].get)
     effort = last["effort"] or (expected.split("/", 1)[1] if expected else "default")
@@ -1033,7 +1040,8 @@ def transcript_agent(parser, args, recorded):
 
 
 def check_rounds(parser, args, count):
-    """A new row of an agent with several rounds is a continuation, one of an agent with one round a fresh launch."""
+    """A new row of an agent with several rounds is a continuation, one of an agent with one round a fresh launch;
+    with `--round N`, the round logged is the N-th (`count`), so round 1 is the fresh launch."""
     if args.amend_last or args.replace_last:
         return
     continued = args.continued or args.continued_from is not None
@@ -1377,6 +1385,9 @@ def run_on_stdin(parser, args, root):
     removed `log.md` it lacks in front of it; a command that changes it prints the result to standard error and the
     piped log with its change to standard output."""
     piped = sys.stdin.buffer.read()
+    if piped.strip() and not piped.endswith(b"\n"):
+        # A table copied from a comment ends without a line break: the new row would join its last line (Vandox#440).
+        piped += b"\r\n" if b"\r\n" in piped else b"\n"
     prefix = earlier_rows(root, args.folder, piped.decode("utf-8-sig", "replace")).encode()
     with tempfile.TemporaryDirectory() as directory:
         path = os.path.join(directory, "log.md")
@@ -1403,6 +1414,8 @@ def main():
     args.member = canonical_member(args.member)
     args.amend_last = canonical_member(args.amend_last)
     args.replace_last = canonical_member(args.replace_last)
+    if args.round is not None and not args.agent_id:
+        parser.error("--round names a round of the transcript --agent-id reads")
     toplevel = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True, check=False)
     root = toplevel.stdout.strip() if toplevel.returncode == 0 else os.getcwd()
     if args.stdin:

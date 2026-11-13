@@ -994,7 +994,7 @@ def matrix_table(folder):
     errors = []
     plan = read(os.path.join(folder, PLAN), errors)
     if plan is None:
-        return ["plan.md is missing (tiers docs and patch have no matrix: the first log.md row holds their criteria)"], \
+        return ["plan.md is missing (tiers docs and patch have no matrix: result.md holds their criteria)"], \
             1, 0
     spec = read(os.path.join(folder, SPEC), errors)
     parts = sections(plan)

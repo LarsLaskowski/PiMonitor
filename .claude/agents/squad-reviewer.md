@@ -78,8 +78,8 @@ is blocking), and report as findings:
   production or test code* in `.squad/routing.md`);
 - a tier too low for what the diff touches (blocking; you may raise it, never lower it — *Tiers* in
   `.squad/routing.md`): a diff that creates, changes or removes a security control is `security`; for `patch`
-  (the first `log.md` row holds tier, exact edits and criteria) the diff holds only the named edits, no logic
-  change, no new dependency, permission or schema, each edit covered by the check the row names. A security
+  (`result.md` of the work folder holds tier, exact edits and criteria) the diff holds only the named edits, no logic
+  change, no new dependency, permission or schema, each edit covered by the check `result.md` names. A security
   area the diff touches that *Security areas touched* does not list is a finding *unlisted security area*
   (*Unlisted security areas* in `.squad/orchestration.md`; tiers with a `plan.md` — `patch/security` goes to Security
   anyway); a touch that changes nothing an attacker could use (a log wording, a rename, a moved line) you clear

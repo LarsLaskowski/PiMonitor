@@ -11,9 +11,14 @@ line is refused: it is narration, not the report. Its closing `VERDICT:` line st
 everything else is written as the member wrote it, under `## Challenge notes` or `## Security notes` at the end of the
 document, or below that section's last line when the document has it already. The line ending follows the file.
 
+Kind `result` writes the Lead's whole report of tiers `docs` and `patch` (tier, exact edits, criteria) as
+`result.md` of the work folder instead, replacing an earlier one: a one-line log row cannot hold an exact edit with a
+code block, and the Reviewer reads the diff against this file (Censio#185). It needs the report's `RESULT:` line and
+keeps it.
+
 Usage, from the repository root:
-    python3 .squad/tools/squad-notes.py <folder> challenge|security --agent-id <id> [--spec]
-    python3 .squad/tools/squad-notes.py <folder> challenge|security --stdin [--spec] < report.md
+    python3 .squad/tools/squad-notes.py <folder> challenge|security|result --agent-id <id> [--spec]
+    python3 .squad/tools/squad-notes.py <folder> challenge|security|result --stdin [--spec] < report.md
 
 `<folder>` is the work folder under `specs/` (`issue-12`, `feature-7-export`); `--spec` writes to `spec.md` (a spec
 challenge's minor objections) instead of `plan.md`. Exit code 0 when the notes were written, 1 otherwise.
@@ -26,7 +31,9 @@ import subprocess
 import sys
 
 HEADINGS = {"challenge": "## Challenge notes", "security": "## Security notes"}
+RESULT = "result"
 VERDICT_LINE = re.compile(r"^\s*\**VERDICT:.*$")
+RESULT_LINE = re.compile(r"^\s*\**RESULT:.*$")
 HANDBACK = "SubagentHandback"
 SPECS_PREFIX = "specs/"
 _TRANSCRIPTS = []
@@ -78,9 +85,9 @@ def handback(message):
 def latest_round(path):
     """The assistant messages of the agent's latest round, oldest first (one record per content block)."""
     reader = transcripts()
-    messages = []
+    messages, splitter = [], reader.Rounds()
     for record in reader.records(path):
-        if reader.is_message_to_agent(record):
+        if splitter.starts(record, bool(messages)):
             messages = []
         elif record.get("type") == "assistant" and isinstance(record.get("message"), dict):
             messages.append(record["message"])
@@ -143,7 +150,7 @@ def with_notes(text, heading, body):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("folder")
-    parser.add_argument("kind", choices=sorted(HEADINGS))
+    parser.add_argument("kind", choices=sorted([*HEADINGS, RESULT]))
     source = parser.add_mutually_exclusive_group(required=True)
     source.add_argument("--agent-id", help="read the report from this agent's transcript")
     source.add_argument("--stdin", action="store_true", help="read the report from standard input")
@@ -152,6 +159,8 @@ def main(argv=None):
     args = parser.parse_args(argv)
     toplevel = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True, check=False)
     root = toplevel.stdout.strip() if toplevel.returncode == 0 else os.getcwd()
+    if args.kind == RESULT:
+        return write_result(root, args)
     name = "spec.md" if args.spec else "plan.md"
     path = document(root, args.folder, name)
     if path is None:
@@ -173,6 +182,26 @@ def main(argv=None):
     with open(path, "wb") as handle:
         handle.write(text.replace("\n", eol).encode("utf-8"))
     print(f"{HEADINGS[args.kind]} of {os.path.relpath(path, root)}: {len(body.splitlines())} line(s) written verbatim")
+    return 0
+
+
+def write_result(root, args):
+    """Kind `result`: the Lead's report as `result.md` next to the folder's `log.md`, verbatim."""
+    log = document(root, args.folder, "log.md")
+    if log is None or args.spec:
+        print(f"No log.md in specs/{args.folder}" if log is None else "--spec goes with challenge or security")
+        return 1
+    report = sys.stdin.read() if args.stdin else transcript_report(args.agent_id, args.session)
+    if not any(RESULT_LINE.match(line) for line in report.splitlines()):
+        print("The report carries no RESULT line: it is not the Lead's result; nothing written")
+        return 1
+    with open(log, "rb") as handle:
+        eol = "\r\n" if b"\r\n" in handle.read() else "\n"
+    body = "\n".join(line.rstrip() for line in report.strip().replace("\r\n", "\n").splitlines())
+    path = os.path.join(os.path.dirname(log), "result.md")
+    with open(path, "wb") as handle:
+        handle.write((body + "\n").replace("\n", eol).encode("utf-8"))
+    print(f"{os.path.relpath(path, root)}: the Lead's result, {len(body.splitlines())} line(s) written verbatim")
     return 0
 
 

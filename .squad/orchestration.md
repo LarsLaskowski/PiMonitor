@@ -47,7 +47,7 @@ profile):
 
 - **Managed** — overwritten on every refresh: `CLAUDE.md`, `.squad/team.md`, `.squad/routing.md`,
   `.squad/orchestration.md`,
-  `.squad/tools/` except `squad_settings.py`, `.claude/agents/squad-*.md`, `.claude/hooks/`, the template's
+  `.squad/tools/` except `squad_settings.py`, a profile's shared rule files (`.squad/*-rules.*`), `.claude/agents/squad-*.md`, `.claude/hooks/`, the template's
   skills, `.github/ISSUE_TEMPLATE/feature_request.md`, the `_template.md` files of `docs/decisions/` and
   `docs/areas/`, `docs/decisions/process.md` (the squad's process decisions), `specs/README.md` and
   `specs/_template/`.
@@ -63,12 +63,16 @@ profile):
 ## Squad lessons
 
 Every lesson from step 12 is filed once, as an issue in **this** repository (no other repository's access is needed),
-labelled by where it can actually be fixed:
+labelled by where it can actually be fixed. The label comes from the files the lesson's fix changes: `python3
+.squad/tools/lesson-label.py <path> … --issue <number>` prints it and the title, never chosen by hand. A lesson about
+the squad's rules, agents, skills or tools is `squad-upstream` — they are managed files, `.squad/tools/` among them:
 
 | The lesson concerns | Label | Fixed by |
 | ------------------- | ----- | -------- |
 | a **managed** file, or the template part of a **marked** file | `squad-upstream`, titled `[Squad] <lesson> (from <this repository>#<issue>)` and linking the run | the template repository (`repository` in `.squad/template.json`) — never worked here, and never a local edit, which the next refresh overwrites |
-| **project knowledge**: `.squad/stack.md`, `.squad/project.md`, `squad_settings.py`, a `<!-- project:… -->` block, another seeded file | `squad` | a squad-maintenance PR here, checked with `.squad/tools/config-check.py` |
+| only **project knowledge**: `.squad/stack.md`, `.squad/project.md`, `squad_settings.py`, a `<!-- project:… -->` block, another seeded file | `squad` | a squad-maintenance PR here, checked with `.squad/tools/config-check.py` |
+
+A lesson with both parts is split into one issue per label, each naming the other.
 
 No lesson: a SonarQube rule the local analyzers do not report (the Code Officer notes it in `stack.md` in the
 same change), and a stop hook's demand for a commit (*The stop hook*).

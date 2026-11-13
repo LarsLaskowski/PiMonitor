@@ -27,8 +27,8 @@ cells in `log.md`); steps 4–12 follow `squad-issue` with the changes listed af
 2a. **Spec.** Launch `squad-lead` in mode `spec` with the issue text (or the user's description) and the work
    folder. It writes `spec.md` from `specs/_template/spec.md` and returns `RESULT: DONE`, `RESULT: NO CHANGE`
    (the feature exists already or contradicts an accepted decision: with an issue, as *Outcome "no change"*;
-   otherwise report it to the user) or `RESULT: ESCALATE` (relay the question verbatim, then continue the Lead
-   with the answer). `squad-next.py` runs `plan-check.py --spec` after every Lead write and sends findings back as
+   otherwise report it to the user) or `RESULT: ESCALATE` (log its row, relay the question verbatim, then continue the
+   Lead with the answer; a round logged late takes `squad-log.py --round N`). `squad-next.py` runs `plan-check.py --spec` after every Lead write and sends findings back as
    *Loop limits* (Plan check) says, and its size warning once: the Lead shortens the spec, or keeps it and gives the
    reason in its result, which you log. A small feature's spec (mode `spec`
    in `squad-lead.md`) runs the same steps. A feature whose change is documentation only gets `RESULT: DONE` with
