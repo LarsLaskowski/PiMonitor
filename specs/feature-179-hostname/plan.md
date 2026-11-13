@@ -49,8 +49,8 @@ Feature: see [spec.md](spec.md), *Problem*.
 | AC4 | `TestIndexHTML_HostnameInHeader`: "AC4 hidden host name element directly after the brand"; `TestAppJS_HostnameRenderedPerSnapshot`: "AC4 header element toggled and filled", "AC4 rendered only from renderMetrics"; `TestStyleCSS_HostnameStyle`: "AC4 muted normal-weight style"; manual: Product Manager, local `make build` of the branch head (below) | `internal/web/hostname_test.go` |
 | AC5 | `TestAppJS_HostnameRenderedPerSnapshot`: "AC5 tab title with and without a host name"; manual (below) | `internal/web/hostname_test.go` |
 | AC6 | `TestIndexHTML_HostnameRowFirstInSystemCard`: "AC6 hidden Hostname row is the card's first row"; `TestAppJS_HostnameRenderedPerSnapshot`: "AC6 row toggled and filled" | `internal/web/hostname_test.go` |
-| AC7 | `TestAppJS_HostnameOnlyAsText`: "AC7 renderHostname uses no HTML sink"; the existing `internal/web/xss_test.go` passes unchanged; manual case 4 (below) | `internal/web/hostname_test.go` |
-| AC8 | `TestStyleCSS_HostnameStyle`: "AC8 name truncates with an ellipsis", "AC8 brand column may shrink"; manual case 3 (below) | `internal/web/hostname_test.go` |
+| AC7 | `TestAppJS_HostnameOnlyAsText` on the extracted body of `function renderHostname`: "AC7 every statement is an allowed write" (each statement is one of `setText(`, `document.title =`, `.title = name`, `.classList.toggle(`), "AC7 no HTML or script sink" (none of `innerHTML`, `outerHTML`, `insertAdjacentHTML`, `document.write`, `createContextualFragment`, `DOMParser`, `parseFromString`, `setHTMLUnsafe`, `srcdoc`, `setAttribute(`, `eval(`, `Function(`); the existing `internal/web/xss_test.go` passes unchanged; manual case 4 (below) | `internal/web/hostname_test.go` |
+| AC8 | `TestStyleCSS_HostnameStyle`: "AC8 name truncates with an ellipsis" (`.header-hostname-name` has `overflow: hidden`, `text-overflow: ellipsis`, `white-space: nowrap`, `min-width: 0`, `flex: 0 1 auto`), "AC8 header row and name wrapper are flex rows that may shrink" (`header h1` and `.header-hostname` each `display: flex` with `min-width: 0`), "AC8 brand column may shrink" (`.header-brand { min-width: 0; }`); manual case 3 (below) | `internal/web/hostname_test.go` |
 
 **Manual test** (step 7, `7 Manual test`, by the Product Manager, on a local build of the branch head: `make build`,
 then `bin/pimonitor -config <copy of packaging/pimonitor.example.yaml>` on a Linux machine, browser at
@@ -60,7 +60,8 @@ then `bin/pimonitor -config <copy of packaging/pimonitor.example.yaml>` on a Lin
    `Hostname` first row of the System card (AC4, AC5, AC6).
 2. `hostname_enabled: false`: header, tab title and card as on `main` (AC3–AC6).
 3. A 64-character name: `sudo unshare --uts sh -c 'hostname <64 characters>; exec bin/pimonitor -config …'`; at
-   375 px the name ends in `…`, hovering shows the full name, the buttons stay on the header's row (AC8).
+   375 px the name ends in `…` followed by the visible `)`, hovering shows the full name, the buttons stay on the
+   header's row (AC8).
 4. The name `<b>pi</b>` the same way: shown literally in header, tooltip, card and tab (AC7).
 
 **After merge:** the Product Manager confirms fact 11 on a Pi with the installed unit (verification issue, step 10).
@@ -103,11 +104,14 @@ together with the `PersistPath` assignment, and gains `HostnameEnabled: cfg.Host
     setText('sys-hostname', name);
   }
   ```
-- `style.css`: `.header-brand { min-width: 0; }`; `.header-hostname` with `font-weight: normal`,
-  `color: var(--muted)`, `margin-left: 0.35em`; `.header-hostname-name` with `overflow: hidden`,
-  `text-overflow: ellipsis`, `white-space: nowrap`. Any further layout property needed for the truncation to take
-  effect (`display`, `min-width`, `max-width`, flex on `h1`) is the Dev's, checked by manual case 3. The System card
-  row wraps through the existing `.kv-val { overflow-wrap: anywhere }`.
+- `style.css`: `.header-brand { min-width: 0; }`; `header h1` gains `display: flex`, `align-items: baseline`,
+  `min-width: 0`, `white-space: nowrap`; `.header-hostname` with `display: flex`, `min-width: 0`,
+  `font-weight: normal`, `color: var(--muted)`, `margin-left: 0.35em`; `.header-hostname-name` with
+  `flex: 0 1 auto`, `min-width: 0`, `overflow: hidden`, `text-overflow: ellipsis`, `white-space: nowrap`. The
+  parentheses are text nodes of the flex wrapper, outside the shrinking name, so the closing `)` stays visible; the
+  `.hidden` class (`display: none !important`) still removes the whole wrapper. Further properties are the Dev's,
+  checked by manual cases 2 (header as today without a name) and 3. The System card row wraps through the existing
+  `.kv-val { overflow-wrap: anywhere }`.
 
 The static tests compare these strings literally (whitespace inside a line as written here; the en dash is U+2013,
 written as the character).
@@ -173,6 +177,7 @@ Files no unit test can cover: `internal/web/assets/index.html`, `app.js`, `style
 - Metrics: `system.hostname`, and the host name as the one system identity value whose failure is logged.
 - Configuration: the `hostname_enabled` row.
 - Dashboard: header, tab title, System card row, truncation, failures.
+- Deployment: the `ProtectHostname` row names its effect on the published host name.
 
 ## Documentation updates
 
@@ -195,6 +200,9 @@ All by the Dev, once the code is green:
   (`docs/API.md:347-350`) adds that `system.hostname` may be briefly absent.
 - `packaging/pimonitor.example.yaml`: `hostname_enabled: true` after `pi_model_enabled`, with a comment that the
   host name appears in the dashboard and the API, which needs no key unless `api_key` is set.
+- `docs/areas/deployment.md:77`, the `ProtectHostname` row's *Effect* cell: add that the service keeps the host name
+  it had at start, so `system.hostname` shows a rename only after a service restart
+  ([Metrics](metrics.md#system-identity-and-uptime)).
 - `README.md`, *Features*: "System identity - host name, kernel version, OS distribution, Raspberry Pi model".
 - `AGENTS.md` (project block `overview`) and `.github/copilot-instructions.md`, the same sentence in both
   (`config-check.py`): "(... kernel version," becomes "(... host name, kernel version,". If the file guard denies
@@ -229,78 +237,24 @@ service gains no privilege (the file is world-readable). `docs/ARCHITECTURE.md` 
 
 As the spec's *Out of scope*; no follow-up issue.
 
-## Security notes
+## Challenge
 
-Security plan review: feature 179 (host name), round 1, mode `plan`
+The Devil's Advocate raised two minor objections and no major one; both are accepted. Its checked facts (single
+production caller of `collectSysInfo`, no other reader of `SystemInfo`, `KnownFields(true)` keeping old config
+files valid, no existing test pinning the header markup) confirm the plan.
 
-I approve the plan. There are no blocking findings and one non-blocking finding.
+1. Truncation does nothing on an inline span — accepted: *Approach* now fixes `display: flex` with `min-width: 0` on
+   `header h1` and `.header-hostname`, and `flex: 0 1 auto; min-width: 0` on the name, with the parentheses outside
+   the shrinking element; the AC8 scans require these properties; manual cases 2 and 3 check the header without a
+   name and the visible `)`.
+2. `docs/areas/deployment.md` does not say `ProtectHostname` freezes the published name — accepted: added to
+   *Documentation updates* and *Areas*, and to task 6.
 
-Files read: `specs/feature-179-hostname/spec.md`, `plan.md`, `.squad/project.md` (*Security areas*), `internal/web/assets/app.js` (`setText` at :136-139, the System block at :277-280, the three `innerHTML` uses), `internal/web/assets/index.html` (header, `#card-system`), `internal/web/xss_test.go`, `internal/httpapi/middleware.go` (CSP), `internal/collector/collector.go` (`collectSysInfo`, `Run`), `internal/collector/sysinfo.go`, `packaging/pimonitor.service`, `docs/decisions/0006-publish-host-name-by-default.md`, and `.squad/stack.md` (*Logger arguments*).
+## Security review
 
-**Tier and areas**
-- The `security` tier is right. The plan adds a disclosure opt-out and a new sink for server text in the dashboard.
-- *Security areas touched* lists Dashboard XSS and Parsing of local input, which matches what the plan changes.
-- No other area is affected:
-  - No new log field holds secrets.
-  - There are no subprocesses, file writes or outbound calls.
-  - The HTTP surface does not change: there is no new route, and the `system` key has no sub-resource (`metricsSubResources`).
-  - Privileges do not change: `/proc/sys/kernel/hostname` is world-readable, and the unit's `ProtectKernelTunables=true` keeps it readable.
+Security approved with one non-blocking note, decided here.
 
-**Dashboard XSS**
-- The proposed `renderHostname` writes the name only through `textContent` (via `setText`), `document.title` and the `title` property. None of these parses HTML.
-- The static markup in `index.html` has no inline style, so the CSP (`style-src 'self'`) is unaffected.
-- The single caller in `renderMetrics` matches how the other system fields are accessed. `snap.system.kernel_version` at :278 already relies on `snap.system` being present.
-- Not filtering bidi or control characters is acceptable. Only root on the host can set the name, and it is displayed as text.
-
-**Parsing of local input**
-- `readHostname` does `os.ReadFile` on a constant path, then `TrimSpace`, then maps empty or `(none)` to no name.
-- The kernel limits the source to 65 bytes, so there is no unbounded allocation.
-- No parser has bypass forms to enumerate: the value is used as one opaque string.
-- The new YAML bool needs no validation rule. A file without the key keeps the default.
-- With `hostname_enabled: false` the file is never read, because the read moves out of `Collect()` into `collectSysInfo` behind the flag. That makes the opt-out real rather than cosmetic, and AC3 plus `TestCollectorConfig_MapsFields` pin it end to end.
-
-**Logger arguments**
-- The planned call `c.log.Warn("could not read host name", "error", err)` passes only `err`, whose text is the `os.ReadFile` path error.
-- No argument name matches the sensitive-name list, and the host name itself is never logged.
-
-**Measurements**
-- No security property here depends on measured or library behavior. The XSS guard is the text-only DOM API, not `encoding/json` escaping (fact 17 is defense in depth only).
-- Fact 11 (the service sees the host's name under `ProtectHostname`) is about whether the feature works, not about security. Leaving it to the Product Manager's after-merge check is acceptable.
-- I ran no probes.
-
-**Findings**
-
-1. Non-blocking: the AC7 static test is underspecified (`plan.md`, *Tests per criterion*, AC7: `TestAppJS_HostnameOnlyAsText` "AC7 renderHostname uses no HTML sink").
-   - The plan does not say which sinks the test rejects, and the existing `xss_test.go` only scans for `innerHTML`.
-   - Proposed denylist, every HTML-parsing or script sink the browser offers: `innerHTML`, `outerHTML`, `insertAdjacentHTML`, `document.write`/`writeln`, `createContextualFragment`, `DOMParser`/`parseFromString`, `setHTMLUnsafe`, `srcdoc`, `setAttribute(` (which could set `on*`/`href`), and `eval`/`Function(`.
-   - A denylist goes stale, so the stronger form is an allowlist. Extract the body of `function renderHostname` and assert that every write in it is one of `setText(`, `document.title =`, `.title = name`, or `.classList.toggle(`. Assert also that it contains none of the sinks above.
-   - Recommendation: fix now. The Tester writes this test in step 5 anyway, so the Lead only has to add the sentence to the AC7 row.
-
-## Challenge notes
-
-I found nothing major in the plan for specs/feature-179-hostname. The plan's facts that I checked hold, and it covers every place the change touches. There are two minor objections.
-
-**Facts checked:**
-- `collectSysInfo` is at `internal/collector/collector.go:447-464`, and `Run` (`:331`) is its only production caller, so the warning really comes once per start.
-- `SystemInfo` is at `types.go:159-164`.
-- The collector config is built inline in `cmd/pimonitor/main.go:51-70`, and `main.go:72` is the only production `collector.New`. So the zero-value `HostnameEnabled` in the test helpers is safe.
-- Nothing else reads `SystemInfo` field by field. The only other reader is `app.js:277-280`, so no Prometheus or webhook output changes.
-- The unit has no `ProcSubset=` or `ProtectProc=` (`packaging/pimonitor.service:44-75`).
-- `install.sh:70-76` never overwrites an existing config, and config loading uses `KnownFields(true)` (`config.go:451`). Old config files simply get the default, as N1 says.
-- No existing test pins the `<h1>` or the `<title>` markup, and `xss_test.go` only scans for `innerHTML`.
-
-**Minor objections** (written for the plan's *Challenge notes*):
-
-1. **Truncation (AC8).** `overflow: hidden` and `text-overflow: ellipsis` do nothing on an inline `<span>`. As written, `.header-hostname-name` and the scan "AC8 name truncates with an ellipsis" would pass while nothing gets cut. `header h1` is a plain block (`internal/web/assets/style.css:59-62`).
-   - Dev: give the name element a `display` that is not inline, and constrain its width. For example, make `header h1` and `.header-hostname` flex rows with `min-width: 0` and the name `flex: 0 1 auto; min-width: 0`.
-   - Dev: keep the closing `)` visible.
-   - Dev: check in manual case 2 that a hidden name still leaves the header looking as it does today.
-   - Tester: also make the AC8 scan require a non-inline `display` (and `min-width: 0`) on the truncating element.
-   - This is minor because manual case 3 would catch it and the plan already gives these properties to the Dev.
-
-2. **Deployment document.** The `ProtectHostname` row in `docs/areas/deployment.md:77` says only "the hostname cannot be changed". The new behavior in S5 comes from this directive. Dev: extend that row's *Effect* cell to say the service keeps the host name it had at start, so `system.hostname` shows a rename only after a restart. Link it to `metrics.md`.
-
-**Files:**
-- /home/user/PiMonitor/specs/feature-179-hostname/plan.md
-- /home/user/PiMonitor/internal/web/assets/style.css
-- /home/user/PiMonitor/docs/areas/deployment.md
+1. The AC7 static test does not name the sinks it rejects — accepted, both forms: the AC7 row now requires an
+   allowlist over the extracted body of `renderHostname` (every statement one of `setText(`, `document.title =`,
+   `.title = name`, `.classList.toggle(`) and a denylist of the HTML and script sinks Security named. The
+   allowlist is the guard; the denylist makes a failure name the sink.
