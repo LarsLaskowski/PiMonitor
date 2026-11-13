@@ -521,6 +521,60 @@ func TestValidate_RejectsBadValues(t *testing.T) {
 	}
 }
 
+func TestValidate_ThresholdErrorsNameYAMLKey(t *testing.T) {
+	tests := []struct {
+		name   string
+		mutate func(*Thresholds)
+		want   string
+	}{
+		{"AC1 temperature_warn_c", func(th *Thresholds) { th.TemperatureWarnC = -1 },
+			"thresholds.temperature_warn_c must be >= 0 (got -1)"},
+		{"AC1 cpu_warn_percent", func(th *Thresholds) { th.CPUWarnPercent = -1 },
+			"thresholds.cpu_warn_percent must be >= 0 (got -1)"},
+		{"AC1 disk_warn_percent", func(th *Thresholds) { th.DiskWarnPercent = -1 },
+			"thresholds.disk_warn_percent must be >= 0 (got -1)"},
+		{"AC1 swap_warn_percent", func(th *Thresholds) { th.SwapWarnPercent = -1 },
+			"thresholds.swap_warn_percent must be >= 0 (got -1)"},
+		{"AC1 memory_warn_percent", func(th *Thresholds) { th.MemoryWarnPercent = -1 },
+			"thresholds.memory_warn_percent must be >= 0 (got -1)"},
+		{"AC2 temperature_crit_c", func(th *Thresholds) { th.TemperatureCritC = -1 },
+			"thresholds.temperature_crit_c must be >= 0 (got -1)"},
+		{"AC2 cpu_crit_percent", func(th *Thresholds) { th.CPUCritPercent = -1 },
+			"thresholds.cpu_crit_percent must be >= 0 (got -1)"},
+		{"AC2 disk_crit_percent", func(th *Thresholds) { th.DiskCritPercent = -1 },
+			"thresholds.disk_crit_percent must be >= 0 (got -1)"},
+		{"AC2 swap_crit_percent", func(th *Thresholds) { th.SwapCritPercent = -1 },
+			"thresholds.swap_crit_percent must be >= 0 (got -1)"},
+		{"AC2 memory_crit_percent", func(th *Thresholds) { th.MemoryCritPercent = -1 },
+			"thresholds.memory_crit_percent must be >= 0 (got -1)"},
+		{"AC3 temperature_warn_c", func(th *Thresholds) { th.TemperatureWarnC = 1000 },
+			"thresholds.temperature_warn_c (1000) must be <= thresholds.temperature_crit_c (75)"},
+		{"AC3 cpu_warn_percent", func(th *Thresholds) { th.CPUWarnPercent = 1000 },
+			"thresholds.cpu_warn_percent (1000) must be <= thresholds.cpu_crit_percent (95)"},
+		{"AC3 disk_warn_percent", func(th *Thresholds) { th.DiskWarnPercent = 1000 },
+			"thresholds.disk_warn_percent (1000) must be <= thresholds.disk_crit_percent (95)"},
+		{"AC3 swap_warn_percent", func(th *Thresholds) { th.SwapWarnPercent = 1000 },
+			"thresholds.swap_warn_percent (1000) must be <= thresholds.swap_crit_percent (90)"},
+		{"AC3 memory_warn_percent", func(th *Thresholds) { th.MemoryWarnPercent = 1000 },
+			"thresholds.memory_warn_percent (1000) must be <= thresholds.memory_crit_percent (95)"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := Default()
+			tt.mutate(&cfg.Thresholds)
+
+			err := cfg.Validate()
+
+			if err == nil {
+				t.Fatalf("Validate() = nil, want error %q", tt.want)
+			}
+			if err.Error() != tt.want {
+				t.Errorf("Validate() error = %q, want %q", err.Error(), tt.want)
+			}
+		})
+	}
+}
+
 func TestValidate_TLS(t *testing.T) {
 	tests := []struct {
 		name        string
