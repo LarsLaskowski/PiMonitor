@@ -1,6 +1,7 @@
 package collector
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -110,37 +111,70 @@ func TestUsagePercent_NoDelta(t *testing.T) {
 	}
 }
 
-func TestCPUCollector_Collect(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "stat")
-	if err := os.WriteFile(path, []byte(procStatFixture1), 0o644); err != nil {
-		t.Fatalf("write fixture: %v", err)
-	}
+func TestCPUCollector_Collect_FirstCallIsNoReading(t *testing.T) {
+	t.Run("AC1 first call returns errNoPreviousSample and zero usage", func(t *testing.T) {
+		c := &CPUCollector{path: writeStatFile(t, procStatFixture1)}
+		got, err := c.Collect()
+		if !errors.Is(err, errNoPreviousSample) {
+			t.Fatalf("first Collect error = %v, want errNoPreviousSample", err)
+		}
+		if got.OverallPercent != 0 {
+			t.Errorf("OverallPercent = %v, want 0", got.OverallPercent)
+		}
+		if got.PerCorePercent != nil {
+			t.Errorf("PerCorePercent = %v, want nil", got.PerCorePercent)
+		}
+	})
+	t.Run("AC1 second call diffs against the first sample", func(t *testing.T) {
+		path := writeStatFile(t, procStatFixture1)
+		c := &CPUCollector{path: path}
+		if _, err := c.Collect(); !errors.Is(err, errNoPreviousSample) {
+			t.Fatalf("first Collect error = %v, want errNoPreviousSample", err)
+		}
+		rewriteStatFile(t, path, procStatFixture2)
+		got, err := c.Collect()
+		if err != nil {
+			t.Fatalf("second Collect error = %v, want nil", err)
+		}
+		if diffFloat(got.OverallPercent, 66.67) > 0.01 {
+			t.Errorf("OverallPercent = %v, want about 66.67", got.OverallPercent)
+		}
+		if len(got.PerCorePercent) != 2 {
+			t.Errorf("PerCorePercent has %d values, want 2", len(got.PerCorePercent))
+		}
+	})
+}
 
-	c := &CPUCollector{path: path}
-
-	first, err := c.Collect()
-	if err != nil {
-		t.Fatalf("first Collect: %v", err)
-	}
-	if first.OverallPercent != 0 {
-		t.Fatalf("first Collect should report 0%% (no prior sample), got %v", first.OverallPercent)
-	}
-
-	if err := os.WriteFile(path, []byte(procStatFixture2), 0o644); err != nil {
-		t.Fatalf("write fixture2: %v", err)
-	}
-
-	second, err := c.Collect()
-	if err != nil {
-		t.Fatalf("second Collect: %v", err)
-	}
-	if second.OverallPercent <= 0 {
-		t.Fatalf("second Collect should report >0%% usage, got %v", second.OverallPercent)
-	}
-	if len(second.PerCorePercent) != 2 {
-		t.Fatalf("expected 2 per-core values, got %d", len(second.PerCorePercent))
-	}
+func TestCPUCollector_Collect_FirstCallFailure(t *testing.T) {
+	t.Run("AC2 missing aggregate line is a failure", func(t *testing.T) {
+		c := &CPUCollector{path: writeStatFile(t, procStatNoAggregate)}
+		_, err := c.Collect()
+		if err == nil || errors.Is(err, errNoPreviousSample) {
+			t.Fatalf("Collect error = %v, want a failure other than errNoPreviousSample", err)
+		}
+	})
+	t.Run("AC2 missing file is a failure", func(t *testing.T) {
+		c := &CPUCollector{path: filepath.Join(t.TempDir(), "missing")}
+		_, err := c.Collect()
+		if err == nil || errors.Is(err, errNoPreviousSample) {
+			t.Fatalf("Collect error = %v, want a failure other than errNoPreviousSample", err)
+		}
+	})
+	t.Run("AC2 valid call after a failed first call is the first sample", func(t *testing.T) {
+		path := writeStatFile(t, procStatNoAggregate)
+		c := &CPUCollector{path: path}
+		if _, err := c.Collect(); err == nil {
+			t.Fatal("failed first Collect: got nil error")
+		}
+		rewriteStatFile(t, path, procStatFixture1)
+		got, err := c.Collect()
+		if !errors.Is(err, errNoPreviousSample) {
+			t.Fatalf("Collect after a failure: error = %v, want errNoPreviousSample", err)
+		}
+		if got.OverallPercent != 0 || got.PerCorePercent != nil {
+			t.Errorf("usage = %+v, want zero", got)
+		}
+	})
 }
 
 func TestCPUCollector_CoreCount(t *testing.T) {
@@ -218,7 +252,7 @@ func TestCPUCollector_Collect_MissingAggregateLine(t *testing.T) {
 	t.Run("AC1 after a valid sample", func(t *testing.T) {
 		path := writeStatFile(t, procStatFixture1)
 		c := &CPUCollector{path: path}
-		if _, err := c.Collect(); err != nil {
+		if _, err := c.Collect(); err != nil && !errors.Is(err, errNoPreviousSample) {
 			t.Fatalf("first Collect: %v", err)
 		}
 		rewriteStatFile(t, path, procStatNoAggregate)
@@ -228,7 +262,7 @@ func TestCPUCollector_Collect_MissingAggregateLine(t *testing.T) {
 	t.Run("AC2 aggregate line with seven counters", func(t *testing.T) {
 		path := writeStatFile(t, procStatFixture1)
 		c := &CPUCollector{path: path}
-		if _, err := c.Collect(); err != nil {
+		if _, err := c.Collect(); err != nil && !errors.Is(err, errNoPreviousSample) {
 			t.Fatalf("first Collect: %v", err)
 		}
 		rewriteStatFile(t, path, procStatShortAggregate)
@@ -244,7 +278,7 @@ func TestCPUCollector_Collect_MissingAggregateLine(t *testing.T) {
 func TestCPUCollector_Collect_FailedReadKeepsPreviousSample_AC3(t *testing.T) {
 	path := writeStatFile(t, procStatFixture1)
 	c := &CPUCollector{path: path}
-	if _, err := c.Collect(); err != nil {
+	if _, err := c.Collect(); err != nil && !errors.Is(err, errNoPreviousSample) {
 		t.Fatalf("collect sample A: %v", err)
 	}
 	rewriteStatFile(t, path, procStatNoAggregate)

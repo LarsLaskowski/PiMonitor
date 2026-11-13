@@ -2,6 +2,7 @@ package collector
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"sort"
 	"sync"
@@ -474,8 +475,8 @@ func (c *Collector) collectSysInfo() {
 
 // fastTickSamples holds every metric fastTick reads before taking c.mu,
 // plus each source's error, so history points and alerts can tell a real
-// zero value apart from a failed collection: a failed source adds no
-// scalar history point.
+// zero value apart from a failed or not yet available collection: such a
+// source adds no scalar history point.
 type fastTickSamples struct {
 	now        time.Time
 	cpuUsage   CPUUsage
@@ -510,7 +511,7 @@ func (c *Collector) collectFastTickSamples(ctx context.Context) fastTickSamples 
 	s.now = time.Now()
 
 	s.cpuUsage, s.cpuErr = c.cpu.Collect()
-	if s.cpuErr != nil {
+	if s.cpuErr != nil && !errors.Is(s.cpuErr, errNoPreviousSample) {
 		c.log.Warn("cpu collection failed", "error", s.cpuErr)
 	}
 	var err error
@@ -615,8 +616,8 @@ func (c *Collector) fastTick(ctx context.Context) {
 	// Evaluate the freshly collected values against the alert thresholds.
 	// The engine has its own lock and never calls back into the collector,
 	// so doing this while c.mu is held cannot deadlock. Metrics whose
-	// collection failed this tick are flagged invalid so a bogus zero can't
-	// spuriously clear a real alert; the engine keeps their previous state.
+	// collection failed or is not yet available this tick are flagged invalid so
+	// a bogus zero can't spuriously clear a real alert; the engine keeps their previous state.
 	if c.alerts != nil {
 		diskSamples := make([]alert.DiskSample, len(s.disks))
 		for i, d := range s.disks {

@@ -429,7 +429,8 @@ only and starts empty after every restart.
 
 A scalar series has no point for a tick whose reading failed, so the series
 may differ in length or be empty (`temperature` on a host without a thermal
-zone); the shape is unchanged and every scalar key is always present.
+zone). `cpu_percent` also has no point for the first fast tick after start,
+because no previous sample exists yet; the shape is unchanged and every scalar key is always present.
 
 ```json
 {
