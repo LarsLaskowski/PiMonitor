@@ -7,3 +7,4 @@ are quoted in full.
 | ---- | ---- | ------ | ------ |
 | 2026-11-13 15:38 | 1 Intake | Orchestrator | Issue #231 read (bug/docs: document that unparsable HTTPS_PROXY/HTTP_PROXY is ignored by webhook delivery); branch claude/cool-lovelace-8bu5mj at main 4c033db |
 | 2026-11-13 15:39 | 2 Plan | Lead | RESULT: DONE, tier patch: one bullet in docs/areas/notifications.md (Request), unparsable proxy value is ignored, other malformed values are used as read (opus/medium · 39,932 tokens · 6 tool uses · 82 s · 12 in · 6,851 out · 160,384 cache read · 25,251 cache write · 147,700 weighted) |
+| 2026-11-13 15:40 | 7 Gate stamp | Orchestrator | PASS on 2e499fcbb768c238c3bd6c0279efa73359f9e272 (tier patch): Format check pass; check test -z "$(gofmt -l .)" pass; decision-check.py pass; scope-check.py --tier patch pass |
