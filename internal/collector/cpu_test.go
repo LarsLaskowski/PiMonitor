@@ -3,6 +3,7 @@ package collector
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -18,6 +19,22 @@ cpu0 100 0 100 400 0 0 0 0 0 0
 cpu1 100 0 100 400 0 0 0 0 0 0
 intr 12400
 ctxt 6800
+`
+
+// procStatNoAggregate is procStatFixture1 without its aggregate cpu line.
+// No kernel prints such content, so the fixture is hand-typed.
+const procStatNoAggregate = `cpu0 50 0 50 350 0 0 0 0 0 0
+cpu1 50 0 50 350 0 0 0 0 0 0
+intr 12345
+ctxt 6789
+`
+
+// procStatShortAggregate has an aggregate line with seven counters, which
+// parseProcStat skips, and valid cpuN lines.
+const procStatShortAggregate = `cpu  100 0 100 700 0 0 0
+cpu0 50 0 50 350 0 0 0 0 0 0
+cpu1 50 0 50 350 0 0 0 0 0 0
+intr 12345
 `
 
 func TestParseProcStat(t *testing.T) {
@@ -139,6 +156,118 @@ func TestCPUCollector_CoreCount(t *testing.T) {
 	}
 	if count != 2 {
 		t.Fatalf("CoreCount = %d, want 2", count)
+	}
+
+	t.Run("AC5 no aggregate line", func(t *testing.T) {
+		c := &CPUCollector{path: writeStatFile(t, procStatNoAggregate)}
+		count, err := c.CoreCount()
+		if err != nil {
+			t.Fatalf("CoreCount: got error %v, want nil", err)
+		}
+		if count != 2 {
+			t.Fatalf("CoreCount = %d, want 2", count)
+		}
+	})
+}
+
+// writeStatFile writes content to a new file in a temporary directory and
+// returns its path.
+func writeStatFile(t *testing.T, content string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "stat")
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write stat file: %v", err)
+	}
+	return path
+}
+
+// rewriteStatFile replaces the content of the file at path.
+func rewriteStatFile(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("rewrite stat file: %v", err)
+	}
+}
+
+const noAggregateErrText = "no aggregate cpu line in /proc/stat content"
+
+// checkCollectFailed fails the test unless got is a zero CPUUsage and err
+// is the missing-aggregate-line error.
+func checkCollectFailed(t *testing.T, got CPUUsage, err error) {
+	t.Helper()
+	if err == nil {
+		t.Fatalf("Collect error = nil, want one containing %q", noAggregateErrText)
+	}
+	if !strings.Contains(err.Error(), noAggregateErrText) {
+		t.Errorf("Collect error = %q, want it to contain %q", err.Error(), noAggregateErrText)
+	}
+	if got.OverallPercent != 0 {
+		t.Errorf("OverallPercent = %v, want 0", got.OverallPercent)
+	}
+	if got.PerCorePercent != nil {
+		t.Errorf("PerCorePercent = %v, want nil", got.PerCorePercent)
+	}
+}
+
+func TestCPUCollector_Collect_MissingAggregateLine(t *testing.T) {
+	t.Run("AC1 first call", func(t *testing.T) {
+		c := &CPUCollector{path: writeStatFile(t, procStatNoAggregate)}
+		got, err := c.Collect()
+		checkCollectFailed(t, got, err)
+	})
+	t.Run("AC1 after a valid sample", func(t *testing.T) {
+		path := writeStatFile(t, procStatFixture1)
+		c := &CPUCollector{path: path}
+		if _, err := c.Collect(); err != nil {
+			t.Fatalf("first Collect: %v", err)
+		}
+		rewriteStatFile(t, path, procStatNoAggregate)
+		got, err := c.Collect()
+		checkCollectFailed(t, got, err)
+	})
+	t.Run("AC2 aggregate line with seven counters", func(t *testing.T) {
+		path := writeStatFile(t, procStatFixture1)
+		c := &CPUCollector{path: path}
+		if _, err := c.Collect(); err != nil {
+			t.Fatalf("first Collect: %v", err)
+		}
+		rewriteStatFile(t, path, procStatShortAggregate)
+		got, err := c.Collect()
+		checkCollectFailed(t, got, err)
+
+		fresh := &CPUCollector{path: path}
+		got, err = fresh.Collect()
+		checkCollectFailed(t, got, err)
+	})
+}
+
+func TestCPUCollector_Collect_FailedReadKeepsPreviousSample_AC3(t *testing.T) {
+	path := writeStatFile(t, procStatFixture1)
+	c := &CPUCollector{path: path}
+	if _, err := c.Collect(); err != nil {
+		t.Fatalf("collect sample A: %v", err)
+	}
+	rewriteStatFile(t, path, procStatNoAggregate)
+	if _, err := c.Collect(); err == nil {
+		t.Fatal("collect without aggregate line: got nil error, want an error")
+	}
+	rewriteStatFile(t, path, procStatFixture2)
+	got, err := c.Collect()
+	if err != nil {
+		t.Fatalf("collect sample B: %v", err)
+	}
+	wantOverall := (1 - float64(100)/float64(300)) * 100
+	if diffFloat(got.OverallPercent, wantOverall) > 0.01 {
+		t.Errorf("OverallPercent = %v, want %v (A to B delta)", got.OverallPercent, wantOverall)
+	}
+	if len(got.PerCorePercent) != 2 {
+		t.Fatalf("PerCorePercent has %d values, want 2", len(got.PerCorePercent))
+	}
+	wantCore := (1 - float64(50)/float64(150)) * 100
+	for i, v := range got.PerCorePercent {
+		if diffFloat(v, wantCore) > 0.01 {
+			t.Errorf("PerCorePercent[%d] = %v, want %v", i, v, wantCore)
+		}
 	}
 }
 

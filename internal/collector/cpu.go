@@ -3,6 +3,7 @@ package collector
 import (
 	"fmt"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -93,7 +94,9 @@ func NewCPUCollector() *CPUCollector {
 
 // Collect returns the current CPU usage. The first call after process
 // start has no prior sample to diff against, so it returns all-zero
-// values; subsequent calls return meaningful deltas.
+// values; subsequent calls return meaningful deltas. It fails, leaving the
+// stored previous sample unchanged, when the content holds no usable
+// aggregate "cpu" line.
 func (c *CPUCollector) Collect() (CPUUsage, error) {
 	data, err := os.ReadFile(c.path)
 	if err != nil {
@@ -102,6 +105,9 @@ func (c *CPUCollector) Collect() (CPUUsage, error) {
 	lines, err := parseProcStat(string(data))
 	if err != nil {
 		return CPUUsage{}, err
+	}
+	if !slices.ContainsFunc(lines, func(l cpuStatLine) bool { return l.name == "cpu" }) {
+		return CPUUsage{}, fmt.Errorf("no aggregate cpu line in /proc/stat content")
 	}
 
 	c.mu.Lock()
