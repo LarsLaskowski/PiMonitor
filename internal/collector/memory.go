@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"strconv"
 	"strings"
@@ -37,21 +38,58 @@ func parseMeminfo(data string) (map[string]uint64, error) {
 	if err := scanner.Err(); err != nil {
 		return nil, fmt.Errorf("scan /proc/meminfo: %w", err)
 	}
+	if err := validateMeminfo(result); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+// validateMeminfo rejects parsed content that is no valid reading: a missing
+// required field, a value beyond the byte range, a zero MemTotal or a free
+// value above its total.
+func validateMeminfo(result map[string]uint64) error {
 	for _, key := range requiredMeminfoKeys {
 		if _, ok := result[key]; !ok {
-			return nil, fmt.Errorf("no %s field in /proc/meminfo content", key)
+			return fmt.Errorf("no %s field in /proc/meminfo content", key)
+		}
+	}
+	for _, key := range meminfoByteRangeKeys {
+		if result[key] > maxMeminfoKB {
+			return fmt.Errorf("%s exceeds the byte range in /proc/meminfo content", key)
 		}
 	}
 	if result["MemTotal"] == 0 {
-		return nil, errors.New("MemTotal is 0 in /proc/meminfo content")
+		return errors.New("MemTotal is 0 in /proc/meminfo content")
 	}
-	return result, nil
+	for _, pair := range meminfoFreeTotalPairs {
+		if result[pair.free] > result[pair.total] {
+			return fmt.Errorf("%s exceeds %s in /proc/meminfo content", pair.free, pair.total)
+		}
+	}
+	return nil
 }
 
 // requiredMeminfoKeys lists the fields every kernel writes unconditionally;
 // content lacking one of them is not a valid reading. MemAvailable is
 // optional (missing before Linux 3.14).
 var requiredMeminfoKeys = []string{"MemTotal", "MemFree", "SwapTotal", "SwapFree"}
+
+// maxMeminfoKB is the largest kB value that still fits in bytes as a uint64
+// ((2^64-1)/1024); a larger one would wrap when multiplied by 1024.
+const maxMeminfoKB = math.MaxUint64 / 1024
+
+// meminfoByteRangeKeys lists the fields PiMonitor reads, in the order the
+// byte-range check names them. A missing MemAvailable reads 0.
+var meminfoByteRangeKeys = []string{"MemTotal", "MemFree", "MemAvailable", "SwapTotal", "SwapFree"}
+
+// meminfoFreeTotalPairs lists the free values the kernel never reports above
+// their total; content that does so is a failed reading, not a negative used
+// percent or an invented 0 % swap.
+var meminfoFreeTotalPairs = []struct{ free, total string }{
+	{"MemFree", "MemTotal"},
+	{"MemAvailable", "MemTotal"},
+	{"SwapFree", "SwapTotal"},
+}
 
 func memAndSwapFromFields(fields map[string]uint64) (Memory, Swap) {
 	const kB = 1024
