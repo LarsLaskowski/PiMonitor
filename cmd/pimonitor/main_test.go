@@ -5,13 +5,18 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/larslaskowski/pimonitor/internal/alert"
+	"github.com/larslaskowski/pimonitor/internal/collector"
 	"github.com/larslaskowski/pimonitor/internal/config"
+	"github.com/larslaskowski/pimonitor/internal/httpapi"
 )
 
 func newTestNotifier(t *testing.T) *alert.Notifier {
@@ -41,6 +46,7 @@ func TestServerConfig_MapsFields(t *testing.T) {
 		PrometheusEnabled:          true,
 		PollIntervalSeconds:        5,
 		HealthzMaxStalenessSeconds: 30,
+		OpenHAB:                    config.OpenHAB{Enabled: "auto"},
 	}
 
 	got := serverConfig(cfg, "v1.2.3")
@@ -65,6 +71,9 @@ func TestServerConfig_MapsFields(t *testing.T) {
 	}
 	if got.Client.Version != "v1.2.3" {
 		t.Errorf("Client.Version = %q, want v1.2.3", got.Client.Version)
+	}
+	if !got.OpenHABEnabled {
+		t.Error("OpenHABEnabled = false, want true (mapped from openhab.enabled auto)")
 	}
 }
 
@@ -254,6 +263,7 @@ func TestCollectorConfig_MapsFields(t *testing.T) {
 		cfg.ProcessesTopN = 9
 		cfg.Alerts.ForSeconds = 12
 		cfg.Thresholds.CPUWarnPercent = 77
+		cfg.OpenHAB = config.OpenHAB{Enabled: "auto", BaseURL: "http://127.0.0.1:8081", APIToken: "tok", PollIntervalSeconds: 90}
 		notifier := newTestNotifier(t)
 
 		got := collectorConfig(cfg, notifier)
@@ -276,6 +286,11 @@ func TestCollectorConfig_MapsFields(t *testing.T) {
 			{"ProcessesEnabled", got.ProcessesEnabled, true},
 			{"ProcessesTopN", got.ProcessesTopN, 9},
 			{"PersistPath", got.PersistPath, filepath.Join("/srv/pimonitor-data", "history.bin")},
+			{"OpenHAB.Enabled", got.OpenHAB.Enabled, true},
+			{"OpenHAB.Always", got.OpenHAB.Always, false},
+			{"OpenHAB.BaseURL", got.OpenHAB.BaseURL, "http://127.0.0.1:8081"},
+			{"OpenHAB.Token", got.OpenHAB.Token, "tok"},
+			{"OpenHAB.Interval", got.OpenHAB.Interval, 90 * time.Second},
 		})
 	})
 	t.Run("AC3 hostname_enabled false reaches the collector", func(t *testing.T) {
@@ -309,4 +324,98 @@ func TestRun_ConfigErrorNamesOption_AC1(t *testing.T) {
 	case <-time.After(3 * time.Second):
 		t.Fatal("run did not return: the config with poll_interval_seconds: .nan was accepted and the server started")
 	}
+}
+
+func TestServerConfig_OpenHABEnabled_AC9(t *testing.T) {
+	tests := []struct {
+		enabled string
+		want    bool
+	}{
+		{"auto", true},
+		{"AUTO", true},
+		{"true", true},
+		{"True", true},
+		{"false", false},
+		{"FALSE", false},
+	}
+	for _, tc := range tests {
+		t.Run("AC9 "+tc.enabled, func(t *testing.T) {
+			cfg := config.Default()
+			cfg.OpenHAB.Enabled = tc.enabled
+
+			got := serverConfig(cfg, "v1.2.3")
+
+			if got.OpenHABEnabled != tc.want {
+				t.Fatalf("OpenHABEnabled = %v for enabled %q, want %v", got.OpenHABEnabled, tc.enabled, tc.want)
+			}
+		})
+	}
+}
+
+func TestCollectorConfig_OpenHAB_AC11(t *testing.T) {
+	tests := []struct {
+		enabled     string
+		wantEnabled bool
+		wantAlways  bool
+	}{
+		{"auto", true, false},
+		{"Auto", true, false},
+		{"true", true, true},
+		{"TRUE", true, true},
+		{"false", false, false},
+		{"False", false, false},
+	}
+	for _, tc := range tests {
+		t.Run("AC11 "+tc.enabled, func(t *testing.T) {
+			cfg := config.Default()
+			cfg.OpenHAB = config.OpenHAB{Enabled: tc.enabled, BaseURL: "http://localhost:8081", APIToken: "tok", PollIntervalSeconds: 120}
+
+			got := collectorConfig(cfg, nil).OpenHAB
+
+			checkMappedFields(t, openHABMappedFields(got, tc.wantEnabled, tc.wantAlways))
+		})
+	}
+}
+
+// getBody serves one GET of path and returns the status code and body.
+func getBody(h http.Handler, path string) (int, string) {
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+	return rec.Code, rec.Body.String()
+}
+
+func TestClientConfig_NoOpenHABToken_AC8(t *testing.T) {
+	const sentinel = "oh.sentinelTOKENvalue.4711"
+	cfg := config.Default()
+	cfg.OpenHAB.APIToken = sentinel
+	coll := collector.New(collectorConfig(cfg, nil), nil)
+	h := httpapi.New(coll, serverConfig(cfg, "v1.2.3"), nil, nil).Handler()
+
+	configCode, configBody := getBody(h, "/api/v1/config")
+	openhabCode, openhabBody := getBody(h, "/api/v1/openhab")
+
+	if configCode != http.StatusOK || openhabCode != http.StatusOK {
+		t.Fatalf("GET /api/v1/config, /api/v1/openhab = %d, %d, want 200, 200", configCode, openhabCode)
+	}
+	if !strings.Contains(openhabBody, `"api_token_configured":true`) {
+		t.Fatalf("GET /api/v1/openhab body = %s, want api_token_configured true", openhabBody)
+	}
+	if strings.Contains(configBody+openhabBody, sentinel) {
+		t.Fatalf("token served: config %s, openhab %s", configBody, openhabBody)
+	}
+}
+
+// openHABMappedFields lists the openHAB fields collectorConfig must map;
+// with the poll disabled only Enabled matters.
+func openHABMappedFields(got collector.OpenHABConfig, wantEnabled, wantAlways bool) []mappedField {
+	fields := []mappedField{{"OpenHAB.Enabled", got.Enabled, wantEnabled}}
+	if !wantEnabled {
+		return fields
+	}
+	return append(fields,
+		mappedField{"OpenHAB.Always", got.Always, wantAlways},
+		mappedField{"OpenHAB.BaseURL", got.BaseURL, "http://localhost:8081"},
+		mappedField{"OpenHAB.Token", got.Token, "tok"},
+		mappedField{"OpenHAB.Interval", got.Interval, 120 * time.Second},
+	)
 }

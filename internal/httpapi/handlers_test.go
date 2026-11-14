@@ -964,3 +964,161 @@ func TestHandleMetrics_Hostname(t *testing.T) {
 		}
 	})
 }
+
+// getOpenHAB serves one GET /api/v1/openhab, with apiKey as X-Api-Key when
+// non-empty, against a server whose fake returns status.
+func getOpenHAB(cfg Config, status collector.OpenHABStatus, apiKey string) *httptest.ResponseRecorder {
+	s, fm := newTestServer(cfg)
+	fm.openhab = status
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/openhab", nil)
+	if apiKey != "" {
+		req.Header.Set("X-Api-Key", apiKey)
+	}
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	return rec
+}
+
+func openHABOKStatus() collector.OpenHABStatus {
+	at := time.Date(2026, 11, 14, 12, 0, 0, 0, time.UTC)
+	level, items, addons := 100, 440, 29
+	uptime := uint64(362335)
+	percent := 33.5
+	return collector.OpenHABStatus{
+		State:               collector.OpenHABStateOK,
+		PollIntervalSeconds: 60,
+		APITokenConfigured:  true,
+		CollectedAt:         &at,
+		Version:             "5.2.4",
+		StartLevel:          &level,
+		UptimeSeconds:       &uptime,
+		Process:             &collector.OpenHABProcess{PID: 938, RSSBytes: 1417166848, RSSPercentOfRAM: &percent},
+		JVM:                 &collector.OpenHABJVM{HeapUsedBytes: 664407376, HeapTotalBytes: 729808896},
+		Things: &collector.OpenHABThings{Total: 2, ByStatus: map[string]int{"ONLINE": 1, "OFFLINE": 1},
+			NotOnline: []collector.OpenHABThing{{UID: "hue:device:b1:l1", Label: "<b>Lamp</b>", Status: "OFFLINE", StatusDetail: "NONE"}}},
+		ItemsCount:      &items,
+		AddonsInstalled: &addons,
+		Refused:         []string{"addons"},
+	}
+}
+
+func mustMarshal(t *testing.T, v any) string {
+	t.Helper()
+	b, err := json.Marshal(v)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	return string(b)
+}
+
+func TestHandleOpenHAB_AC9(t *testing.T) {
+	const key = "secret123"
+	tests := []struct {
+		name     string
+		cfg      Config
+		status   collector.OpenHABStatus
+		apiKey   string
+		wantCode int
+		wantBody string
+	}{
+		{"AC9 S7 serves the collector status", Config{OpenHABEnabled: true}, openHABOKStatus(), "",
+			http.StatusOK, mustMarshal(t, openHABOKStatus())},
+		{"AC9 S5 not_installed", Config{OpenHABEnabled: true},
+			collector.OpenHABStatus{State: collector.OpenHABStateNotInstalled, PollIntervalSeconds: 60}, "",
+			http.StatusOK, `{"state":"not_installed","poll_interval_seconds":60,"api_token_configured":false}`},
+		{"AC9 S9 pending", Config{OpenHABEnabled: true},
+			collector.OpenHABStatus{State: collector.OpenHABStatePending, PollIntervalSeconds: 120, APITokenConfigured: true}, "",
+			http.StatusOK, `{"state":"pending","poll_interval_seconds":120,"api_token_configured":true}`},
+		{"AC9 API key required", Config{OpenHABEnabled: true, APIKey: key}, openHABOKStatus(), "",
+			http.StatusUnauthorized, ""},
+		{"AC9 API key accepted", Config{OpenHABEnabled: true, APIKey: key}, openHABOKStatus(), key,
+			http.StatusOK, mustMarshal(t, openHABOKStatus())},
+		{"AC9 S6 404 when disabled", Config{}, openHABOKStatus(), "", http.StatusNotFound, ""},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := getOpenHAB(tc.cfg, tc.status, tc.apiKey)
+
+			checkOpenHABResponse(t, rec, tc.wantCode, tc.wantBody)
+		})
+	}
+}
+
+// checkOpenHABResponse asserts the status code and, for a 200, the exact
+// JSON body and the API chain's headers.
+func checkOpenHABResponse(t *testing.T, rec *httptest.ResponseRecorder, wantCode int, wantBody string) {
+	t.Helper()
+	if rec.Code != wantCode {
+		t.Fatalf("status = %d, want %d", rec.Code, wantCode)
+	}
+	if wantCode != http.StatusOK {
+		return
+	}
+	if got := strings.TrimSuffix(rec.Body.String(), "\n"); got != wantBody {
+		t.Fatalf("body = %s, want %s", got, wantBody)
+	}
+	if got := rec.Header().Get("Cache-Control"); got != "no-store" {
+		t.Fatalf("Cache-Control = %q, want no-store", got)
+	}
+	if got := rec.Header().Get("Content-Type"); !strings.HasPrefix(got, "application/json") {
+		t.Fatalf("Content-Type = %q, want application/json", got)
+	}
+}
+
+func TestHandleOpenHAB_ServerStatsBucket_AC9(t *testing.T) {
+	tests := []struct {
+		name     string
+		cfg      Config
+		wantCode int
+	}{
+		{"AC9 enabled", Config{OpenHABEnabled: true}, http.StatusOK},
+		{"AC9 disabled", Config{}, http.StatusNotFound},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			s, _ := newTestServer(tc.cfg)
+
+			codes := []int{serveGet(s, "/api/v1/openhab"), serveGet(s, "/api/v1/openhab")}
+			stats := serveGet(s, "/api/v1/serverstats")
+
+			if codes[0] != tc.wantCode || codes[1] != tc.wantCode || stats != http.StatusOK {
+				t.Fatalf("status codes = %v, serverstats %d, want %d twice, 200", codes, stats, tc.wantCode)
+			}
+			got := s.stats.snapshot().ByRoute
+			if n, ok := got["/api/v1/openhab"]; !ok || n != 2 {
+				t.Fatalf("by_route[/api/v1/openhab] = %d (present %v), want 2; by_route = %v", n, ok, got)
+			}
+			if got[bucketOtherAPI] != 0 {
+				t.Fatalf("by_route[%s] = %d, want 0", bucketOtherAPI, got[bucketOtherAPI])
+			}
+		})
+	}
+}
+
+// serveGet serves one GET of path and returns the status code.
+func serveGet(s *Server, path string) int {
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+	return rec.Code
+}
+
+func TestHandleOpenHAB_TokenNotServed_AC8(t *testing.T) {
+	const sentinel = "oh.sentinelTOKENvalue.4711"
+	c := collector.NewOpenHABCollector(collector.OpenHABConfig{
+		Enabled:  true,
+		BaseURL:  "http://127.0.0.1:1",
+		Token:    sentinel,
+		Interval: time.Minute,
+		Root:     t.TempDir(),
+	}, func() uint64 { return 0 }, nil)
+
+	rec := getOpenHAB(Config{OpenHABEnabled: true}, c.Status(), "")
+
+	body := rec.Body.String()
+	if rec.Code != http.StatusOK || !strings.Contains(body, `"api_token_configured":true`) {
+		t.Fatalf("status, body = %d, %s, want 200 with api_token_configured true", rec.Code, body)
+	}
+	if strings.Contains(body, sentinel) {
+		t.Fatalf("body = %s, want no token", body)
+	}
+}
