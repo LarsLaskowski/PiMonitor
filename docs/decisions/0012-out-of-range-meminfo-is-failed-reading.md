@@ -1,6 +1,6 @@
 # 0012: Out-of-range /proc/meminfo content is a failed memory reading
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-14
 - **Area:** Metrics
 - **Source:** Issue #252
