@@ -61,6 +61,9 @@ item states ([issue #181](https://github.com/LarsLaskowski/PiMonitor/issues/181)
   option, like every other invalid option ([Configuration](../../docs/areas/configuration.md)).
 - E14: openHAB omits an optional field (another 4.x/5.x release): that value is absent, the rest is shown.
 - E15: The anonymous Item list holds empty objects instead of names: the Items are still counted.
+- E16: With a token configured, the program answering on `base_url` does not run as the owner of
+  `/var/lib/openhab` (another local user's listener while openHAB is down), or that directory is missing: no
+  request is sent, the REST values are absent and a warning names the reason.
 
 ## Non-functional requirements
 
@@ -83,8 +86,9 @@ item states ([issue #181](https://github.com/LarsLaskowski/PiMonitor/issues/181)
   and never delays the fast or the slow tick or `/healthz`.
 - N6: `api_token` (default empty) comes from the config file or from `PIMONITOR_OPENHAB_TOKEN`, which overrides the
   file when non-empty and is removed from the environment after reading, as `PIMONITOR_API_KEY` is. There is no
-  flag. The token is sent only to `base_url` as `Authorization: Bearer <token>`, only when set, and never appears in
-  a log line, an API response or the dashboard.
+  flag. The token is sent only to `base_url` as `Authorization: Bearer <token>`, only when set, only over a
+  connection whose server side belongs to the owner of `/var/lib/openhab`, and never appears in a log line, an API
+  response or the dashboard.
 - N7: Logging follows the log-once rule of [0001](../../docs/decisions/0001-optional-sources-log-failures-once.md)
   per source: a warning on the first failure and when its error changes, debug while it repeats, info on recovery.
   A `401`/`403` while no token is configured is the expected default, logged once at info instead of warning.
@@ -113,12 +117,14 @@ item states ([issue #181](https://github.com/LarsLaskowski/PiMonitor/issues/181)
   without affecting the others; every source refused with `401`/`403` is listed as refused; `collected_at` is the
   time the poll finished, in every state but `pending` and `not_installed`; the parsers are tested against anonymized
   excerpts of real openHAB 5.2.4 responses (S1, S4, E7, E14, E15, N3, N10).
-- AC5: Things are reported as a total and a count per status, plus up to 10 Things that are not ONLINE and not
+- AC5: Things are reported as a total and a count per openHAB Thing status (other status strings are not
+  counted per status), plus up to 10 Things that are not ONLINE and not
   disabled, sorted by UID, each with UID, label, status, status detail and, when openHAB gives one, its description (S2,
   E9, E10).
 - AC6: Requests go to `base_url` only, are abandoned after the timeout, read at most the body limit, follow no
-  redirect, and carry `Authorization: Bearer <token>` exactly when a token is configured; `go.mod` gains no
-  dependency and `pimonitor.service` changes in comments only (E5, E6, E7, N4, N6, N9).
+  redirect, and carry `Authorization: Bearer <token>` exactly when a token is configured, never to a server owned
+  by another user than the owner of `/var/lib/openhab` (E16); `go.mod` gains no
+  dependency and `pimonitor.service` changes in comments only (E5, E6, E7, E16, N4, N6, N9).
 - AC7: The `openhab` block has `enabled` (default `auto`), `base_url` (default `http://127.0.0.1:8080`), `api_token`
   (default empty) and `poll_interval_seconds` (default 60); the invalid values of E13 fail startup with an error
   naming the option; `enabled` accepts `auto`, `true` and `false` in any letter case, quoted or not, and rejects
@@ -134,7 +140,8 @@ item states ([issue #181](https://github.com/LarsLaskowski/PiMonitor/issues/181)
 - AC11: The first openHAB poll runs at startup and then every `poll_interval_seconds`; a hung openHAB does not delay
   the fast tick (E6, N5).
 - AC12: The dashboard shows the openHAB card exactly while the latest `GET /api/v1/openhab` answered `200` with a
-  state other than `not_installed` or `pending`, polls it at the openHAB interval with the other polls' rules (one request
+  state other than `not_installed` or `pending` and its layout preference is visible, polls it at the openHAB
+  interval (at the metrics interval while `pending`) with the other polls' rules (one request
   outstanding, pause while hidden, `401` handling), and lists the card in the layout dialog under id `openhab`
   (S1, S5, S6, S8, S9).
 - AC13: The card shows the values of S1 (`n/a` for an absent one, the texts of S4 for a refused one), the state text of S3/S4/E11, the not-ONLINE list,
@@ -163,9 +170,7 @@ item states ([issue #181](https://github.com/LarsLaskowski/PiMonitor/issues/181)
 - In which unit does openHAB report its own uptime? Answered: unverified (the Product Manager's `ps -o etimes=`
   pair settles it); the uptime comes from the process start time, openHAB's value only without a process.
 - Do disabled Things warn? Answered: no (E10), Lead decision: the list is meant for actionable failures.
-- How does the dashboard learn the openHAB interval? Answered: without changing an existing `v1` response, whose
-  additive fields are an open question of [HTTP API](../../docs/areas/http-api.md#open-questions); the plan
-  chooses how.
+- How does the dashboard learn the openHAB interval? Answered: from the new response, not from a changed `v1` one.
 - Do the issue's claims about today's PiMonitor hold? Answered: yes (the `/proc` walk and `VmRSS` reading, the
   unset `PIMONITOR_API_KEY`, config mode `640`, a unit that lets the service see the paths, the process and
   loopback), except in letter: the CSP limits connections through `default-src 'self'`, the test conventions are
@@ -173,19 +178,9 @@ item states ([issue #181](https://github.com/LarsLaskowski/PiMonitor/issues/181)
 
 ## Area documents
 
-- A new area *openHAB* (`docs/areas/openhab.md`): detection, states, sources, cadence, limits, logging, token.
-- [Configuration](../../docs/areas/configuration.md): the `openhab` block, `PIMONITOR_OPENHAB_TOKEN` in the source
-  precedence.
-- [HTTP API](../../docs/areas/http-api.md): the route table row for `GET /api/v1/openhab` and its `by_route` key.
-- [Deployment](../../docs/areas/deployment.md): the token in the optional `EnvironmentFile`; the hardening comment
-  of `packaging/pimonitor.service` (what the service reads, loopback outbound calls).
-- `docs/ARCHITECTURE.md` (diagram and collector list) and `packaging/pimonitor.example.yaml` (the `openhab` block).
-- [Dashboard](../../docs/areas/dashboard.md): the endpoint list, the openHAB poll, the card and when it shows, its
-  warning state, the layout id `openhab`.
-- [`API.md`](../../docs/API.md): the response shape and every field, and the `by_route` key list and example of
-  `GET /api/v1/serverstats`; `SECURITY.md`: loopback outbound calls,
-  the token, the openHAB process files read; `docs/integrations/openhab.md`: the reverse direction and which
-  openHAB API security settings need a token.
+- New area *openHAB* (`docs/areas/openhab.md`): detection, states, sources, cadence, limits, logging, token.
+- Configuration, HTTP API, Dashboard, Deployment, `docs/API.md`, `docs/ARCHITECTURE.md`, `SECURITY.md`,
+  `docs/integrations/openhab.md`, `packaging/pimonitor.example.yaml`: as the plan's *Documentation updates* lists.
 
 ## Challenge
 
