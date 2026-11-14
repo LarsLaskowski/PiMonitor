@@ -71,5 +71,5 @@ once in the [area document](../areas/README.md) of the record's area, and the re
 | [0007](0007-log-webhook-by-index-and-host.md) | Log a webhook by its index and its scheme and host only | Accepted | 2026-11-13 |
 | [0008](0008-reject-non-finite-and-fractional-config-numbers.md) | Reject non-finite numbers, and fractional values of integer options while reading the file | Accepted | 2026-11-13 |
 | [0009](0009-first-cpu-tick-is-no-reading.md) | The first CPU tick after start counts as no reading | Accepted | 2026-11-13 |
-| [0010](0010-missing-cpu-reading-left-out-of-prometheus.md) | A missing CPU reading is left out of Prometheus, the v1 snapshot keeps its 0 | Accepted | 2026-11-14 |
+| [0010](0010-missing-reading-left-out-of-prometheus.md) | A missing CPU or memory reading is left out of Prometheus, the v1 snapshot keeps its 0 | Accepted | 2026-11-14 |
 <!-- project:end index -->

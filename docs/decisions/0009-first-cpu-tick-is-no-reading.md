@@ -42,4 +42,4 @@ snapshot keeps its 0, as for a failed reading. The rules are in [Metrics](../are
 - `cpu_percent` holds one point fewer than `memory_used_percent` per start, and `cpu` has no alert state until the
   second fast tick.
 - `GET /api/v1/metrics` still shows 0 on the first tick, and Prometheus leaves the CPU families out:
-  [0010](0010-missing-cpu-reading-left-out-of-prometheus.md).
+  [0010](0010-missing-reading-left-out-of-prometheus.md).
