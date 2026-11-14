@@ -129,6 +129,9 @@ existing one of 0003/0010. `docs/ARCHITECTURE.md` needs no update.
 ## Out of scope / follow-ups
 
 - Telling a failed memory reading from a real 0 in the v1 JSON (needs `/api/v2/...`, 0010 option 3).
+- Content whose `MemAvailable` (or the `MemFree` fallback) exceeds `MemTotal` still reads as a valid, negative
+  `memory.used_percent` (`memory.go`, `memAndSwapFromFields`); pre-existing, written by no kernel, and its rule
+  (fail or clamp, which value is compared) is a choice of its own: follow-up issue (plan challenge, objection 1).
 - Real-Pi check: none needed; the four fields are written by every kernel, Pi kernels included (fact 3).
 
 ## Security notes
