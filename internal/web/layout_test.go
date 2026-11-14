@@ -50,7 +50,7 @@ func TestIndexHTML_MainHasNoColumnWrappers(t *testing.T) {
 // know how to show/hide/reorder.
 var cardDomIDs = []string{
 	"card-system", "card-updates", "card-uptime", "card-cpu", "card-load",
-	"card-temperature", "card-memory", "card-disks", "card-network",
+	"card-temperature", "card-memory", "card-disks", "card-network", "card-openhab",
 }
 
 // TestAppJS_CardDefsCoverAllCards guards issue #10: every card in
