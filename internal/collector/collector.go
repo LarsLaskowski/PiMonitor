@@ -263,6 +263,10 @@ type Collector struct {
 	// goroutine, or inline in flushHistory). Defaults to writeFileAtomic;
 	// overridable in tests to control write timing without touching real disk I/O.
 	writeFile func(path string, data []byte) error
+
+	// openhab is the optional openHAB status poll; nil when cfg.OpenHAB is
+	// not enabled.
+	openhab *OpenHABCollector
 }
 
 // New creates a Collector wired to the standard Linux metric sources.
@@ -325,6 +329,9 @@ func New(cfg Config, log *slog.Logger) *Collector {
 		writeFile:  writeFileAtomic,
 	}
 	c.fastInterval = c.clampInterval(cfg.FastInterval, "FastInterval")
+	if cfg.OpenHAB.Enabled {
+		c.openhab = NewOpenHABCollector(cfg.OpenHAB, c.memoryTotal, log)
+	}
 	return c
 }
 
@@ -341,6 +348,17 @@ func (c *Collector) Run(ctx context.Context) {
 		defer c.notifier.Stop()
 	}
 	c.fastTick(ctx)
+	// The openHAB poll runs on a loop of its own, so a hung openHAB cannot
+	// delay either tick. It starts after the first fast tick, so its first
+	// poll sees the memory total, and Run joins it before returning.
+	if c.openhab != nil {
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+			c.openhab.Run(ctx)
+		}()
+		defer func() { <-done }()
+	}
 	c.slowTick(ctx)
 
 	// Defense in depth: a non-positive interval panics time.NewTicker.
@@ -723,8 +741,20 @@ func (c *Collector) Processes() Processes {
 }
 
 // OpenHAB returns the latest openHAB status.
+// With the poll disabled it reports not_installed.
 func (c *Collector) OpenHAB() OpenHABStatus {
-	return OpenHABStatus{}
+	if c.openhab == nil {
+		return OpenHABStatus{State: OpenHABStateNotInstalled}
+	}
+	return c.openhab.Status()
+}
+
+// memoryTotal returns the total RAM of the latest snapshot in bytes, 0 before
+// the first fast tick.
+func (c *Collector) memoryTotal() uint64 {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.latest.Memory.TotalBytes
 }
 
 // Alerts returns the current alert states and recent transition events. When
