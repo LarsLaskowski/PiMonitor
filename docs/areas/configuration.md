@@ -3,7 +3,7 @@
 ## Scope
 
 Where PiMonitor's runtime settings come from — built-in defaults, the YAML config file, the `PIMONITOR_API_KEY`
-environment variable and command-line flags — how they combine, every option with its type, default and valid
+environment variables and command-line flags — how they combine, every option with its type, default and valid
 range, and how the process fails at startup when the configuration is invalid. Operators editing
 `/etc/pimonitor/config.yaml` rely on it, and every other area takes the defaults and valid ranges of its options from
 here instead of restating them.
@@ -13,7 +13,8 @@ here instead of restating them.
 ### Sources and precedence
 
 - The configuration is resolved once at startup from four sources, each overriding the previous one: built-in
-  defaults, then the YAML file named by `-config`, then `PIMONITOR_API_KEY`, then the command-line flags.
+  defaults, then the YAML file named by `-config`, then the environment variables (`PIMONITOR_API_KEY`,
+  `PIMONITOR_OPENHAB_TOKEN`), then the command-line flags.
 - Without `-config` no file is read at all: there is no implicit default path. The shipped systemd unit passes
   `-config /etc/pimonitor/config.yaml` ([Deployment](deployment.md)).
 - The configuration is read only at startup. A change takes effect after a restart of the process; there is no reload.
@@ -22,7 +23,7 @@ here instead of restating them.
 
 ### Config file
 
-- The file is YAML: one mapping whose keys are the option keys below; `thresholds` and `alerts` are nested mappings,
+- The file is YAML: one mapping whose keys are the option keys below; `thresholds`, `alerts` and `openhab` are nested mappings,
   `alerts.webhooks` is a list of mappings. Implemented in `internal/config/config.go`.
 - An option omitted from the file, or given the YAML null value (`~`), keeps its default. An empty or comment-only
   file is valid and yields all defaults.
@@ -32,7 +33,7 @@ here instead of restating them.
 - A key given twice in the same mapping is an error.
 - A value of the wrong YAML type is an error, for example a quoted string (`"5"`) for a number option or a list for a
   string option. An unquoted scalar is accepted for a string option and taken as its text.
-- A fractional or non-finite value for an integer option (`processes_top_n`, `alerts.notify_max_retries`) is an error
+- A fractional or non-finite value for an integer option (`processes_top_n`, `alerts.notify_max_retries`, `openhab.poll_interval_seconds`) is an error
   while the file is read, also when it arrives through an alias, a merge key or an explicit `!!float` tag; the
   decoder would otherwise truncate it.
 - Only the first YAML document of the file is read; further documents after a `---` separator are ignored.
@@ -60,12 +61,13 @@ here instead of restating them.
 
 ### Environment
 
-- `PIMONITOR_API_KEY` is the only environment variable PiMonitor reads. When it is set and non-empty it replaces
-  `api_key` from the file; set to the empty string, or unset, it changes nothing, so an empty variable never disables
-  a key configured in the file. `-api-key` overrides it.
-- Once read, `PIMONITOR_API_KEY` is removed from the process's own environment, whether it was empty or not. This
+- `PIMONITOR_API_KEY` and `PIMONITOR_OPENHAB_TOKEN` are the only environment variables PiMonitor reads. When
+  `PIMONITOR_API_KEY` is set and non-empty it replaces `api_key` from the file; set to the empty string, or unset, it
+  changes nothing, so an empty variable never disables a key configured in the file. `-api-key` overrides it.
+  `PIMONITOR_OPENHAB_TOKEN` works the same way for `openhab.api_token`; it has no flag.
+- Once read, each variable is removed from the process's own environment, whether it was empty or not. This
   does not remove it from `/proc/<pid>/environ`; see [`SECURITY.md`](../../SECURITY.md).
-- The intended way to supply it is a root-only `EnvironmentFile=` for the systemd unit ([Deployment](deployment.md)).
+- The intended way to supply them is a root-only `EnvironmentFile=` for the systemd unit ([Deployment](deployment.md)).
 
 ### Options
 
@@ -119,6 +121,18 @@ There is no upper bound.
 | `thresholds.memory_warn_percent` | number | `80` | % |
 | `thresholds.memory_crit_percent` | number | `95` | % |
 
+#### `openhab`
+
+The values of this section are validated even while `openhab.enabled` is `false`. The poll itself is described in
+[openHAB](openhab.md).
+
+| Key | Type | Default | Valid values | Meaning |
+| --- | ---- | ------- | ------------ | ------- |
+| `openhab.enabled` | string | `"auto"` | `auto`, `true`, `false` in any letter case, quoted or not; `yes`, `no`, `on`, `off`, `1`, `0` and the empty string are rejected | `auto` polls only when openHAB is detected; `true` always polls; `false` turns the feature off, and `GET /api/v1/openhab` answers `404`. |
+| `openhab.base_url` | string | `"http://127.0.0.1:8080"` | an `http` URL (the scheme in any letter case) whose host is an IP literal in `127.0.0.0/8`, `::1` or `::ffff:127.x.y.z`, or `localhost`; a port of 1 to 65535 or none; no user info, no path other than `/`, no query, no fragment; short or numeric address forms (`127.1`, `2130706433`, `0x7f.0.0.1`, `0127.0.0.1`), a zone, a trailing dot and `https` are rejected | Root URL of openHAB's REST API. |
+| `openhab.api_token` | string | `""` | no whitespace or control character; empty means no token | openHAB API token, sent as a bearer token; `PIMONITOR_OPENHAB_TOKEN` overrides it. Never part of any response or log line. |
+| `openhab.poll_interval_seconds` | integer | `60` | 60 to 86400 | Time between openHAB polls. |
+
 #### `alerts`
 
 The values of this section are validated even while `alerts.enabled` is `false`.
@@ -146,7 +160,8 @@ The values of this section are validated even while `alerts.enabled` is `false`.
 
 - `GET /api/v1/config` returns `poll_interval_seconds`, `history_window_minutes`, `network_enabled` and the
   `thresholds` section to API clients and the dashboard; the response shape is in [`API.md`](../API.md).
-- `api_key` is never part of any response or log line.
+- `api_key` and `openhab.api_token` are never part of any response or log line. Whether a token is set is reported by
+  `GET /api/v1/openhab` (`api_token_configured`), never its value.
 
 ### Validation and startup failure
 
@@ -158,6 +173,11 @@ The values of this section are validated even while `alerts.enabled` is `false`.
   file is read, before it is decoded: a non-finite value fails with the same message, a fractional one with
   `<option> must be a whole number (got <value>)`, for example
   `pimonitor: load config: processes_top_n must be a whole number (got 2.5)`.
+- An invalid `openhab` option fails with its own text, which never quotes the URL or the token:
+  `openhab.enabled must be auto, true or false (got "<value>")`,
+  `openhab.base_url must be an http URL with a loopback host (127.0.0.0/8, ::1 or localhost) and no user, path, query or fragment`,
+  `openhab.poll_interval_seconds must be between 60 and 86400 (got <value>)` and
+  `openhab.api_token must not contain whitespace or control characters`.
 - After validation, each webhook `template` is parsed; a template that does not parse ends startup.
 - A startup failure writes one line `pimonitor: <reason>` to standard error and exits with status 1 before any
   port is opened or any metric is collected. The reason names the option, for example
@@ -172,7 +192,7 @@ The values of this section are validated even while `alerts.enabled` is `false`.
 - Values that pass validation can still fail when the server starts listening: an unparsable `listen_addr`, a port in
   use or below 1024 under the shipped unit, or `tls_cert`/`tls_key` files that are missing or unreadable. The process
   then exits with status 1 and the error on standard error ([Deployment](deployment.md)).
-- Validation never checks or reports the value of `api_key`; the messages quote only the offending value of
+- Validation never checks or reports the value of `api_key` or quotes `openhab.base_url` or `openhab.api_token`; the messages quote only the offending value of
   non-secret options.
 - `history_window_minutes × 60 / poll_interval_seconds` above 1,000,000 points per series is rejected, whatever the
   two values are individually.
@@ -181,12 +201,13 @@ The values of this section are validated even while `alerts.enabled` is `false`.
 
 ## Related decisions
 
+- [0013: openHAB requests go only to a loopback address over plain HTTP](../decisions/0013-openhab-requests-only-to-loopback-http.md) — why `openhab.base_url` is restricted.
 - [0008: Reject non-finite numbers, and fractional values of integer options while reading the file](../decisions/0008-reject-non-finite-and-fractional-config-numbers.md)
 
 ## Not here
 
 - What each option does in detail: [Metrics](metrics.md), [History](history.md), [Alerts](alerts.md),
-  [Notifications](notifications.md), [HTTP API](http-api.md), [Dashboard](dashboard.md).
+  [Notifications](notifications.md), [HTTP API](http-api.md), [Dashboard](dashboard.md), [openHAB](openhab.md).
 - The API key's header format and comparison, TLS serving and the `/healthz` check: [HTTP API](http-api.md).
 - The `GET /api/v1/config` response shape: [`API.md`](../API.md).
 - Where the config file lives on the Pi, its owner and mode, and the `EnvironmentFile=`: [Deployment](deployment.md).

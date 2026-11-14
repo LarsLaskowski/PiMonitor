@@ -25,20 +25,26 @@ client of the [HTTP API](http-api.md) like any third-party integration and has n
 
 ### Data sources and polling
 
-- The dashboard reads four endpoints: `GET /api/v1/config`, `GET /api/v1/metrics`, `GET /api/v1/alerts` and
-  `GET /api/v1/metrics/history`. It uses no other endpoint.
-- On page load it reads `/api/v1/config` once, then fetches metrics, history and alerts once each in that order, and
-  then starts the timers. `/api/v1/config` is read again only after an API key has been accepted; a server-side
-  configuration change reaches an open page on the next reload.
+- The dashboard reads five endpoints: `GET /api/v1/config`, `GET /api/v1/metrics`, `GET /api/v1/alerts`,
+  `GET /api/v1/metrics/history` and `GET /api/v1/openhab`. It uses no other endpoint, and the browser never contacts
+  openHAB itself.
+- On page load it reads `/api/v1/config` once, then fetches metrics, history, alerts and openHAB once each in that
+  order, and then starts the timers. `/api/v1/config` is read again only after an API key has been accepted; a
+  server-side configuration change reaches an open page on the next reload.
 - Metrics and alerts are polled every `poll_interval_seconds` (as reported by `/api/v1/config`), but never more
   often than once per second. History is polled every `poll_interval_seconds` or every 60 s, whichever is longer.
 - Until `/api/v1/config` has answered, and whenever it fails, the dashboard uses built-in fallback values for every
   field of that response. The fallback holds the same threshold keys the server serves; a test keeps the two key
   sets identical.
-- Each of the three polls has at most one request outstanding: a timer tick that fires while the previous request
+- The openHAB poll is its own timer: it runs every `poll_interval_seconds` of the `/api/v1/openhab` response (at
+  least 60 s), and at the metrics interval while the response's state is `pending`, so the card appears within
+  seconds of the server's first finished poll. After an answer of `404` (`openhab.enabled: false`) it stops until the
+  page is reloaded. An answer of `401` shows the "API key required" dialog; any other failure leaves the card as it
+  was.
+- Each of the four polls has at most one request outstanding: a timer tick that fires while the previous request
   of the same kind is still open is skipped, not queued.
-- When the page becomes hidden, all three timers stop and no further polls are sent. When it becomes visible
-  again, metrics, history and alerts are fetched immediately and the timers restart.
+- When the page becomes hidden, all timers stop and no further polls are sent. When it becomes visible
+  again, metrics, history, alerts and openHAB are fetched immediately and the timers restart.
 
 ### History in the browser
 
@@ -57,7 +63,7 @@ client of the [HTTP API](http-api.md) like any third-party integration and has n
 
 ### API key
 
-- When a metrics or alerts poll answers `401`, the dashboard shows the "API key required" dialog and the header
+- When a metrics, alerts or openHAB poll answers `401`, the dashboard shows the "API key required" dialog and the header
   shows "API key required". The dialog cannot be dismissed with Escape or by clicking outside it and has no close
   button.
 - The entered key is trimmed of surrounding whitespace; an empty entry does nothing. The key is verified with
@@ -85,7 +91,7 @@ client of the [HTTP API](http-api.md) like any third-party integration and has n
 ### Rendering
 
 - Text that comes from the server (mountpoints, interface names, package names and versions, Pi-hole versions,
-  host name, kernel, distribution, model) is inserted only as text nodes; the host name also goes to `document.title`
+  host name, kernel, distribution, model, openHAB's version and its Thing labels, UIDs and status texts) is inserted only as text nodes; the host name also goes to `document.title`
   and the `title` property of its header element. The page script never assigns non-empty content to `innerHTML`;
   clearing a container with an empty string is the only allowed use. `internal/web/xss_test.go` fails the build
   otherwise.
@@ -104,6 +110,16 @@ client of the [HTTP API](http-api.md) like any third-party integration and has n
   any other value (such as `dev`) is shown as-is. The footer also links to `/api/v1/metrics`.
 - The temperature card shows `n/a` when the snapshot names no thermal zone, instead of a `0` reading. GPU and PMIC
   temperatures are shown only when the snapshot carries them.
+- The openHAB card is shown exactly while the latest `GET /api/v1/openhab` answered `200` with a state other than
+  `not_installed` or `pending` and its layout preference is visible; it is hidden after a `404`. It shows the
+  process memory (absolute and as a percentage of RAM), the JVM heap used and total with a bar, the uptime, the
+  number of Items and of add-ons, the Things by status (ONLINE first, the others by name) and the version, with
+  `n/a` for an absent value. A value of a source the server lists as refused reads `needs api_token` (no token
+  configured) or `api_token refused`. The state line reads `Running · <version>`, `Starting (start level N)` while
+  the start level is below 100, `Not running` or `Not reachable`. The card is in its warning state (warning border,
+  state line colored `warn`) when the state is `installed_not_running` or `running_unreachable` or a Thing is listed
+  as not ONLINE; each listed Thing shows its label, its UID and `STATUS – description` (the status detail when
+  there is no description). Values of [openHAB](openhab.md).
 - The network card is shown only when its layout preference is visible, `network_enabled` is true in
   `/api/v1/config` and the snapshot holds at least one interface; all three must hold.
 - The Pi-hole section of the Updates card is shown only when the snapshot reports Pi-hole as installed. A Pi-hole
@@ -158,15 +174,17 @@ client of the [HTTP API](http-api.md) like any third-party integration and has n
 
 ### Card layout
 
-- The cards are System, Updates, Uptime, CPU Usage, Load Average, Temperature, Memory & Swap, Filesystems and
-  Network, in that default order. The layout dialog lets the user hide, show and move each card one place up or
+- The cards are System, Updates, Uptime, CPU Usage, Load Average, Temperature, Memory & Swap, Filesystems,
+  Network and openHAB, in that default order. The layout dialog lets the user hide, show and move each card one place up or
   down, and reset to the default. Changes take effect immediately; a card that becomes visible has its charts and
   gauges redrawn at their new size at once.
 - The layout is stored per browser in `localStorage` under `pimonitor-layout` as a JSON array of
   `{ "id": <card id>, "visible": <bool> }` in display order, with the card ids `system`, `updates`, `uptime`, `cpu`,
-  `load`, `temperature`, `memory`, `disks`, `network`. There is no server-side layout.
+  `load`, `temperature`, `memory`, `disks`, `network`, `openhab`. There is no server-side layout.
 - A stored layout is reconciled on every load: unknown ids and duplicates are dropped, and a known card missing from
   it is appended, visible. A missing or unreadable value means the default layout.
+- Like the Network card, the openHAB card is shown only when its data allows it as well as its layout preference: a
+  hidden preference keeps it hidden in every state.
 - With `network_enabled` false the Network card's visibility checkbox is disabled and labelled "(disabled on
   server)"; the card can still be moved.
 - Cards flow in three columns, two at a viewport width of 1100 px or less and one at 720 px or less.
@@ -195,8 +213,8 @@ None yet.
 - The API endpoints, their JSON shapes and the `?since=` rules: [`API.md`](../API.md) and
   [HTTP API](http-api.md).
 - Authentication, security headers and CSP on the server side: [HTTP API](http-api.md).
-- Defaults and valid ranges of `poll_interval_seconds`, `history_window_minutes`, `network_enabled`, `api_key` and
-  the thresholds: [Configuration](configuration.md).
+- Defaults and valid ranges of `poll_interval_seconds`, `history_window_minutes`, `network_enabled`, `api_key`,
+  the thresholds and the `openhab` options: [Configuration](configuration.md).
 - When an alert fires or clears: [Alerts](alerts.md).
 - What each metric means and when it is empty: [Metrics](metrics.md).
 - What the server's history window holds: [History](history.md).

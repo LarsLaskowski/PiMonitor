@@ -85,6 +85,30 @@ processes_enabled: false
 # processes_enabled is true. Must be between 1 and 100.
 processes_top_n: 5
 
+# Read-only status of an openHAB installation on this Pi, shown as a card
+# on the dashboard and served by GET /api/v1/openhab (see docs/API.md).
+openhab:
+  # "auto" (default) polls only while openHAB is installed (one of
+  # /usr/share/openhab, /etc/openhab, /var/lib/openhab exists) or its Java
+  # process runs; "true" always polls; "false" turns the feature off, and
+  # GET /api/v1/openhab then answers 404.
+  enabled: auto
+  # openHAB's root URL. Must be http with a loopback host (127.0.0.0/8,
+  # ::1 or localhost) and no path, query or user info: PiMonitor only ever
+  # talks to the openHAB on this machine.
+  base_url: "http://127.0.0.1:8080"
+  # Optional openHAB API token. Without one, a default openHAB install
+  # refuses system info, Things and add-ons (the card then reads "needs
+  # api_token"). Set it here (this file is mode 640 root:pimonitor) or via
+  # PIMONITOR_OPENHAB_TOKEN, which takes precedence. It is sent only to
+  # base_url, and only to a server running as the owner of
+  # /var/lib/openhab. With a token set, GET /api/v1/openhab serves Thing
+  # names and statuses that openHAB shows only to authenticated users: set
+  # api_key as well if the LAN should not read them.
+  api_token: ""
+  # Seconds between openHAB polls, 60 to 86400.
+  poll_interval_seconds: 60
+
 # If set, all /api/v1/... requests must include this value as either
 # "Authorization: Bearer <api_key>" or "X-Api-Key: <api_key>". Leave empty
 # (the default) to allow unauthenticated access on a trusted LAN. Set this
