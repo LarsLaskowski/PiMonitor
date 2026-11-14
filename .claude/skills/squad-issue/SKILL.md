@@ -115,7 +115,8 @@ every Git and GitHub action yourself, including follow-up issues the Lead decide
    made only for a major objection is confirmed by Security too.
 4. **Skeleton** (only if the plan adds or changes API). Launch `squad-dev` in mode `skeleton` with the body the *Skeleton*
    section of `.squad/stack.md` names, quoted in the prompt: the planned signatures and the existing test call sites
-   the plan assigns to the Dev. A plan that declares the change free of production and test code skips steps 4 and 5
+   the plan assigns to the Dev; a planned file the skeleton left unchanged goes back to the Dev (`squad-next.py` names
+   it). A plan that declares the change free of production and test code skips steps 4 and 5
    (*Changes without production or test code*).
 5. **Tests first** (not for `trivial` or `tests`). Launch `squad-tester` in mode `tests-first`. Confirm yourself
    that the new tests compile and fail on the current code (unless the Tester justified why one cannot); the tests
@@ -172,7 +173,7 @@ every Git and GitHub action yourself, including follow-up issues the Lead decide
     to step 6) and fill in its results: each `to record` from the log (the manual test, the check), each `after
     merge` with a linked verification issue you create now, each `pending` CI row once the PR's checks have
     finished (step 11). Post the matrix, not collapsed, then
-    `plan.md` (none on tiers `docs` and `patch`), `measurements.md` when the run has one, and `log.md` as one
+    `plan.md` (tiers `docs` and `patch`: `result.md` instead), `measurements.md` when the run has one, and `log.md` as one
     comment on the issue, headed "Squad working record", each inside a collapsed `<details>` block — or, for any
     document except the matrix (the comment tool takes its body as typed text, so a long document would be re-typed),
     a permalink to the last commit that contains it

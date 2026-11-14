@@ -533,6 +533,9 @@ the sources, per `sonar-project.properties` at the repo root. A `govulncheck` jo
 `govulncheck ./...` (reachability-based, so it only fails on vulnerabilities actually
 reachable from this code) on every push/PR plus a weekly schedule, so a newly-published CVE
 against an unchanged codebase is surfaced without waiting for the next commit.
+A `decision-records` job checks out the full history with its release tags and runs
+`.squad/tools/decision-check.py --require-history --tags-fetched`, so a change to a released
+decision record other than its status cannot merge.
 Actions are pinned to commit SHAs (not floating tags) so a compromised or rewritten action
 release can't silently change what CI executes; `.github/dependabot.yml` keeps those pins
 and `go.mod` dependencies current. The GoReleaser binary the release workflow runs is pinned

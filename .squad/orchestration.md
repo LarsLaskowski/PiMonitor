@@ -47,13 +47,14 @@ profile):
 
 - **Managed** — overwritten on every refresh: `CLAUDE.md`, `.squad/team.md`, `.squad/routing.md`,
   `.squad/orchestration.md`,
-  `.squad/tools/` except `squad_settings.py`, a profile's shared rule files (`.squad/*-rules.*`), `.claude/agents/squad-*.md`, `.claude/hooks/`, the template's
+  the tools the template ships to `.squad/tools/` (`lesson-label.py` lists them), a profile's shared rule files (`.squad/*-rules.*`), `.claude/agents/squad-*.md`, `.claude/hooks/`, the template's
   skills, `.github/ISSUE_TEMPLATE/feature_request.md`, the `_template.md` files of `docs/decisions/` and
   `docs/areas/`, `docs/decisions/process.md` (the squad's process decisions), `specs/README.md` and
   `specs/_template/`.
 - **Marked** — rebuilt on every refresh, keeping the repository's content inside `<!-- project:… -->` blocks:
   `AGENTS.md`, `docs/CONTRIBUTING.md`, `docs/ARCHITECTURE.md`, `.github/ISSUE_TEMPLATE/bug_report.md`,
-  `.github/pull_request_template.md`, `docs/decisions/README.md` and `docs/areas/README.md`.
+  `.github/pull_request_template.md`, `docs/decisions/README.md` and `docs/areas/README.md`, and the template blocks of
+  `.editorconfig` (`squad:dotnet-rules`, `squad:sonar-rules`; the rest of the file is seeded).
   `.github/copilot-instructions.md` is generated from `AGENTS.md`, which says how a change reaches both.
 - **Seeded** — created once and owned by the repository from then on: `.squad/stack.md`, `.squad/project.md`,
   `.squad/tools/squad_settings.py`, `.claude/settings.json` (a refresh adds the members' hooks `git-guard.py` and

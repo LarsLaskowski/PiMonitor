@@ -36,9 +36,11 @@ Lead writes them, as given, into `measurements.md` in the work folder, which ste
 
 ## Work folder
 
-- Issue (bug fix): `specs/issue-<number>/` — `plan.md`, `log.md` (and `measurements.md`, *Bug or feature*)
+- Issue (bug fix): `specs/issue-<number>/` — `plan.md`, `log.md` (and `measurements.md`, *Bug or feature*);
+  tiers `docs` and `patch` have the Lead's `result.md` instead of `plan.md`
 - Feature: `specs/feature-<short-slug>/`, from an issue `specs/feature-<number>-<short-slug>/` — `spec.md`,
-  `plan.md`, `tasks.md`, `log.md` (and `measurements.md`, *Bug or feature*)
+  `plan.md`, `tasks.md`, `log.md` (and `measurements.md`, *Bug or feature*); on the `docs` route `log.md` and the
+  Lead's `result.md` only
 - The work folder lives **only on the work branch**: it is committed and pushed after every step so a
   crashed session can resume, and in step 10 its content is posted as a "Squad working record" comment
   (on the issue, or on the PR for a feature without issue) and the folder is removed before the PR opens.
@@ -57,7 +59,7 @@ is blocking.
 
 One exception: `.squad/stack.md`, `.squad/project.md` and the project blocks of `AGENTS.md` describe the
 product, not the squad. `.squad/tools/squad_settings.py` is the repository's own settings file and a product PR may
-change it too (a coverage exclusion, *Code a unit test cannot cover*; a threshold is never lowered). A product PR updates them when the change itself makes them untrue — a new build command,
+change it too, with the files a tool writes from it (`SETTINGS_OUTPUTS` in `scope-check.py`) (a coverage exclusion, *Code a unit test cannot cover*; a threshold is never lowered). A product PR updates them when the change itself makes them untrue — a new build command,
 a new security area, a new guarantee or coupling point — without an escalation, and the Reviewer treats a stale
 entry there like stale documentation. A project block of `AGENTS.md` changes identically in
 `.github/copilot-instructions.md` (`scope-check.py` compares them).
@@ -80,7 +82,7 @@ review, and an area it finds touched but not listed goes to *Unlisted security a
 | Tier | When | Pipeline |
 | ---- | ---- | -------- |
 | `docs` | Issues, and a feature whose change is documentation only (`squad-spec` step 2a). The diff changes only product documentation: `README.md`, `SECURITY.md`, Markdown under `docs/` except `docs/decisions/` and `docs/areas/`, the project blocks of the marked files, and `.squad/stack.md` or `.squad/project.md` as documentation (below); any other file makes it `trivial` or higher (`scope-check.py --tier docs` checks it). | No `plan.md`: the Lead's result (tier, exact edits, acceptance criteria) is `result.md` in the work folder, written verbatim with `squad-notes.py <folder> result`, its `RESULT:` line the first `log.md` row; the orchestrator applies the edits; `scope-check.py --tier docs` and *Format check* pass; one Reviewer round reads the diff against `result.md` (no build) — a blocking finding is fixed by the orchestrator, checked and delta-reviewed the same way; the PR opens once the latest round is clean. Steps 3–7 and 9 are skipped. |
-| `patch` | Issues only. The Lead can name the exact edits, and the diff stays within `PATCH_MAX_LINES` changed lines outside `specs/` (default 30, `squad_settings.py`): no change to production logic or control flow (an attribute, a literal, a condition rewritten equivalently, a configuration value, a script line), no new dependency, permission or schema change. An edit in a security area, a CI or build file makes it `patch/security`. `scope-check.py --tier patch` checks the line budget; the reviewer confirms that no logic changed and raises the tier otherwise. | As `docs`; the result also names, per edit, the test or check that covers it. An edit to production code without one gets the one test the Lead names, written once by `squad-tester` (the only extra launch). Step 7 runs only *Gates of a patch* (*Format* on the orchestrator's edits); the review round is `squad-reviewer`, or on `patch/security` `squad-security` in mode `diff` instead. No plan challenge, Security plan review, skeleton, tests first, Code Officer or step 9. |
+| `patch` | Issues only. The Lead can name the exact edits, and the diff stays within `PATCH_MAX_LINES` changed lines outside `specs/` (default 30, `squad_settings.py`): no change to production logic or control flow (an attribute, a literal, a condition rewritten equivalently, a configuration value, a script line), no new dependency, permission or schema change. An edit in a security area, a CI or build file makes it `patch/security`. `scope-check.py --tier patch` checks the line budget; the reviewer confirms that no logic changed and raises the tier otherwise. | As `docs`; the result also names, per edit, the test or check that covers it. An edit to production code without one gets the one test the Lead names, written once by `squad-tester` (the only extra launch) on the unfixed head before the edits, its failure confirmed by the orchestrator as in step 5. Step 7 runs only *Gates of a patch* (*Format* on the orchestrator's edits); the review round is `squad-reviewer`, or on `patch/security` `squad-security` in mode `diff` instead. No plan challenge, Security plan review, skeleton, tests first, Code Officer or step 9. |
 | `tests` | The diff changes test code only — the test paths (`COVERAGE_TEST_PATHSPECS` in `squad_settings.py`, by default its `COVERAGE_EXCLUDES`) and `docs/UNIT_TESTS.md` — beyond what `patch` allows; any other file makes it `trivial` or higher (`scope-check.py --tier tests` checks it). | `plan.md` with the criteria and their tests; no plan challenge; step 3 only with *Security areas touched*; steps 4 and 5 skipped, step 6 is `squad-tester` in mode `coverage` writing the plan's tests (no Dev); step 7 runs the *test code only* row of *Gates of a patch* and `scope-check.py --tier tests`, with the Code Officer as usual; Reviewer and PR approval (step 9) still run. |
 | `trivial` | Documentation that does not qualify as `docs`, code comments, log or UI wording, configuration defaults, or a documentation change that needs a decision record — no change to behavior or control flow | Steps 4 and 5 skipped (no tests-first), except step 5 of a task group whose first `tasks.md` row names the Tester rather than the Dev (`squad-next.py` names it); no plan challenge; step 3 only with *Security areas touched*; code check, Reviewer and PR approval (step 9) still run. Tests and coverage are still required if production code changes. |
 | `standard` | A behavior change that creates, changes or removes no security control (see `security`) — also when it touches a security area, Docker/CI or build configuration, or adds or updates a dependency | Plan challenge in step 2 when *Plan challenge* calls for it; step 3 with *Security areas touched*, in parallel with the challenge. No Security diff review: the Reviewer raises the tier when the diff changes a security control after all |
@@ -150,7 +152,8 @@ PR* (without one, no CI build of the change exists before step 10). When the pla
 the artifact (an image for the target host, say), the spec or plan first asks whether they can build it there, and
 the plan names the fallback: who builds it otherwise and how it reaches the target (`orchestration.md`, *An artifact
 the Product Manager cannot build*). The manual test runs on the stamped head before the review set of step 8 (`squad-next.py` names it, logged as
-`7 Manual test`), so a document it corrects is reviewed once.
+`7 Manual test`), so a document it corrects is reviewed once. A `manual:` check that names a member of the step-8
+review set (the Reviewer; Security on its tiers) runs in that member's round instead, its result in its report.
 
 ### Operator environments and documented procedures
 

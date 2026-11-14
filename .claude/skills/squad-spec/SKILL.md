@@ -69,7 +69,7 @@ cells in `log.md`); steps 4–12 follow `squad-issue` with the changes listed af
   `decide` in `squad-lead.md`); run `plan-check.py <folder>` on it before any member reads it, and hand later
   launches the amended spec.
 - **Step 10:** the working record (the verification matrix of the spec's criteria, `spec.md`, `plan.md`,
-  `tasks.md`, `measurements.md` when the run has one, `log.md`; on the `docs` route `log.md` alone) is posted to the feature request issue if one exists
+  `tasks.md`, `measurements.md` when the run has one, `log.md`; on the `docs` route `log.md` and `result.md`) is posted to the feature request issue if one exists
   (`Closes #<n>` in the PR), otherwise as the first comment on the PR right after opening it; every log row and
   amend after it goes through `squad-log.py … --stdin` on that comment's log table. Any document but the
   verification matrix may go as a permalink to the commit before the removal, with a summary, as `squad-issue` step 10 says.

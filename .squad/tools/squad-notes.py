@@ -9,7 +9,10 @@ from `<session>/subagents/agent-<id>.jsonl` of the session `CLAUDE_CODE_SESSION_
 --agent-id` reads its usage. Outside Claude Code the report is piped in with `--stdin`. A report without a `VERDICT:`
 line is refused: it is narration, not the report. Its closing `VERDICT:` line stays out (the log row carries it);
 everything else is written as the member wrote it, under `## Challenge notes` or `## Security notes` at the end of the
-document, or below that section's last line when the document has it already. The line ending follows the file.
+document, or below that section's last line when the document has it already. The line ending follows the file. A
+control character (Unicode categories Cc, Cf, Zl, Zp other than tab and line break) is written as its text escape
+`U+XXXX`, as `squad-log.py` writes it, so the appended notes never fail `plan-check.py` (PiMonitor#238: a quoted
+U+FEFF).
 
 Kind `result` writes the Lead's whole report of tiers `docs` and `patch` (tier, exact edits, criteria) as
 `result.md` of the work folder instead, replacing an earlier one: a one-line log row cannot hold an exact edit with a
@@ -29,6 +32,7 @@ import os
 import re
 import subprocess
 import sys
+import unicodedata
 
 HEADINGS = {"challenge": "## Challenge notes", "security": "## Security notes"}
 RESULT = "result"
@@ -36,6 +40,8 @@ VERDICT_LINE = re.compile(r"^\s*\**VERDICT:.*$")
 RESULT_LINE = re.compile(r"^\s*\**RESULT:.*$")
 HANDBACK = "SubagentHandback"
 SPECS_PREFIX = "specs/"
+CONTROL_CATEGORIES = {"Cc", "Cf", "Zl", "Zp"}
+KEEP = {"\t", "\n"}
 _TRANSCRIPTS = []
 
 
@@ -123,9 +129,15 @@ def transcript_report(agent_id, session):
     return report
 
 
+def escape_controls(text):
+    """Every control character other than tab and line break as `U+XXXX`."""
+    return "".join(f"U+{ord(ch):04X}" if unicodedata.category(ch) in CONTROL_CATEGORIES and ch not in KEEP else ch
+                   for ch in text)
+
+
 def notes(report):
     """The report without its closing `VERDICT:` line and the blank lines around it."""
-    lines = report.strip().splitlines()
+    lines = escape_controls(report.replace("\r\n", "\n")).strip().splitlines()
     while lines and (not lines[-1].strip() or VERDICT_LINE.match(lines[-1])):
         lines.pop()
     return "\n".join(line.rstrip() for line in lines)
@@ -197,7 +209,7 @@ def write_result(root, args):
         return 1
     with open(log, "rb") as handle:
         eol = "\r\n" if b"\r\n" in handle.read() else "\n"
-    body = "\n".join(line.rstrip() for line in report.strip().replace("\r\n", "\n").splitlines())
+    body = "\n".join(line.rstrip() for line in escape_controls(report.replace("\r\n", "\n")).strip().splitlines())
     path = os.path.join(os.path.dirname(log), "result.md")
     with open(path, "wb") as handle:
         handle.write((body + "\n").replace("\n", eol).encode("utf-8"))

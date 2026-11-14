@@ -6,7 +6,8 @@ Checks, over every file changed since the merge base with BASE_REF (working tree
 included; BASE_REF from `.squad/tools/squad_settings.py`, default origin/main):
 
 - no squad or instruction file is changed: `.squad/` except `stack.md`, `project.md` and, outside a fork,
-  `tools/squad_settings.py`, `.claude/`, `CLAUDE.md` (`.squad/routing.md`, *Scope of a product PR*; squad lessons become issues);
+  `tools/squad_settings.py` with the files a tool writes from it (`SETTINGS_OUTPUTS`), `.claude/`, `CLAUDE.md`
+  (`.squad/routing.md`, *Scope of a product PR*; squad lessons become issues);
 - a marked file (`AGENTS.md` and its Copilot mirror `.github/copilot-instructions.md`, `docs/CONTRIBUTING.md`,
   `docs/ARCHITECTURE.md`, the bug report and pull request templates, the decision and area index) is changed only
   inside its `<!-- project:… -->` blocks; `AGENTS.md` and its mirror are neither added nor deleted, and a project
@@ -59,6 +60,9 @@ SQUAD_FILES_ALLOWED = {".squad/stack.md", ".squad/project.md"}
 # The repository's own settings (coverage exclusions, thresholds): a product PR may change them, a fork's never
 # (the file is executed Python).
 SETTINGS_FILE = ".squad/tools/squad_settings.py"
+# Written by a template tool from the settings, so a change of the settings changes them too (dotnet: the
+# DOTNET_RULES_PENDING entries of the rules reported without a location).
+SETTINGS_OUTPUTS = {".squad/dotnet-rules-pending.globalconfig"}
 INSTRUCTION_FILES = {"CLAUDE.md"}
 RULES, MIRROR = "AGENTS.md", ".github/copilot-instructions.md"
 # The rules every agent reads: a product PR of the squad may change their project blocks (identically in both), a
@@ -88,7 +92,7 @@ def changed_files(base):
 
 
 def is_squad_file(path, fork=False):
-    if path in SQUAD_FILES_ALLOWED or (path == SETTINGS_FILE and not fork):
+    if path in SQUAD_FILES_ALLOWED or ((path == SETTINGS_FILE or path in SETTINGS_OUTPUTS) and not fork):
         return False
     return path.startswith((".squad/", ".claude/")) or path in INSTRUCTION_FILES or (fork and path in RULE_FILES)
 
