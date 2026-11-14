@@ -226,6 +226,8 @@ Notes:
 - `timestamp` is the Pi's own clock at collection time (useful as the
   displayed device time), and `uptime_seconds` is the time elapsed since
   boot.
+- `cpu.overall_percent` reads 0 on the first fast tick after start and after a failed `/proc/stat` read, which in v1
+  is indistinguishable from a real 0 (`GET /metrics` leaves the CPU families out for such a tick instead).
 - `system.cpu_model` is best-effort: it is empty on kernels whose
   `/proc/cpuinfo` omits a `model name` field (common on some Raspberry Pi
   kernels).
@@ -799,8 +801,8 @@ Metrics exposed (all gauges, prefixed `pimonitor_`):
 
 | Metric | Labels | Notes |
 | --- | --- | --- |
-| `cpu_usage_percent` | — | Overall CPU usage. Deliberately its own unlabeled family rather than a `core="overall"` value inside `cpu_core_usage_percent`, so a naive `sum()`/`avg by (...)` over the per-core family can't silently double-count it |
-| `cpu_core_usage_percent` | `core` (0-based index) | Omitted entirely on platforms without per-core data |
+| `cpu_usage_percent` | — | Overall CPU usage. Deliberately its own unlabeled family rather than a `core="overall"` value inside `cpu_core_usage_percent`, so a naive `sum()`/`avg by (...)` over the per-core family can't silently double-count it. Omitted entirely on the first fast tick after start and after a failed `/proc/stat` read, as for `temperature_celsius`; a real reading of `0` is written |
+| `cpu_core_usage_percent` | `core` (0-based index) | Omitted entirely on platforms without per-core data, and on the first fast tick after start and after a failed `/proc/stat` read |
 | `temperature_celsius` | `zone` | Omitted entirely — the whole family is skipped — whenever the most recent temperature collection failed (e.g. no readable thermal zone) or hasn't completed yet; a `0` reading is never fabricated for a missing sensor |
 | `gpu_temperature_celsius` | — | Only present when `vcgencmd` responded, like `gpu_temperature` in `GET /api/v1/metrics` |
 | `pmic_temperature_celsius` | — | Only present when `vcgencmd measure_temp pmic` responded (Raspberry Pi 4/5), like `pmic_temperature` in `GET /api/v1/metrics` |

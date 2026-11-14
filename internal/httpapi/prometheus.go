@@ -42,12 +42,17 @@ func renderPrometheusMetrics(snap collector.Snapshot) []byte {
 }
 
 // writeCPUMetrics writes the overall CPU family and, when present, the
-// per-core one. These are deliberately two separate families rather than
+// per-core one. Both are left out while the snapshot has no CPU reading
+// (CPUValid false: first tick after start, failed read), so Prometheus never
+// sees a fabricated 0, as for the temperature. These are deliberately two separate families rather than
 // an "overall" value inside the per-core one: mixing an aggregate into the
 // series it aggregates makes naive PromQL (sum(...), avg by (...)(...))
 // silently double-count unless every query remembers to exclude
 // core="overall".
 func writeCPUMetrics(buf *bytes.Buffer, snap collector.Snapshot) {
+	if !snap.CPUValid {
+		return
+	}
 	cpu := snap.CPU
 	writeGaugeHeader(buf, "pimonitor_cpu_usage_percent", "Overall CPU usage percentage.")
 	writeMetric(buf, "pimonitor_cpu_usage_percent", "", "", cpu.OverallPercent)

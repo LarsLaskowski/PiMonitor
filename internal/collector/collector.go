@@ -569,6 +569,7 @@ func (c *Collector) fastTick(ctx context.Context) {
 	c.latest.Timestamp = s.now
 	c.latest.UptimeSeconds = s.uptimeSecs
 	c.latest.CPU = s.cpuUsage
+	c.latest.CPUValid = s.cpuErr == nil
 	c.latest.CPUFrequency = s.cpuFreq
 	c.latest.Load = s.load
 	c.latest.Temperature = s.temp
