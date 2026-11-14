@@ -21,3 +21,4 @@ are quoted in full.
 | 2026-11-14 11:46 | 9 PR approval | Lead | RESULT: APPROVED; nothing else open; record 0011 to be set Accepted by orchestrator (opus/medium · 43,889 tokens · 9 tool uses · 34 s · 16 in · 2,831 out · 255,207 cache read · 30,225 cache write · 129,425 weighted) |
 | 2026-11-14 11:46 | 7 Gate stamp | Orchestrator | PASS on 401a8de4bebfb9cf618e2a038f5af67d3ffcdc7c (tier standard, verbatim): Format check pass; decision-check.py pass; scope-check.py pass |
 | 2026-11-14 11:46 | 9 Record status | Orchestrator | decision 0011 and index row set to Accepted; decision-check passes |
+| 2026-11-14 11:46 | 10 Pull request | Orchestrator | working record posted on the issue, specs/issue-249 removed, draft PR opened |
