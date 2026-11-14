@@ -77,6 +77,13 @@ var routeTable = append([]route{
 		api:     true,
 		enabled: func(cfg Config) bool { return cfg.ProcessesEnabled },
 	},
+	{
+		method:  http.MethodGet,
+		path:    "/api/v1/openhab",
+		handler: (*Server).handleOpenHAB,
+		api:     true,
+		enabled: func(cfg Config) bool { return cfg.OpenHABEnabled },
+	},
 }, metricsSubResourceRoutes()...)
 
 // metricsSubResource is one narrow, read-only view of the current snapshot,

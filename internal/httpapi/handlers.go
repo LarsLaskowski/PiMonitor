@@ -156,6 +156,13 @@ func (s *Server) handleProcesses(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, s.log.Error, s.metrics.Processes())
 }
 
+// handleOpenHAB serves GET /api/v1/openhab: the status of the local openHAB
+// as of the last finished poll, or state pending before the first. Only
+// registered when openhab.enabled is not false — see docs/API.md.
+func (s *Server) handleOpenHAB(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, s.log.Error, s.metrics.OpenHAB())
+}
+
 // handleServerStats serves GET /api/v1/serverstats: in-memory counters of
 // PiMonitor's own HTTP traffic (total requests, broken down by response
 // status class and by route), recorded by withLogging on every request.
