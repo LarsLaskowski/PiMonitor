@@ -236,6 +236,22 @@ main {
 .accent-memory { --card-accent: #4f46e5; }
 .accent-disks { --card-accent: #0891b2; }
 .accent-network { --card-accent: #db2777; }
+.accent-openhab { --card-accent: #0ea5e9; }
+
+.card-warn {
+  border-color: var(--warn);
+  border-top-color: var(--warn);
+}
+
+.openhab-thing {
+  margin-top: 0.6rem;
+  font-size: 0.8125rem;
+  overflow-wrap: anywhere;
+}
+
+.openhab-thing .metric-sub {
+  display: block;
+}
 
 /* Cards that open a metric detail view on click/Enter. */
 .card-clickable {

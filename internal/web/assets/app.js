@@ -525,6 +525,7 @@
     { id: 'memory', domId: 'card-memory', label: 'Memory & Swap' },
     { id: 'disks', domId: 'card-disks', label: 'Filesystems' },
     { id: 'network', domId: 'card-network', label: 'Network' },
+    { id: 'openhab', domId: 'card-openhab', label: 'openHAB' },
   ];
   const DEFAULT_CARD_ORDER = CARD_DEFS.map(c => c.id);
   const LAYOUT_KEY = 'pimonitor-layout';
@@ -604,6 +605,21 @@
     }
   }
 
+  // The openHAB card (issue #181) is shown exactly while the latest
+  // GET /api/v1/openhab answered 200 with a state other than not_installed or
+  // pending and its layout preference is visible. Like "network", its hidden
+  // class is decided only here, never by applyLayout.
+  let latestOpenHAB = null;
+
+  function applyOpenHABVisibility() {
+    const card = document.getElementById('card-openhab');
+    if (!card) return;
+    const pref = layout.find(e => e.id === 'openhab')?.visible !== false;
+    const state = latestOpenHAB?.state;
+    const qualifies = !!state && state !== 'not_installed' && state !== 'pending';
+    card.classList.toggle('hidden', !(pref && qualifies));
+  }
+
   // The load-average gauges draw onto a <canvas> sized from its rendered
   // CSS box (see gauge.js); a card hidden via `display: none` reports a
   // zero-size box, so a gauge drawn while its card was hidden bakes in a
@@ -632,7 +648,7 @@
       const el = def && document.getElementById(def.domId);
       if (!el) return;
       main.appendChild(el);
-      if (def.id !== 'network') {
+      if (def.id !== 'network' && def.id !== 'openhab') {
         el.classList.toggle('hidden', !entry.visible);
       }
     });
@@ -644,6 +660,7 @@
     entry.visible = visible;
     persistLayout(layout);
     applyLayout();
+    applyOpenHABVisibility();
     // "network" isn't toggled by applyLayout (see its comment above) — its
     // hidden class is only ever set in applyNetworkVisibility, so re-run it
     // here to reflect the preference change immediately instead of waiting
@@ -691,6 +708,7 @@
     layout = normalizeLayout(null);
     persistLayout(layout);
     applyLayout();
+    applyOpenHABVisibility();
     buildLayoutList();
     if (latestSnapshot) {
       applyNetworkVisibility(latestSnapshot);
@@ -1154,6 +1172,118 @@
     renderDetailChart();
   }
 
+  // ---- openHAB card (issue #181) ----
+
+  // What a value reads when openHAB did not report it: the hint for a source
+  // it refused (401/403), otherwise n/a.
+  function openhabMissing(st, source) {
+    if (!(st.refused || []).includes(source)) return 'n/a';
+    return st.api_token_configured ? 'api_token refused' : 'needs api_token';
+  }
+
+  function openhabRow(name, value, fraction) {
+    const row = document.createElement('div');
+    row.className = 'bar-row';
+    const label = document.createElement('div');
+    label.className = 'bar-label';
+    const nameEl = document.createElement('span');
+    nameEl.className = 'bar-name';
+    nameEl.textContent = name;
+    const valueEl = document.createElement('span');
+    valueEl.className = 'bar-pct';
+    valueEl.textContent = value;
+    label.append(nameEl, valueEl);
+    row.appendChild(label);
+    if (fraction !== undefined) {
+      const track = document.createElement('div');
+      track.className = 'bar-track';
+      const fill = document.createElement('div');
+      fill.className = 'bar-fill';
+      fill.style.width = Math.min(Math.max(fraction * 100, 0), 100).toFixed(1) + '%';
+      track.appendChild(fill);
+      row.appendChild(track);
+    }
+    return row;
+  }
+
+  function openhabStateText(st) {
+    if (st.state === 'installed_not_running') return 'Not running';
+    if (st.state === 'running_unreachable') return 'Not reachable';
+    if (st.start_level !== undefined && st.start_level < 100) {
+      return 'Starting (start level ' + st.start_level + ')';
+    }
+    return 'Running · ' + (st.version || 'n/a');
+  }
+
+  function openhabThingsText(things) {
+    const parts = [];
+    const counts = things.by_status || {};
+    if (counts.ONLINE) parts.push(counts.ONLINE + ' ONLINE');
+    Object.keys(counts).filter(k => k !== 'ONLINE' && counts[k] > 0).sort()
+      .forEach(k => parts.push(counts[k] + ' ' + k));
+    return parts.length ? parts.join(' · ') : '0 Things';
+  }
+
+  // Every openHAB-supplied text goes in through textContent.
+  function renderOpenHAB(st) {
+    applyOpenHABVisibility();
+    if (st.state === 'not_installed' || st.state === 'pending') return;
+    const card = document.getElementById('card-openhab');
+    const body = document.getElementById('openhab-body');
+    const notOnline = st.things?.not_online || [];
+    const warn = st.state === 'installed_not_running' || st.state === 'running_unreachable' || notOnline.length > 0;
+    card.classList.toggle('card-warn', warn);
+
+    const stateLine = document.createElement('div');
+    stateLine.className = 'text-tile-value' + (warn ? ' metric-warn' : '');
+    stateLine.textContent = openhabStateText(st);
+
+    const rows = [];
+    let memory = 'n/a';
+    if (st.process) {
+      memory = fmtBytes(st.process.rss_bytes);
+      if (st.process.rss_percent_of_ram !== undefined) {
+        memory += ' (' + st.process.rss_percent_of_ram.toFixed(1) + ' % of RAM)';
+      }
+    }
+    rows.push(openhabRow('Process memory', memory));
+    if (st.jvm && st.jvm.heap_total_bytes > 0) {
+      rows.push(openhabRow('JVM heap', fmtBytes(st.jvm.heap_used_bytes) + ' / ' + fmtBytes(st.jvm.heap_total_bytes),
+        st.jvm.heap_used_bytes / st.jvm.heap_total_bytes));
+    } else {
+      rows.push(openhabRow('JVM heap', openhabMissing(st, 'systeminfo')));
+    }
+    rows.push(openhabRow('Uptime', st.uptime_seconds !== undefined ? fmtUptime(st.uptime_seconds) : openhabMissing(st, 'systeminfo')));
+    rows.push(openhabRow('Items', st.items_count !== undefined ? String(st.items_count) : openhabMissing(st, 'items')));
+    rows.push(openhabRow('Add-ons', st.addons_installed !== undefined ? String(st.addons_installed) : openhabMissing(st, 'addons')));
+    rows.push(openhabRow('Things', st.things ? openhabThingsText(st.things) : openhabMissing(st, 'things')));
+
+    const list = notOnline.map(t => {
+      const item = document.createElement('div');
+      item.className = 'openhab-thing';
+      const label = document.createElement('div');
+      label.textContent = t.label || t.uid;
+      const uid = document.createElement('span');
+      uid.className = 'metric-sub';
+      uid.textContent = t.uid;
+      const detail = document.createElement('div');
+      detail.className = 'metric-sub';
+      detail.textContent = t.status + ' – ' + (t.description || t.status_detail || '');
+      item.append(label, uid, detail);
+      return item;
+    });
+    body.replaceChildren(stateLine, ...rows, ...list);
+  }
+
+  // The openHAB poll has its own cadence: the interval the server reports
+  // (at least 60 s), the metrics interval while the first poll is pending.
+  function openhabIntervalMs() {
+    if (latestOpenHAB && latestOpenHAB.state === 'pending') {
+      return Math.max(1, config.poll_interval_seconds) * 1000;
+    }
+    return Math.max(60, (latestOpenHAB && latestOpenHAB.poll_interval_seconds) || 60) * 1000;
+  }
+
   // In-flight guards: setInterval fires on a fixed schedule regardless of
   // whether the previous request finished. Without these, a slow response
   // (loaded Pi, flaky Wi-Fi) lets requests pile up, each adding load to an
@@ -1161,6 +1291,9 @@
   let metricsInFlight = false;
   let historyInFlight = false;
   let alertsInFlight = false;
+  let openhabInFlight = false;
+  // Set by a 404 (openhab.enabled is false): no more polls until a reload.
+  let openhabDisabled = false;
 
   async function pollMetrics() {
     if (metricsInFlight) return;
@@ -1233,9 +1366,43 @@
     }
   }
 
+  async function pollOpenHAB() {
+    if (openhabInFlight) return;
+    if (openhabDisabled) return;
+    openhabInFlight = true;
+    try {
+      latestOpenHAB = await fetchJSON('/api/v1/openhab');
+      renderOpenHAB(latestOpenHAB);
+    } catch (e) {
+      if (e.status === 404) {
+        openhabDisabled = true;
+        latestOpenHAB = null;
+        applyOpenHABVisibility();
+      } else if (e.status === 401) {
+        openAPIKeyModal();
+      } else {
+        // Leave the card as it is: a failed fetch says nothing about openHAB.
+        console.error('failed to fetch openHAB status', e);
+      }
+    } finally {
+      openhabInFlight = false;
+      scheduleOpenHAB();
+    }
+  }
+
+  // One timeout at a time, re-armed after every poll so the interval can
+  // follow the state; nothing is armed while the tab is hidden.
+  function scheduleOpenHAB() {
+    if (openhabTimer) clearTimeout(openhabTimer);
+    openhabTimer = null;
+    if (document.hidden || openhabDisabled) return;
+    openhabTimer = setTimeout(() => { void pollOpenHAB(); }, openhabIntervalMs());
+  }
+
   let metricsTimer = null;
   let historyTimer = null;
   let alertsTimer = null;
+  let openhabTimer = null;
 
   function startPolling() {
     if (metricsTimer) clearInterval(metricsTimer);
@@ -1258,6 +1425,7 @@
     if (metricsTimer) { clearInterval(metricsTimer); metricsTimer = null; }
     if (historyTimer) { clearInterval(historyTimer); historyTimer = null; }
     if (alertsTimer) { clearInterval(alertsTimer); alertsTimer = null; }
+    if (openhabTimer) { clearTimeout(openhabTimer); openhabTimer = null; }
   }
 
   function wireVisibilityPolling() {
@@ -1273,6 +1441,7 @@
       void pollMetrics();
       void pollHistory();
       void pollAlerts();
+      void pollOpenHAB();
       startPolling();
     });
   }
@@ -1286,6 +1455,8 @@
     await pollMetrics();
     await pollHistory();
     await pollAlerts();
+    openhabDisabled = false;
+    await pollOpenHAB();
     startPolling();
   }
 
