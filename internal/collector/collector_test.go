@@ -1776,6 +1776,61 @@ func TestCollector_FastTick_CPUValid_AC1(t *testing.T) {
 	})
 }
 
+// TestCollector_FastTick_MemoryValid_AC1 covers issue #246: the snapshot's
+// MemoryValid is false before the first tick and after every tick whose
+// /proc/meminfo read or parse failed, and true after a tick with a reading.
+func TestCollector_FastTick_MemoryValid_AC1(t *testing.T) {
+	newCollector := func(path string) *Collector {
+		c := New(Config{FastInterval: time.Second, SlowInterval: time.Minute, HistoryCapacity: 10}, nil)
+		c.memory = &MemoryCollector{path: path}
+		return c
+	}
+	// validTick runs one tick on the valid fixture and checks the precondition.
+	validTick := func(t *testing.T, path string) *Collector {
+		t.Helper()
+		c := newCollector(path)
+		c.fastTick(context.Background())
+		if !c.Snapshot().MemoryValid {
+			t.Fatal("AC1: precondition: MemoryValid false after a tick on a valid meminfo")
+		}
+		return c
+	}
+
+	t.Run("AC1 before the first tick false", func(t *testing.T) {
+		c := newCollector(writeTempFile(t, t.TempDir(), "meminfo", meminfoFixture))
+		if c.Snapshot().MemoryValid {
+			t.Error("AC1: MemoryValid true before the first tick, want false")
+		}
+	})
+	t.Run("AC1 valid fixture true", func(t *testing.T) {
+		c := newCollector(writeTempFile(t, t.TempDir(), "meminfo", meminfoFixture))
+		c.fastTick(context.Background())
+		if !c.Snapshot().MemoryValid {
+			t.Error("AC1: MemoryValid false after a tick with a reading, want true")
+		}
+	})
+	t.Run("AC1 file removed after a valid tick false", func(t *testing.T) {
+		path := writeTempFile(t, t.TempDir(), "meminfo", meminfoFixture)
+		c := validTick(t, path)
+		if err := os.Remove(path); err != nil {
+			t.Fatalf("remove meminfo file: %v", err)
+		}
+		c.fastTick(context.Background())
+		if c.Snapshot().MemoryValid {
+			t.Error("AC1: MemoryValid true after the meminfo file was removed, want false")
+		}
+	})
+	t.Run("AC1 non-numeric value after a valid tick false", func(t *testing.T) {
+		path := writeTempFile(t, t.TempDir(), "meminfo", meminfoFixture)
+		c := validTick(t, path)
+		overwriteTempFile(t, path, "MemTotal:        abc kB\nMemAvailable:     400000 kB\n")
+		c.fastTick(context.Background())
+		if c.Snapshot().MemoryValid {
+			t.Error("AC1: MemoryValid true after a non-numeric meminfo value, want false")
+		}
+	})
+}
+
 // cpuAlertState returns the alert state of the cpu metric, if any.
 func cpuAlertState(c *Collector) (alert.State, bool) {
 	for _, st := range c.Alerts().States {

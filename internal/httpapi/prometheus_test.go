@@ -22,6 +22,7 @@ func fullSnapshot() collector.Snapshot {
 		TemperatureValid: true,
 		GPUTemperature:   &collector.GPUTemperature{Celsius: 47.8},
 		PMICTemperature:  &collector.PMICTemperature{Celsius: 52.1},
+		MemoryValid:      true,
 		Memory:           collector.Memory{TotalBytes: 4137000000, AvailableBytes: 2900000000, UsedPercent: 29.9},
 		Swap:             collector.Swap{TotalBytes: 104857600, UsedBytes: 0, UsedPercent: 0},
 		Disks: []collector.Disk{
@@ -203,6 +204,70 @@ func TestRenderPrometheusMetrics_RendersRealZeroCPU_AC3(t *testing.T) {
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("AC3: output missing %q for a real 0 reading, got:\n%s", want, body)
+		}
+	}
+}
+
+// TestRenderPrometheusMetrics_OmitsMemoryWhenInvalid_AC2 covers issue #246: a
+// snapshot without a memory reading (MemoryValid false) leaves all memory and
+// swap families out entirely, even when Memory and Swap hold non-zero values,
+// and keeps the other families.
+func TestRenderPrometheusMetrics_OmitsMemoryWhenInvalid_AC2(t *testing.T) {
+	snap := fullSnapshot()
+	snap.MemoryValid = false
+
+	body := string(renderPrometheusMetrics(snap))
+
+	for _, line := range strings.Split(body, "\n") {
+		for _, prefix := range []string{"pimonitor_memory_", "pimonitor_swap_"} {
+			if strings.Contains(line, prefix) {
+				t.Errorf("AC2: line %q mentions %s although MemoryValid is false", line, prefix)
+			}
+		}
+	}
+	for _, want := range []string{
+		"pimonitor_cpu_usage_percent 12.5",
+		"pimonitor_temperature_celsius{",
+		`pimonitor_disk_used_percent{mount="/"} 25.8`,
+		"pimonitor_updates_pending 3",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("AC2: output lost %q with MemoryValid false, got:\n%s", want, body)
+		}
+	}
+}
+
+// TestRenderPrometheusMetrics_RendersRealZeroSwap_AC3 covers issue #246: with
+// MemoryValid true all six memory and swap families are written, and a host
+// without swap (a successful read with SwapTotal 0) gives real 0 samples.
+func TestRenderPrometheusMetrics_RendersRealZeroSwap_AC3(t *testing.T) {
+	snap := fullSnapshot()
+	snap.Swap = collector.Swap{}
+
+	body := string(renderPrometheusMetrics(snap))
+
+	for _, family := range []string{
+		"pimonitor_memory_total_bytes",
+		"pimonitor_memory_available_bytes",
+		"pimonitor_memory_used_percent",
+		"pimonitor_swap_total_bytes",
+		"pimonitor_swap_used_bytes",
+		"pimonitor_swap_used_percent",
+	} {
+		for _, want := range []string{"# HELP " + family + " ", "# TYPE " + family + " gauge"} {
+			if !strings.Contains(body, want) {
+				t.Errorf("AC3: output missing %q, got:\n%s", want, body)
+			}
+		}
+	}
+	for _, want := range []string{
+		"pimonitor_swap_total_bytes 0\n",
+		"pimonitor_swap_used_bytes 0\n",
+		"pimonitor_swap_used_percent 0\n",
+		"pimonitor_memory_total_bytes 4137000000\n",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("AC3: output missing %q for a real 0 swap reading, got:\n%s", want, body)
 		}
 	}
 }
