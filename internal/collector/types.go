@@ -212,13 +212,20 @@ type Pihole struct {
 
 // Snapshot is the full set of current metric values.
 type Snapshot struct {
-	Timestamp     time.Time          `json:"timestamp"`
-	UptimeSeconds float64            `json:"uptime_seconds"`
-	CPU           CPUUsage           `json:"cpu"`
-	CPUFrequency  []CPUCoreFrequency `json:"cpu_frequency,omitempty"`
-	Load          LoadAverage        `json:"load_average"`
-	CPUCount      int                `json:"cpu_count"`
-	Temperature   Temperature        `json:"temperature"`
+	Timestamp     time.Time `json:"timestamp"`
+	UptimeSeconds float64   `json:"uptime_seconds"`
+	CPU           CPUUsage  `json:"cpu"`
+	// CPUValid reports whether the most recent fast tick read the CPU usage:
+	// false before the first tick, on the first tick after start (no previous
+	// sample) and after a failed read. It is kept out of the JSON via
+	// json:"-" so the v1 shape stays unchanged; it exists for in-process
+	// consumers such as the Prometheus renderer in internal/httpapi, which
+	// must tell a real 0 % reading apart from no reading at all.
+	CPUValid     bool               `json:"-"`
+	CPUFrequency []CPUCoreFrequency `json:"cpu_frequency,omitempty"`
+	Load         LoadAverage        `json:"load_average"`
+	CPUCount     int                `json:"cpu_count"`
+	Temperature  Temperature        `json:"temperature"`
 	// TemperatureValid reports whether the most recent temperature
 	// collection succeeded — false both before the first successful
 	// collection and whenever the most recent one failed (e.g. no readable

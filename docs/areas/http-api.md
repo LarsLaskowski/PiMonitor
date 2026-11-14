@@ -140,7 +140,8 @@ under it by design.
 - The overall CPU usage is its own unlabeled family, never a member of the per-core family.
 - A family whose source has no reading is left out entirely rather than reported as `0`: the temperature while the
   latest temperature collection has not succeeded, the GPU and PMIC temperatures without a `vcgencmd` answer,
-  per-core CPU, filesystem and network families when they hold no entry, and the Pi-hole family when Pi-hole is not
+  the CPU families (overall and per-core) while the latest fast tick has no CPU reading (the first tick after start,
+  a failed `/proc/stat` read), per-core CPU without data, filesystem and network families when they hold no entry, and the Pi-hole family when Pi-hole is not
   installed. Devices appear in the same order and with the same filtering as in `GET /api/v1/metrics`.
 - The list of metric names and labels is in [`API.md`](../API.md#get-metrics-prometheus).
 
@@ -198,7 +199,7 @@ under it by design.
 
 ## Related decisions
 
-None yet.
+- [0010: A missing CPU reading is left out of Prometheus, the v1 snapshot keeps its 0](../decisions/0010-missing-cpu-reading-left-out-of-prometheus.md)
 
 ## Not here
 

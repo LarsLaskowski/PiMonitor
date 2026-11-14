@@ -43,10 +43,12 @@ such as openHAB that poll single values.
 - A `cpu`/`cpuN` line with fewer than eight counters is skipped. When neither a `cpu` nor a `cpuN` line remains, when
   no aggregate `cpu` line remains (none present, or the one present has fewer than eight counters) even though `cpuN`
   lines do, or when a counter is not a number, `/proc/stat` counts as unparsable: `overall_percent` is 0 and
-  `per_core_percent` is omitted for that tick, and a warning is logged.
+  `per_core_percent` is omitted for that tick, a warning is logged, and `GET /metrics` leaves the CPU families out
+  (see [HTTP API](http-api.md)).
 - On the first fast tick after start there is no previous sample: `overall_percent` is 0 and `per_core_percent` is
   omitted, and the tick counts as no reading of the CPU usage: no `cpu_percent` history point, no alert evaluation
-  and no warning. The second tick is the first reading.
+  and no warning, and `GET /metrics` leaves the CPU families out (see [HTTP API](http-api.md)). The second tick is
+  the first reading.
 - `cpu_count` is the number of `cpuN` lines in `/proc/stat` at startup; it needs no aggregate `cpu` line.
 - `cpu_frequency` has one entry per core with a cpufreq directory under `/sys/devices/system/cpu/cpuN/cpufreq`:
   `mhz` is `scaling_cur_freq` (kHz) / 1000, `governor` is `scaling_governor`. Entries are sorted by `core`. A core
@@ -213,6 +215,7 @@ such as openHAB that poll single values.
 - [0001: Optional metric sources log their failures once](../decisions/0001-optional-sources-log-failures-once.md)
 - [0002: Bound vcgencmd output in error texts, not the read](../decisions/0002-bound-vcgencmd-output-in-errors.md)
 - [0009: The first CPU tick is no reading](../decisions/0009-first-cpu-tick-is-no-reading.md)
+- [0010: A missing CPU reading is left out of Prometheus, the v1 snapshot keeps its 0](../decisions/0010-missing-cpu-reading-left-out-of-prometheus.md)
 
 ## Not here
 

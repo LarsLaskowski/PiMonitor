@@ -1715,6 +1715,67 @@ func TestCollector_FastTick_FirstCPUTickIsNoReading_AC3(t *testing.T) {
 	}
 }
 
+// TestCollector_FastTick_CPUValid_AC1 covers issue #243: the snapshot's
+// CPUValid is false after every tick whose CPU collection returned an error
+// and true after a tick with a reading.
+func TestCollector_FastTick_CPUValid_AC1(t *testing.T) {
+	newCollector := func(path string) *Collector {
+		c := New(Config{FastInterval: time.Second, SlowInterval: time.Minute, HistoryCapacity: 10}, nil)
+		c.cpu = &CPUCollector{path: path}
+		return c
+	}
+	// validTwice runs the first (no reading) and second (reading) tick.
+	validTwice := func(t *testing.T, path string) *Collector {
+		t.Helper()
+		c := newCollector(path)
+		c.fastTick(context.Background())
+		rewriteStatFile(t, path, procStatFixture2)
+		c.fastTick(context.Background())
+		if !c.Snapshot().CPUValid {
+			t.Fatal("AC1: precondition: CPUValid false after the second tick")
+		}
+		return c
+	}
+
+	t.Run("AC1 first tick false", func(t *testing.T) {
+		c := newCollector(writeStatFile(t, procStatFixture1))
+		c.fastTick(context.Background())
+		if c.Snapshot().CPUValid {
+			t.Error("AC1: CPUValid true after the first tick, want false")
+		}
+	})
+	t.Run("AC1 second tick true", func(t *testing.T) {
+		path := writeStatFile(t, procStatFixture1)
+		c := newCollector(path)
+		c.fastTick(context.Background())
+		rewriteStatFile(t, path, procStatFixture2)
+		c.fastTick(context.Background())
+		if !c.Snapshot().CPUValid {
+			t.Error("AC1: CPUValid false after the second tick, want true")
+		}
+	})
+	t.Run("AC1 no aggregate line after a valid tick false", func(t *testing.T) {
+		path := writeStatFile(t, procStatFixture1)
+		c := validTwice(t, path)
+		rewriteStatFile(t, path, procStatNoAggregate)
+		c.fastTick(context.Background())
+		if c.Snapshot().CPUValid {
+			t.Error("AC1: CPUValid true after a /proc/stat without aggregate line, want false")
+		}
+	})
+	t.Run("AC1 file removed after a valid tick false", func(t *testing.T) {
+		path := writeStatFile(t, procStatFixture1)
+		c := validTwice(t, path)
+		if err := os.Remove(path); err != nil {
+			t.Fatalf("remove stat file: %v", err)
+		}
+		c.fastTick(context.Background())
+		if c.Snapshot().CPUValid {
+			t.Error("AC1: CPUValid true after the stat file was removed, want false")
+		}
+	})
+}
+
 // cpuAlertState returns the alert state of the cpu metric, if any.
 func cpuAlertState(c *Collector) (alert.State, bool) {
 	for _, st := range c.Alerts().States {
