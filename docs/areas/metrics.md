@@ -86,9 +86,11 @@ such as openHAB that poll single values.
 
 ### Memory and swap
 
-- Read from `/proc/meminfo`, whose values are kB; bytes are kB × 1024.
+- Read from `/proc/meminfo`, whose values are kB; bytes are kB × 1024. The read fails when `MemTotal`, `MemFree`,
+  `SwapTotal` or `SwapFree` is missing or `MemTotal` is 0 (`MemAvailable` stays optional), see
+  [0011](../decisions/0011-incomplete-meminfo-is-failed-reading.md).
 - `memory.total_bytes` is `MemTotal`, `memory.available_bytes` is `MemAvailable`, or `MemFree` when `MemAvailable`
-  is missing or 0. `memory.used_percent` is 100 × (1 − available / total), 0 when the total is 0.
+  is missing or 0. `memory.used_percent` is 100 × (1 − available / total).
 - `swap.total_bytes` is `SwapTotal`, `swap.used_bytes` is `SwapTotal − SwapFree` (never below 0),
   `swap.used_percent` is used / total in percent, 0 on a host without swap.
 - Memory and swap come from one read. When it fails, both read 0 in the v1 snapshot, whose shape does not change;
@@ -219,6 +221,7 @@ such as openHAB that poll single values.
 - [0002: Bound vcgencmd output in error texts, not the read](../decisions/0002-bound-vcgencmd-output-in-errors.md)
 - [0009: The first CPU tick is no reading](../decisions/0009-first-cpu-tick-is-no-reading.md)
 - [0010: A missing CPU or memory reading is left out of Prometheus, the v1 snapshot keeps its 0](../decisions/0010-missing-reading-left-out-of-prometheus.md)
+- [0011: Incomplete /proc/meminfo content is a failed memory reading](../decisions/0011-incomplete-meminfo-is-failed-reading.md)
 
 ## Not here
 

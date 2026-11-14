@@ -228,7 +228,8 @@ Notes:
   boot.
 - `cpu.overall_percent` reads 0 on the first fast tick after start and after a failed `/proc/stat` read, which in v1
   is indistinguishable from a real 0 (`GET /metrics` leaves the CPU families out for such a tick instead).
-- After a failed `/proc/meminfo` read every `memory` and `swap` figure reads 0, which in v1 is indistinguishable from
+- After a failed `/proc/meminfo` read (one that fails or lacks a field the kernel always writes,
+  [Metrics](areas/metrics.md#memory-and-swap)) every `memory` and `swap` figure reads 0, which in v1 is indistinguishable from
   a real 0 (`GET /metrics` leaves the memory and swap families out for such a tick instead).
 - `system.cpu_model` is best-effort: it is empty on kernels whose
   `/proc/cpuinfo` omits a `model name` field (common on some Raspberry Pi
