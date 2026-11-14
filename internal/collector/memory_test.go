@@ -227,3 +227,29 @@ func TestParseMeminfo_ZeroMemTotal_AC2(t *testing.T) {
 		t.Errorf("AC2: error = %q, want %q", err.Error(), want)
 	}
 }
+
+func TestParseMeminfo_Complete_AC3(t *testing.T) {
+	t.Run("AC3 real sample", func(t *testing.T) {
+		fields, err := parseMeminfo(meminfoRealSample)
+		if err != nil {
+			t.Fatalf("AC3: parseMeminfo(real sample): %v, want no error", err)
+		}
+		mem, swap := memAndSwapFromFields(fields)
+		if want := uint64(16473776) * 1024; mem.TotalBytes != want {
+			t.Errorf("AC3: MemTotal = %d, want %d", mem.TotalBytes, want)
+		}
+		if swap.TotalBytes != 0 || swap.UsedBytes != 0 || swap.UsedPercent != 0 {
+			t.Errorf("AC3: swap = %+v, want all 0", swap)
+		}
+	})
+	t.Run("AC3 without MemAvailable", func(t *testing.T) {
+		fields, err := parseMeminfo(meminfoWithout(t, meminfoRealSample, "MemAvailable"))
+		if err != nil {
+			t.Fatalf("AC3: parseMeminfo without MemAvailable: %v, want no error", err)
+		}
+		mem, _ := memAndSwapFromFields(fields)
+		if want := uint64(15666136) * 1024; mem.AvailableBytes != want {
+			t.Errorf("AC3: AvailableBytes = %d, want %d (MemFree)", mem.AvailableBytes, want)
+		}
+	})
+}
