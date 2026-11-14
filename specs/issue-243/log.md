@@ -12,3 +12,4 @@ are quoted in full.
 | 2026-11-14 08:25 | 5 Tests first | Tester | AC1-AC4 tests written; confirmed compile and AC1/AC2 fail on current code, AC3/AC4 pass as expected. Deferred: none (sonnet/medium · 96,552 tokens · 10 tool uses · 50 s · 20 in · 5,871 out · 818,407 cache read · 43,617 cache write · 165,737 weighted) |
 | 2026-11-14 08:26 | 6 Implement | Dev | CPUValid set in fastTick, writeCPUMetrics guarded; docs updated; full suite and coverage gate pass (new lines 6/6) (sonnet/medium · 87,555 tokens · 11 tool uses · 63 s · 20 in · 4,254 out · 778,156 cache read · 31,720 cache write · 138,756 weighted) |
 | 2026-11-14 08:26 | 6 Coverage skipped | Orchestrator | skipped — Coverage gate passes (6/6 new lines, 91.5% overall), no uncovered lines, nothing deferred |
+| 2026-11-14 08:26 | 6 Documentation | Orchestrator | written in 6 Implement |
