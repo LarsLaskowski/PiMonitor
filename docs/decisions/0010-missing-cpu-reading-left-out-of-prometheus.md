@@ -1,6 +1,6 @@
 # 0010: A missing CPU reading is left out of Prometheus, the v1 snapshot keeps its 0
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-14
 - **Area:** HTTP API
 - **Source:** Issue #243
