@@ -1,6 +1,6 @@
 # 0011: Incomplete /proc/meminfo content is a failed memory reading
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-14
 - **Area:** Metrics
 - **Source:** Issue #249
