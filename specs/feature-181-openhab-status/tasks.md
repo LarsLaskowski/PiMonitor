@@ -1,0 +1,19 @@
+# Tasks: Show the local openHAB status in the dashboard
+
+Plan: [plan.md](plan.md)
+
+| # | Group | Task | Files | Criteria | Depends on | Owner | Done |
+| - | ----- | ---- | ----- | -------- | ---------- | ----- | ---- |
+| 1 | PM | Measure the unit of `systemInfo.uptime`: `ps -o etimes= -p <pid>` and `/rest/systeminfo` at the same moment (plan *Verified facts* row 5) | — | AC4 | — | Product Manager | [ ] |
+| 2 | G1 | Skeleton: `OpenHAB`, `Config.OpenHAB`, `OpenHABTokenEnvVar`, `Mode`, `PollInterval` | `internal/config/config.go` | AC7, AC8 | — | Dev | [ ] |
+| 3 | G1 | Tests first: defaults, validation forms and texts, fractional interval, token env var | `internal/config/config_test.go` | AC7, AC8 | 2 | Tester | [ ] |
+| 4 | G1 | Implement defaults, `validate`, integer option check, env var in `load` | `internal/config/config.go` | AC7, AC8 | 3 | Dev | [ ] |
+| 5 | G2 | Skeleton: `OpenHABStatePending`, `OpenHABStateNotInstalled`, `OpenHABStateNotRunning`, `OpenHABStateUnreachable`, `OpenHABStateOK`, `OpenHABConfig`, `OpenHABStatus`, `OpenHABProcess`, `OpenHABJVM`, `OpenHABThings`, `OpenHABThing`, `NewOpenHABCollector`, `Run`, `Poll`, `Status`; `Config.OpenHAB` and `OpenHAB()` on `Collector` | `internal/collector/openhab.go`, `internal/collector/collector.go` | AC1, AC2, AC3, AC4, AC5, AC6, AC8, AC10, AC11 | 4 | Dev | [ ] |
+| 6 | G2 | Tests first: detection, states, process, REST values, Things, request limits, dial check, token leak, logging, real-sample test, run/join | `internal/collector/openhab_test.go`, `internal/collector/collector_test.go` | AC1, AC2, AC3, AC4, AC5, AC6, AC8, AC10, AC11 | 5, 1 | Tester | [ ] |
+| 7 | G2 | Implement `OpenHABCollector`, `failureLog.observeAt`, `Collector` wiring | `internal/collector/openhab.go`, `internal/collector/collector.go`, `internal/collector/failurelog.go` | AC1, AC2, AC3, AC4, AC5, AC6, AC8, AC10, AC11 | 6 | Dev | [ ] |
+| 8 | G3 | Skeleton: `OpenHAB()` on `MetricsProvider`, `Config.OpenHABEnabled`; adapt `fakeMetrics` | `internal/httpapi/server.go`, `internal/httpapi/handlers_test.go` | AC8, AC9, AC11 | 7 | Dev | [ ] |
+| 9 | G3 | Tests first: handler, API key, 404, `by_route`, mapping in `main.go`, no token in client config; adapt `TestRouteTable_EveryRouteIsRegistered`, `TestServerConfig_MapsFields`, `TestCollectorConfig_MapsFields` | `internal/httpapi/handlers_test.go`, `internal/httpapi/routes_test.go`, `internal/collector/collector_test.go`, `cmd/pimonitor/main_test.go` | AC8, AC9, AC11 | 8 | Tester | [ ] |
+| 10 | G3 | Implement route, handler, `collectorConfig`/`serverConfig` mapping | `internal/httpapi/routes.go`, `internal/httpapi/handlers.go`, `cmd/pimonitor/main.go` | AC8, AC9, AC11 | 9 | Dev | [ ] |
+| 11 | G4 | no new API: static tests for the openHAB poll and card; `cardDomIDs` gains `card-openhab` | `internal/web/openhab_test.go`, `internal/web/layout_test.go` | AC12, AC13 | 10 | Tester | [ ] |
+| 12 | G4 | Card, poll, layout entry, rendering | `internal/web/assets/app.js`, `internal/web/assets/index.html`, `internal/web/assets/style.css` | AC12, AC13 | 11 | Dev | [ ] |
+| 13 | G5 | no new API: documentation updates of plan *Documentation updates*, area document and its index row first; exact `.squad/project.md` text reported | `docs/areas/*.md`, `docs/API.md`, `docs/ARCHITECTURE.md`, `SECURITY.md`, `README.md`, `docs/integrations/openhab.md`, `packaging/pimonitor.example.yaml`, `packaging/pimonitor.service`, `AGENTS.md`, `.github/copilot-instructions.md` | AC1, AC2, AC3, AC4, AC5, AC6, AC7, AC8, AC9, AC10, AC11, AC12, AC13 | 12 | Dev | [ ] |

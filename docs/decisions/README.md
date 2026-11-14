@@ -74,4 +74,8 @@ once in the [area document](../areas/README.md) of the record's area, and the re
 | [0010](0010-missing-reading-left-out-of-prometheus.md) | A missing CPU or memory reading is left out of Prometheus, the v1 snapshot keeps its 0 | Accepted | 2026-11-14 |
 | [0011](0011-incomplete-meminfo-is-failed-reading.md) | Incomplete /proc/meminfo content is a failed memory reading | Accepted | 2026-11-14 |
 | [0012](0012-out-of-range-meminfo-is-failed-reading.md) | Out-of-range /proc/meminfo content is a failed memory reading | Accepted | 2026-11-14 |
+| [0013](0013-openhab-requests-only-to-loopback-http.md) | openHAB requests go only to a loopback address over plain HTTP | Proposed | 2026-11-14 |
+| [0014](0014-openhab-poll-runs-on-its-own-loop.md) | The openHAB poll runs on its own loop and serves its last finished result | Proposed | 2026-11-14 |
+| [0015](0015-openhab-values-from-real-5x-responses.md) | openHAB values are built from real openHAB 5.2.4 responses; uptime from the process | Proposed | 2026-11-14 |
+| [0016](0016-refused-openhab-call-without-token-logs-info.md) | A refused openHAB call without a configured token is logged at info | Proposed | 2026-11-14 |
 <!-- project:end index -->
