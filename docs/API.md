@@ -228,6 +228,8 @@ Notes:
   boot.
 - `cpu.overall_percent` reads 0 on the first fast tick after start and after a failed `/proc/stat` read, which in v1
   is indistinguishable from a real 0 (`GET /metrics` leaves the CPU families out for such a tick instead).
+- After a failed `/proc/meminfo` read every `memory` and `swap` figure reads 0, which in v1 is indistinguishable from
+  a real 0 (`GET /metrics` leaves the memory and swap families out for such a tick instead).
 - `system.cpu_model` is best-effort: it is empty on kernels whose
   `/proc/cpuinfo` omits a `model name` field (common on some Raspberry Pi
   kernels).
@@ -806,8 +808,8 @@ Metrics exposed (all gauges, prefixed `pimonitor_`):
 | `temperature_celsius` | `zone` | Omitted entirely — the whole family is skipped — whenever the most recent temperature collection failed (e.g. no readable thermal zone) or hasn't completed yet; a `0` reading is never fabricated for a missing sensor |
 | `gpu_temperature_celsius` | — | Only present when `vcgencmd` responded, like `gpu_temperature` in `GET /api/v1/metrics` |
 | `pmic_temperature_celsius` | — | Only present when `vcgencmd measure_temp pmic` responded (Raspberry Pi 4/5), like `pmic_temperature` in `GET /api/v1/metrics` |
-| `memory_total_bytes`, `memory_available_bytes`, `memory_used_percent` | — | |
-| `swap_total_bytes`, `swap_used_bytes`, `swap_used_percent` | — | |
+| `memory_total_bytes`, `memory_available_bytes`, `memory_used_percent` | — | Omitted entirely after a failed `/proc/meminfo` read, as for `cpu_usage_percent` |
+| `swap_total_bytes`, `swap_used_bytes`, `swap_used_percent` | — | Omitted together with the memory families after a failed `/proc/meminfo` read; a host without swap writes real `0` values |
 | `disk_total_bytes`, `disk_used_bytes`, `disk_used_percent` | `mount` | One series per mounted filesystem, same set as `disks` in `GET /api/v1/metrics` (pseudo-filesystems and network filesystems already excluded) |
 | `network_receive_bytes_per_second`, `network_transmit_bytes_per_second` | `iface` | Omitted entirely when network monitoring is disabled (`network_enabled: false`), same as `network` in `GET /api/v1/metrics` |
 | `updates_pending` | — | Count of upgradable apt packages |
