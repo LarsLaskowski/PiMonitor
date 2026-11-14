@@ -1047,7 +1047,9 @@ def check_rounds(parser, args, count):
     continued = args.continued or args.continued_from is not None
     if count > 1 and not continued:
         parser.error(f"agent '{args.agent_id}' ran {count} rounds: its latest continues it — log it with --continued, "
-                     "or --continued-from \"<step>\" when it is not the member's last fresh launch")
+                     "or --continued-from \"<step>\" when it is not the member's last fresh launch; when no round "
+                     "of it is logged yet (a round logged late), log round 1 first with --round 1, then this one with "
+                     "--continued")
     if count == 1 and continued:
         parser.error(f"agent '{args.agent_id}' ran one round: a fresh launch, logged without --continued or "
                      "--continued-from")
@@ -1088,7 +1090,8 @@ def share_of_round(path, member, launch, continued, replace=False, step=None, or
     if share is None and origin is not None:
         print(f"--continued-from: no fresh launch of {member} with usage at step '{origin}'")
     elif share is None:
-        print(f"--continued: no earlier row of {member} with usage to continue from")
+        print(f"--continued: no earlier row of {member} with usage to continue from; an agent whose first round "
+              "is not logged yet: log that round first with --agent-id <id> --round 1, then this one")
     return share
 
 

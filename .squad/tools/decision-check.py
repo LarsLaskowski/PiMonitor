@@ -36,10 +36,12 @@ nothing is released; when one has, or cannot be asked, the freeze checks are ski
 tags may simply not be fetched. Without Git history (not a Git repository, shallow clone) the freeze checks are
 skipped with a warning; a shallow clone's names its fix, `git fetch --unshallow --tags`. With `--require-history`
 (`gate-stamp.py` passes it) every such skip is an error instead: a gate must not pass a released record it could not
-check, which a shallow clone of a session otherwise lets through.
+check, which a shallow clone of a session otherwise lets through. `--tags-fetched` says the local tags are all the
+repository has (a CI checkout with `fetch-depth: 0`), so no remote is asked: without a local release tag nothing is
+released, which a remote CI cannot ask without credentials.
 
 Usage, from anywhere inside the repository:
-    python3 .squad/tools/decision-check.py [--require-history]
+    python3 .squad/tools/decision-check.py [--require-history] [--tags-fetched]
 
 Exit code 0 when everything is valid, 1 otherwise.
 """
@@ -371,14 +373,15 @@ def without_local_tags(root, warnings):
     return set()
 
 
-def check_freeze(root, records, errors, warnings):
-    """Checks the released records and returns their numbers; None when that cannot be told."""
+def check_freeze(root, records, errors, warnings, tags_fetched=False):
+    """Checks the released records and returns their numbers; None when that cannot be told. `tags_fetched`: the
+    local tags are complete, so no remote is asked."""
     if git(root, "rev-parse", "--git-dir") is None:
         warnings.append("not a Git repository - released records are not checked")
         return None
     tags = (git(root, "tag", "--list", RELEASE_TAGS) or "").split()
     if not tags:
-        return without_local_tags(root, warnings)
+        return set() if tags_fetched else without_local_tags(root, warnings)
     if (git(root, "rev-parse", "--is-shallow-repository") or "").strip() == "true":
         warnings.append(f"shallow clone - released records are not checked ({UNSHALLOW})")
         return None
@@ -438,6 +441,8 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--require-history", action="store_true",
                         help="fail instead of warning when the released records cannot be checked")
+    parser.add_argument("--tags-fetched", action="store_true",
+                        help="the local tags are all the repository has (CI with fetch-depth: 0): ask no remote")
     options = parser.parse_args(argv)
     root = (git(".", "rev-parse", "--show-toplevel") or ".").strip()
     errors, warnings = [], []
@@ -446,7 +451,7 @@ def main(argv=None):
     check_record_links(root, records, errors)
     check_index(root, records, errors)
     freeze_warnings = []
-    released = check_freeze(root, records, errors, freeze_warnings)
+    released = check_freeze(root, records, errors, freeze_warnings, options.tags_fetched)
     (errors if options.require_history else warnings).extend(freeze_warnings)
     check_areas(root, records, released, errors)
     check_record_sizes(records, released, warnings)

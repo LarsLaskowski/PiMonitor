@@ -62,5 +62,8 @@ Rules:
 - In mode `diff`, take the code SHA and report it first as the Reviewer's *Inputs* say
   (`.claude/agents/squad-reviewer.md`). Never edit files, and never check out the code SHA or another revision
   in the repository working tree (`.squad/team.md`, *Shared rules*).
+- In mode `diff`, write each finding in the Reviewer's shape and tags (`[BLOCKING]`, `[NON-BLOCKING]`, `, verbatim`;
+  its *Output*), and wrap a proposed replacement to the width of the paragraph it replaces.
 
-End with exactly one line: `VERDICT: APPROVED` or `VERDICT: CHANGES_REQUIRED`.
+End with exactly one line: `VERDICT: APPROVED` or `VERDICT: CHANGES_REQUIRED`; in mode `diff`, an approval with
+non-blocking findings counts them: `VERDICT: APPROVED | NON-BLOCKING 2`.

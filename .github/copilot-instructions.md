@@ -181,7 +181,7 @@ and the round semantics. The squad's members (`.squad/team.md`) run as subagents
 commits, pushes and posts. The pipeline, its limits and escalations are in [`.squad/routing.md`](/.squad/routing.md),
 the project's guarantees, security areas and integration surface in [`.squad/project.md`](/.squad/project.md).
 Working records stay under `specs/` on the work branch. A product PR never changes the squad or these
-instructions (`.squad/stack.md`, `.squad/project.md`, `.squad/tools/squad_settings.py` and the project blocks of this file excepted); squad lessons become `squad` or `squad-upstream` issues in this repository (`.squad/orchestration.md`, *Squad
+instructions (`.squad/stack.md`, `.squad/project.md`, `.squad/tools/squad_settings.py` with the files a tool writes from it, and the project blocks of this file excepted); squad lessons become `squad` or `squad-upstream` issues in this repository (`.squad/orchestration.md`, *Squad
 lessons*). The user acts as Product Manager and is asked only in the cases `.squad/routing.md` lists (*Escalation to
 the Product Manager*), a feature's spec approval among them.
 

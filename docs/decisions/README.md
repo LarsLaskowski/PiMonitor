@@ -53,9 +53,9 @@ once in the [area document](../areas/README.md) of the record's area, and the re
   each with its own context, options and consequences. An unreleased record keeps its number for one of them, the
   others take the next free numbers with their index rows, and every link to it points at the record of its
   decision; a released record is never split.
-- `.squad/tools/decision-check.py` (also run by `config-check.py`) checks the index, the links between records
-  and that no released record was changed, and warns about an unreleased record past the size limits and an area
-  document past `AREA_MAX_WORDS`, naming the split.
+- `.squad/tools/decision-check.py` (also run by `config-check.py` and the CI job `decision-records`) checks the
+  index, the links between records and that no released record was changed, and warns about an unreleased record past
+  the size limits and an area document past `AREA_MAX_WORDS`, naming the split.
 
 ## Index
 

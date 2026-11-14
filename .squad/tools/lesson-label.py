@@ -6,7 +6,8 @@ the template repository (`squad-upstream`); a lesson whose fix changes only this
 (`squad`). The script decides it from the paths, so the label is never a judgement call:
 
 - **managed** (`MANAGED`, `.squad/orchestration.md`, *Template-managed files*): `CLAUDE.md`, `.squad/team.md`,
-  `.squad/routing.md`, `.squad/orchestration.md`, `.squad/tools/` except `squad_settings.py`, a profile's shared
+  `.squad/routing.md`, `.squad/orchestration.md`, the tools of `.squad/tools/` the template ships (`TOOLS`; a
+  repository's own tool there, such as a coverage converter, is its own), a profile's shared
   rule files (`.squad/*-rules.*`), `.claude/agents/squad-*.md`, `.claude/hooks/`, the template's skills, the feature
   request template, the `_template.md` files of `docs/decisions/` and `docs/areas/`, `docs/decisions/process.md`,
   `specs/README.md` and `specs/_template/` — `squad-upstream`;
@@ -36,16 +37,23 @@ UPSTREAM = "squad-upstream"
 LOCAL = "squad"
 # The template's skills (core/.claude/skills/ of the template repository).
 SKILLS = ("create-pr", "decision-consolidate", "review-pr", "squad-issue", "squad-spec")
+# The tools the template writes to .squad/tools/ (core and every profile; `analyzer-check-<profile>.py` in a repository
+# with several profiles); any other file there is the repository's own. tools/template-check.py keeps the list exact.
+TOOLS = (
+    ".gitignore", "analyzer-check.py", "analyzer-check-*.py", "analyzer_common.py", "config-check.py",
+    "coverage-check.py", "decision-check.py", "dotnet-rules.py", "dotnet_config.py", "dotnet_major.py",
+    "figure-check.py", "gate-stamp.py", "lesson-label.py", "plan-check.py", "scope-check.py", "session-usage.py",
+    "sonar-check.py", "sonar-rules.py", "squad-log.py", "squad-next.py", "squad-notes.py",
+)
 # Template-managed files, overwritten by every refresh (glob patterns; `*` stays within one folder).
 MANAGED = (
-    "CLAUDE.md", ".squad/team.md", ".squad/routing.md", ".squad/orchestration.md", ".squad/tools/*",
+    "CLAUDE.md", ".squad/team.md", ".squad/routing.md", ".squad/orchestration.md",
+    *(f".squad/tools/{tool}" for tool in TOOLS),
     ".squad/*-rules.*", ".claude/agents/squad-*.md", ".claude/hooks/*",
     *(f".claude/skills/{skill}/*" for skill in SKILLS),
     ".github/ISSUE_TEMPLATE/feature_request.md", "docs/decisions/_template.md", "docs/areas/_template.md",
     "docs/decisions/process.md", "specs/README.md", "specs/_template/*",
 )
-# Seeded files a managed pattern would otherwise take: owned by the repository from the adoption on.
-SEEDED_EXCEPTIONS = (".squad/tools/squad_settings.py",)
 # Template text around the repository's own blocks (`<!-- project:… -->`, the rest of `.editorconfig`).
 MARKED = ("AGENTS.md", ".github/copilot-instructions.md", "docs/CONTRIBUTING.md", "docs/ARCHITECTURE.md",
           ".github/ISSUE_TEMPLATE/bug_report.md", ".github/pull_request_template.md", "docs/decisions/README.md",
@@ -65,8 +73,6 @@ def normalized(path):
 def kind(path):
     """`managed`, `marked` or `seeded` (every file the repository owns) for a repository-relative path."""
     path = normalized(path)
-    if path in SEEDED_EXCEPTIONS:
-        return "seeded"
     if any(fnmatch.fnmatchcase(path, pattern) and path.count("/") == pattern.count("/") for pattern in MANAGED):
         return "managed"
     return "marked" if path in MARKED else "seeded"

@@ -119,6 +119,7 @@ TIER_LINE = re.compile(r"^Tier:\s*`?(\w+)`?([^\n]*)", re.M)
 STATUSES = ("confirmed", "refuted", "unverified")
 CRITERIA_SECTION = "Acceptance criteria"
 WITHOUT_TESTS = "Verification without tests"
+TESTS_PER_CRITERION = "Tests per criterion"
 SPEC_SECTIONS = ["Problem", "Scenarios", "Errors and edge cases", "Non-functional requirements",
                  CRITERIA_SECTION, "Out of scope", "Open questions", "Area documents"]
 CRITERION = re.compile(r"^\s*- (?:\[[ xX]\] )?(AC\d+):", re.M)
@@ -174,6 +175,14 @@ RESULTS = {"CI": "pending: the pull request's CI (step 11)", "manual": "to recor
            "check": "to record: the check's result", AFTER_MERGE: f"{AFTER_MERGE}: the linked verification issue",
            "review": "pass: the clean review round", DROPPED: "dropped (*Amendments*)",
            WAIVED: "waived by the Product Manager (*Amendments*)"}
+# The squad members a `manual:` check may name as the one who runs it in its step-8 review (Vandox#451, Censio#188).
+MANUAL_MEMBERS = ("Reviewer", "Security")
+# Members that never review a run's diff, so a `manual:` check naming one is refused (capitalised, as roles are written:
+# "the security headers" or "a dev server" names no member).
+NON_REVIEW_MEMBERS = ("Lead", "Dev", "Developer", "Tester", "Code Officer", "Devil's Advocate", "Orchestrator")
+MANAGER_NAMED = re.compile(r"\bProduct Manager\b|\bPM\b")
+PROSE_MANUAL = re.compile(r"\bmanual(?:ly)?\b", re.I)
+NEGATED = re.compile(r"\b(?:no|not|without|never|none)\b[^.]{0,20}?\bmanual", re.I)
 
 
 def strip_comments(text):
@@ -270,8 +279,25 @@ def empty(value):
     return cell(value).lower() in EMPTY_CELLS
 
 
+def outside_notes(lines):
+    """The lines outside the sections of NOTES_HEADING: notes a member wrote, appended verbatim, and the Lead's answer
+    to them are its report text, not the Lead's own words."""
+    skip_level = None
+    for line in lines:
+        heading = re.match(r"^(#{1,6})[ \t]", line)
+        if heading and skip_level is not None and len(heading.group(1)) <= skip_level:
+            skip_level = None
+        notes = NOTES_HEADING.match(line)
+        if notes and skip_level is None:
+            skip_level = len(notes.group(1))
+        if skip_level is None:
+            yield line
+
+
 def check_placeholders(name, text, errors):
-    for line in strip_comments(text).splitlines():
+    """A placeholder of the template left in the document; a note appended verbatim is no placeholder (PiMonitor#228:
+    a report that quoted `<title>`)."""
+    for line in outside_notes(strip_comments(text).splitlines()):
         if any(pattern.search(line) for pattern in PLACEHOLDERS):
             errors.append(f"{name}: template placeholder left: {line.strip()}")
 
@@ -408,7 +434,7 @@ def amendment_rows(rows, index):
 
 def check_tests(plan_parts, criteria, tier, errors, settled=None):
     named = set()
-    for header, rows in tables(plan_parts.get("Tests per criterion")):
+    for header, rows in tables(plan_parts.get(TESTS_PER_CRITERION)):
         test = column(header, "test(s)", "tests", "test")
         test = 1 if test is None else test
         for row in rows:
@@ -647,9 +673,31 @@ def check_plan(plan, spec, errors):
             errors.append("spec.md: *Scenarios* says \"none\", which a feature that touches a security area may "
                           "not: write the scenarios")
     check_tests(parts, criteria, name, errors, settled)
+    check_manual_owners(parts, plan, errors)
     check_verification_kinds(parts, errors)
     check_facts(parts, errors)
     return criteria, settled
+
+
+def review_members(plan):
+    """The members of the tier's review round (*Tiers*): Security alone on `patch/security`, the Reviewer and Security
+    on `security`, the Reviewer on every other tier."""
+    tier = TIER_LINE.search(plan)
+    name = tier.group(1) if tier else ""
+    if tier and tier.group(2).lstrip().startswith("/security"):
+        name += "/security"
+    return {"patch/security": ("Security",), "security": ("Reviewer", "Security")}.get(name, ("Reviewer",))
+
+
+def check_manual_owners(parts, plan, errors):
+    """A `manual:` check names only a member of the tier's review round, which runs it in step 8; any other member never
+    reviews this run's diff."""
+    members = review_members(plan)
+    for criterion, (kind, check, _, _) in sorted(planned_verifications(parts).items()):
+        owner = manual_owner(check) if kind == "manual" else None
+        if owner and owner not in members:
+            errors.append(f"plan.md: {criterion}: the `manual:` check names {owner}, which reviews no diff on this "
+                          f"tier ({', '.join(members)} does): name a member of the review round or the Product Manager")
 
 
 def check_verification_kinds(parts, errors):
@@ -752,17 +800,9 @@ def counted_words(plan):
     heading, a table header, guidance), and not the sections of NOTES_HEADING: the *Challenge notes* and *Security
     notes* the orchestrator appends after the Lead has sized the plan, and the *Challenge* and *Security review* the
     Lead answers them in and leaves as they are in every later launch (Censio#156)."""
-    words, skip_level, template = 0, None, template_lines()
-    for line in strip_comments(plan).splitlines():
-        heading = re.match(r"^(#{1,6})[ \t]", line)
-        if heading and skip_level is not None and len(heading.group(1)) <= skip_level:
-            skip_level = None
-        notes = NOTES_HEADING.match(line)
-        if notes and skip_level is None:
-            skip_level = len(notes.group(1))
-        if skip_level is None and line.strip() not in template:
-            words += len(line.split())
-    return words
+    template = template_lines()
+    return sum(len(line.split()) for line in outside_notes(strip_comments(plan).splitlines())
+               if line.strip() not in template)
 
 
 def plan_limit(tier):
@@ -874,7 +914,7 @@ def cell_at(row, index):
 def test_rows(parts):
     """{criterion: (kind, tests or check, test names, test files)} of the plan's *Tests per criterion*."""
     planned = {}
-    for header, rows in tables(parts.get("Tests per criterion"), keep=True):
+    for header, rows in tables(parts.get(TESTS_PER_CRITERION), keep=True):
         header = [cell(name) for name in header]
         test = column(header, "test(s)", "tests", "test")
         test = 1 if test is None else test
@@ -968,6 +1008,26 @@ def names_test(name, path, text):
     return name in text
 
 
+def manual_owner(check):
+    """The squad member a `manual:` check names as the one who runs it (MANUAL_MEMBERS, or one of NON_REVIEW_MEMBERS,
+    which `check_manual_owners` refuses), or None for the Product
+    Manager's manual test: one that names the Product Manager, or nobody."""
+    if MANAGER_NAMED.search(check):
+        return None
+    return next((member for member in MANUAL_MEMBERS + NON_REVIEW_MEMBERS if re.search(rf"\b{member}\b", check)), None)
+
+
+def prose_manual_checks(plan):
+    """The Lead's own lines outside the verification sections that name a manual check by the Product Manager (Censio
+    #191: a manual-verification paragraph the matrix does not hold); a negated line ("no manual test") names none."""
+    parts = sections(plan)
+    skipped = {line.strip() for name in (TESTS_PER_CRITERION, WITHOUT_TESTS)
+               for line in (parts.get(name) or "").splitlines()} | template_lines()
+    return [line.strip() for line in outside_notes(strip_comments(plan).splitlines())
+            if line.strip() and line.strip() not in skipped and PROSE_MANUAL.search(line)
+            and MANAGER_NAMED.search(line) and not NEGATED.search(line)]
+
+
 def matrix_row(criterion, planned, settled, sources, head, changed=frozenset()):
     """(the row's cells, whether it is MISSING)."""
     if criterion in settled:
@@ -975,6 +1035,8 @@ def matrix_row(criterion, planned, settled, sources, head, changed=frozenset()):
     if criterion not in planned:
         return [criterion, "\u2014", "\u2014", "MISSING: no test or verification in plan.md"], True
     kind, check, names, _ = planned[criterion]
+    if kind == "manual" and manual_owner(check):
+        return [criterion, kind, check, f"to record: {manual_owner(check)}'s verdict row of step 8"], False
     if kind != "unit":
         return [criterion, kind, check, RESULTS[kind]], False
     found = carriers(criterion, planned[criterion], sources, changed)

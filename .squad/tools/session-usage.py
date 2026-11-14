@@ -23,7 +23,8 @@ and cache-read tokens were 15-20 % lower.
 
 A subagent's transcript holds one **round** per launch of its agent: the first launch and each continuation
 (`SendMessage`), a round starting with a message to the agent once the agent has answered (not a message that
-answers a tool call of the agent, such as the harness's reply to a `SubagentHandback` call: `Rounds`).
+answers a tool call of the agent, such as the harness's reply to a `SubagentHandback` call: `Rounds`). A round whose
+report repeats the previous round's word for word is part of that round: a re-sent hand-back, no new task.
 `squad-log.py` reads the latest round: its tokens per kind, its tool uses, its duration from the first to the last
 record, the model and effort its responses ran on, and the agent's context at the end of the round (the four kinds
 of its last response), which is the figure a task notification reports as the agent's tokens.
@@ -292,7 +293,7 @@ class Rounds:
 
 def new_round():
     return {"usage": collections.Counter(), "models": collections.Counter(), "effort": None, "tool_uses": 0,
-            "start": None, "end": None, "context": 0, "responses": 0}
+            "start": None, "end": None, "context": 0, "responses": 0, "report": None, "notified": False}
 
 
 def add_response(current, record, found, tools):
@@ -303,6 +304,9 @@ def add_response(current, record, found, tools):
         if isinstance(block, dict) and block.get("type") == "tool_use" and block.get("id") not in tools:
             tools.add(block.get("id"))
             current["tool_uses"] += 1
+        report = report_text(block)
+        if report:
+            current["report"] = report
     if isinstance(record.get("effort"), str) and NAME.fullmatch(record["effort"]):
         current["effort"] = record["effort"]
     if found is None:
@@ -314,16 +318,58 @@ def add_response(current, record, found, tools):
     current["context"] = sum(value for field, _ in TOKEN_FIELDS if isinstance(value := usage.get(field), int))
 
 
+def report_text(block):
+    """The text a response block hands back: a text block's text, or the input of a `SubagentHandback` call."""
+    if not isinstance(block, dict):
+        return None
+    if block.get("type") == "text" and isinstance(block.get("text"), str):
+        return block["text"].strip() or None
+    if block.get("type") == "tool_use" and block.get("name") == HANDBACK:
+        return json.dumps(block.get("input"), sort_keys=True)
+    return None
+
+
+def opened_by_notification(record):
+    """True when the message that opens a round is a task notification (a background command of the agent's own
+    ended), not a message that carries a new task."""
+    message = record.get("message")
+    content = message.get("content") if isinstance(message, dict) else None
+    texts = [content] if isinstance(content, str) else [block.get("text") for block in content_blocks(record)]
+    return any(isinstance(text, str) and text.lstrip().startswith("<task-notification>") for text in texts)
+
+
+def merged_repeats(rounds):
+    """The rounds with each one that a task notification opened and whose report repeats the previous round's word for
+    word folded into it: a member that re-sent its report after a background wait of its own ran no new task
+    (DockerUpdateGuard#444); a message with a new task starts a round of its own whatever it reports."""
+    merged = []
+    for entry in rounds:
+        previous = merged[-1] if merged else None
+        if previous is None or not entry["notified"] or not entry["report"] or entry["report"] != previous["report"]:
+            merged.append(entry)
+            continue
+        previous["usage"].update(entry["usage"])
+        previous["models"].update(entry["models"])
+        previous["tool_uses"] += entry["tool_uses"]
+        previous["responses"] += entry["responses"]
+        previous["end"] = entry["end"] or previous["end"]
+        previous["context"] = entry["context"]
+        previous["effort"] = entry["effort"] or previous["effort"]
+    return merged
+
+
 def agent_rounds(path):
     """The rounds of a subagent's transcript, oldest first (see the module description), each a dict with "usage"
     (a counter of the token kinds), "models" (responses per model), "effort", "tool_uses", "start" and "end"
-    (datetimes), "context" (the four kinds of its last response) and "responses"; rounds without a response are
-    left out."""
+    (datetimes), "context" (the four kinds of its last response), "responses" and "report" (the text it handed back
+    last); rounds without a response are left out, and a round that repeats the previous one's report is part of
+    it (`merged_repeats`)."""
     rounds, seen, tools, splitter = [], set(), set(), Rounds()
     current = None
     for record in records(path):
         if splitter.starts(record, current is not None and current["responses"] > 0) or current is None:
             current = new_round()
+            current["notified"] = opened_by_notification(record)
             rounds.append(current)
         stamp = timestamp(record)
         if stamp is not None:
@@ -335,7 +381,7 @@ def agent_rounds(path):
         counted = found if not (found[0] and found[0] in seen) else None
         seen.add(found[0])
         add_response(current, record, counted, tools)
-    return [entry for entry in rounds if entry["responses"]]
+    return merged_repeats([entry for entry in rounds if entry["responses"]])
 
 
 def usage_since(path, since):

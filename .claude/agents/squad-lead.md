@@ -60,11 +60,13 @@ The orchestrator tells you which **mode** to run:
   - every factual claim the plan rests on in *Verified facts*, with its evidence and status (the template);
   - for a bug fix, acceptance criteria the Tester can turn into unit tests (a feature's are the spec's: never
     copy them), and for every criterion its tests in *Tests per criterion* — the Tester writes exactly those
-    first — or, for one no unit test can verify, its kind and check (`CI:`, `manual:`, `after merge:`; the
+    first — or, for one no unit test can verify, its kind and check (`CI:`, `manual:` with who runs it, `after merge:`; the
     template). A criterion that words a condition for user-visible text (a status line, a message) is derived from
     the code path that decides it, and the plan names that path, not a paraphrase of the trigger. New
     user-visible output gets its layout in *Approach* — heading level, list structure, order, when optional
     notes appear — or the line "layout free for the Tester, approved in step 9": the Tester does not decide it;
+  - for a resource bound over an external system (a database, the network, the file system: one read at a time, a
+    cap on open connections), the seam its test observes the bound through, in *Approach* beside the bound;
   - the **documentation updates**, found by a sweep before they are listed: search the area documents and
     `docs/ARCHITECTURE.md` for every enumeration or "only these …" statement the change extends (routes,
     rules, settings, tables, limits) and list each hit, besides the documents you already know the change

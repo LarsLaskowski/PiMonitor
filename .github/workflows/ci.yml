@@ -88,6 +88,20 @@ jobs:
       - name: Run govulncheck
         run: go tool govulncheck ./...
 
+  decision-records:
+    name: Decision records
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0 # every commit and release tag: a record a v* tag contains is frozen
+
+      # A released record may only change its status (docs/decisions/README.md); without
+      # history the check fails instead of skipping.
+      - name: Decision-record gate
+        run: python3 .squad/tools/decision-check.py --require-history --tags-fetched
+
   cross-compile:
     runs-on: ubuntu-latest
     needs: build-test-lint
