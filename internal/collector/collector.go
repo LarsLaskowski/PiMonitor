@@ -14,6 +14,8 @@ import (
 
 // Config controls the collector's polling behavior and history retention.
 type Config struct {
+	// OpenHAB configures the optional openHAB status poll.
+	OpenHAB OpenHABConfig
 	// FastInterval is how often CPU, load average, temperature,
 	// memory/swap, disk, disk I/O, network, and wireless metrics are
 	// sampled.
@@ -718,6 +720,11 @@ func (c *Collector) Processes() Processes {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.latestProcesses
+}
+
+// OpenHAB returns the latest openHAB status.
+func (c *Collector) OpenHAB() OpenHABStatus {
+	return OpenHABStatus{}
 }
 
 // Alerts returns the current alert states and recent transition events. When
