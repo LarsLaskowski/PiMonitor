@@ -146,3 +146,24 @@ evaluation, no Prometheus families) is the existing one of 0003, 0010 and 0011.
 ## Out of scope / follow-ups
 
 - Consistency of fields PiMonitor does not read (e.g. `Buffers` + `Cached` against `MemTotal`): not checked.
+
+## Challenge notes
+
+I challenged plan.md for issue #252 once, in mode plan. The plan holds up. I found nothing major and one minor point.
+
+**What I checked against the code**
+- **Root cause:** confirmed. `/home/user/PiMonitor/internal/collector/memory.go:40-47` checks only that the required keys are present and that `MemTotal` is not 0. Line 68 computes the used percent with no bound. Lines 61-65 choose the fallback, which includes a `MemAvailable` that is present but 0. Lines 74-75 give 0 swap used when `SwapFree` is above `SwapTotal`.
+- **Covering the fallback:** checking `MemFree` against `MemTotal` on every read covers every value the fallback can pick. A missing `MemAvailable` reads 0 from the map and never exceeds the total. No extra branch is needed.
+- **Callers:** `Collect` (`memory.go:109`) is the only production caller of `parseMeminfo` and `memAndSwapFromFields`. Everything else that calls them is in `memory_test.go`. No sibling path is missed.
+- **Test fixtures:**
+  - `meminfoWith` and `meminfoWithout` (`memory_test.go:157-187`) replace or drop a line that already exists.
+  - `meminfoRealSample` (`memory_test.go:100`) has `SwapTotal: 0` and `SwapFree: 0` lines (lines 114-115), so AC3 and the AC4 swap case can replace both swap lines, as the plan says.
+  - The sample's `MemFree` (15666136) and `MemAvailable` (15982088) are below `MemTotal` (16473776), so the "in range" subtest of AC2 holds.
+  - `writeTempFile` exists in `testhelpers_test.go:13`.
+- **AC4 values:** with all three memory values equal, (1 − 1) × 100 is exactly 0. With `SwapTotal` equal to `SwapFree`, the condition `swapTotal > swapFree` is false, so `UsedBytes` is 0. Both values follow from `memory.go:68` and `memory.go:74-76`.
+- **Documentation:** the plan's sweep matches the text: `docs/areas/metrics.md:89-95` (including "(never below 0)" on line 94) and the parenthetical at `docs/API.md:231`.
+- **Decision 0012:** consistent with the plan. It already names the container-virtualization risk as a consequence.
+
+**Objections**
+
+1. *minor* — Add a follow-up line under *Out of scope / follow-ups* in plan.md. The new checks compare raw kB values, but `memAndSwapFromFields` multiplies by 1024 afterwards (`memory.go:59-60, 71-72`), and that multiplication can overflow `uint64`. Example: `MemTotal` 18014398509481985 kB (2^54 + 1) passes every check and becomes 1024 bytes. That is a different defect from this issue's, so it stays out of this change. It belongs in the follow-ups because it is the same guarantee ("never a fabricated reading").
