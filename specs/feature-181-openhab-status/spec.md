@@ -167,8 +167,8 @@ item states ([issue #181](https://github.com/LarsLaskowski/PiMonitor/issues/181)
   Answered: `ok`, without process values (N2); the issue's states cover only the other cases.
 - `null` or omitted for a value not collected? Answered: omitted, as `gpu_temperature` is
   ([`API.md`](../../docs/API.md)).
-- In which unit does openHAB report its own uptime? Answered: unverified (the Product Manager's `ps -o etimes=`
-  pair settles it); the uptime comes from the process start time, openHAB's value only without a process.
+- In which unit does openHAB report its own uptime? Answered: seconds, measured by the Product Manager against
+  `ps -o etimes=`; the uptime comes from the process start time, openHAB's value only without a process.
 - Do disabled Things warn? Answered: no (E10), Lead decision: the list is meant for actionable failures.
 - How does the dashboard learn the openHAB interval? Answered: from the new response, not from a changed `v1` one.
 - Do the issue's claims about today's PiMonitor hold? Answered: yes (the `/proc` walk and `VmRSS` reading, the

@@ -20,7 +20,7 @@ Feature: see [spec.md](spec.md).
 | 2 | Without a token `/rest/systeminfo`, `/rest/things?summary=true`, `/rest/addons` answer `401` with `{"error":{"message":"Authentication required","http-code":401}}` | PM sample | confirmed |
 | 3 | Anonymous `/rest/items?fields=name` answers `200` with an array of empty objects whose length is the Item count | PM sample (about 440 `{}`) | confirmed |
 | 4 | System info is nested under `systemInfo`; `freeMemory`, `totalMemory` in bytes; `startLevel`; no maximum heap field | PM sample | confirmed |
-| 5 | Unit of `systemInfo.uptime` (ms or s) | to verify: sample value 362335 fits both; Product Manager runs `ps -o etimes= -p <pid>` with a `/rest/systeminfo` call at the same moment, before step 5 of G2 (tasks row 1); unanswered by then: the fallback stays unimplemented and the Lead amends AC4 | unverified |
+| 5 | `systemInfo.uptime` is in seconds | Product Manager on the Pi: `ps -o etimes=` 364923 against `"uptime":364920` at the same moment (tasks row 1) | confirmed |
 | 6 | Things carry `UID`, `label`, `statusInfo.status`, `statusInfo.statusDetail`, optional `statusInfo.description`; disabled = `UNINITIALIZED`/`DISABLED`; OFFLINE with detail `NONE` and the reason in `description` | PM sample | confirmed |
 | 7 | `/rest/addons` is about 270 KB, chunked, 492 entries, 29 with `"installed":true` | `79cd39f0-addons.txt` (uploads), counted with `grep -o` | confirmed |
 | 8 | The openHAB JVM's argv[0] is `/usr/bin/java`, an argument starts with `-Dopenhab.home=`; PPid 1, no `karaf` parent under systemd | PM sample `/proc/938/cmdline`, `status` | confirmed |
@@ -30,8 +30,8 @@ Feature: see [spec.md](spec.md).
 | 12 | `CheckRedirect` returning `http.ErrUseLastResponse` stops at the 3xx response | `$GOROOT/src/net/http/client.go:73,496` | confirmed |
 | 14 | The unit allows reading other users' `/proc/<pid>/{cmdline,status,stat}` and loopback TCP (no `ProtectProc`, `AF_INET` allowed) | `packaging/pimonitor.service` | confirmed |
 | 18 | The kernel lists the server side of a loopback connection in `/proc/net/tcp` as `ESTABLISHED` (`01`) with the uid of the listening socket's owner, before `accept()`, as soon as `connect()` returns | scratchpad experiments `uidexp.py`, `uidexp2.py`: listener as uid 65534, client as root; 500 of 500 connections found immediately (kernel 6.18) | confirmed |
-| 19 | `/var/lib/openhab` is owned by the account openHAB runs as (apt package, openHABian) | to verify: Product Manager runs `stat -c '%u %U' /var/lib/openhab` on the Pi (process uid 102 in the sample), tasks row 1, before step 5 of G2 | unverified |
-| 20 | Whether openHAB's listener on the Pi shows in `/proc/net/tcp` or, dual-stack, in `/proc/net/tcp6` with `::ffff:127.0.0.1` | to verify: Product Manager runs `grep -i ':1F90 ' /proc/net/tcp /proc/net/tcp6` on the Pi, tasks row 1; the design matches both and fails closed when neither matches | unverified |
+| 19 | `/var/lib/openhab` is owned by the account openHAB runs as (apt package, openHABian) | Product Manager on the Pi: `stat` gives `102 openhab`, the process uid of the sample (tasks row 1) | confirmed |
+| 20 | openHAB's listener on the Pi is dual-stack: port 8080 appears only in `/proc/net/tcp6`, a wildcard `LISTEN` entry and `ESTABLISHED` entries with `::ffff`-mapped IPv4 addresses, uid 102; a loopback connection is therefore found as `::ffff:127.0.0.1` in `tcp6`, so the unmapping is required | Product Manager on the Pi: `grep -i ':1F90 ' /proc/net/tcp /proc/net/tcp6` (tasks row 1) | confirmed |
 | 21 | `applyLayout` toggles the `hidden` class on every card but `network`, which `applyNetworkVisibility` alone decides; `style.css` has `metric-warn`, no `warn` class | `internal/web/assets/app.js:577-650`, `style.css:302` | confirmed |
 | 22 | `enabled:` and `enabled: ~` leave a string field at its default in yaml.v3; `enabled: ""` sets it empty | `docs/areas/configuration.md` *Config file* (null keeps the default) | confirmed |
 | 17 | `net/http` decompresses a gzip response transparently, so a reader on `resp.Body` counts decoded bytes | `$GOROOT/src/net/http/transport.go` (`DisableCompression`, `gzipReader`) | confirmed |
@@ -73,7 +73,7 @@ Cases the tests must hold (Tester):
   counts only. The other excerpts come from the notes file
   `/tmp/claude-0/-home-user-PiMonitor/113ce554-10cb-543c-8a1b-23d4afcaa750/scratchpad/openhab-samples.md`, whose
   responses are partly elided: the Tester completes them by hand, anonymized. Uptime: from `stat`+`/proc/uptime`
-  with a process; from `systemInfo.uptime` only without one (row 5).
+  with a process; from `systemInfo.uptime` (seconds, row 5) only without one.
 - AC5: 12 OFFLINE Things in shuffled UID order, one disabled, one `UNKNOWN`, ONLINE ones: 10 listed in UID order,
   disabled not listed, `by_status` counts every openHAB status and leaves out a Thing with status `<script>` while
   `total` counts it, `description` present only when given.
@@ -217,7 +217,7 @@ counter (AC6 test asserts it never exceeds 1).
    `GET /api/v1/config`; the browser fetching openHAB** — rejected in the spec (*Open questions*, *Challenge*) and
    the issue.
 7. **Streaming JSON decode** — more code; the 8 MiB cap already bounds a poll's peak.
-8. **Take uptime from `systemInfo.uptime`** — unit unverified (0015).
+8. **Take uptime from `systemInfo.uptime` first** — needs a token; the process start time does not (0015).
 9. **Token capture: accept the risk and document it** — a local user could read the token while openHAB is down;
    closable at low cost, so not accepted (0013).
 10. **Token capture: check the `LISTEN` entry before connecting** — leaves a window between check and connect; the
@@ -389,7 +389,7 @@ loopback-only exception (0013) to the Pi-hole reasoning in ARCHITECTURE.
    server-side entry in `/proc/net/tcp*`, before any byte is sent (*Approach*, *Token only to openHAB's account*);
    no window between check and use, the detected process's uid is not used, off Linux and without the directory the
    token is never sent. The kernel behavior it rests on is measured (fact 18); the directory owner and the socket
-   family on the Pi are facts 19 and 20, owned by the Product Manager, and the design fails closed on both. Spec
+   family on the Pi were measured by the Product Manager (facts 19 and 20). Spec
    N6, E16 and AC6; tests in AC6; record 0013 extended. Not escalated: no risk is accepted.
 2. SECURITY.md sentence on Thing data served with a token — accepted verbatim (*Documentation updates*).
 3. `by_status` only for openHAB's Thing statuses — accepted (*Approach*; spec AC5; AC5 case).

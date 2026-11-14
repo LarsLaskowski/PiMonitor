@@ -4,7 +4,7 @@ Plan: [plan.md](plan.md)
 
 | # | Group | Task | Files | Criteria | Depends on | Owner | Done |
 | - | ----- | ---- | ----- | -------- | ---------- | ----- | ---- |
-| 1 | PM | On the Pi: unit of `systemInfo.uptime` (`ps -o etimes= -p <pid>` with `/rest/systeminfo` at the same moment), `stat -c '%u %U' /var/lib/openhab`, `grep -i ':1F90 ' /proc/net/tcp /proc/net/tcp6` (plan *Verified facts* rows 5, 19, 20) | — | AC4, AC6 | — | Product Manager | [ ] |
+| 1 | PM | On the Pi: unit of `systemInfo.uptime` (`ps -o etimes= -p <pid>` with `/rest/systeminfo` at the same moment), `stat -c '%u %U' /var/lib/openhab`, `grep -i ':1F90 ' /proc/net/tcp /proc/net/tcp6` (plan *Verified facts* rows 5, 19, 20) | — | AC4, AC6 | — | Product Manager || [x] |
 | 2 | G1 | Skeleton: `OpenHAB`, `Config.OpenHAB`, `OpenHABTokenEnvVar`, `Mode`, `PollInterval` | `internal/config/config.go` | AC7, AC8 | — | Dev | [ ] |
 | 3 | G1 | Tests first: defaults, validation forms and texts, fractional interval, token env var | `internal/config/config_test.go` | AC7, AC8 | 2 | Tester | [ ] |
 | 4 | G1 | Implement defaults, `validate`, integer option check, env var in `load` | `internal/config/config.go` | AC7, AC8 | 3 | Dev | [ ] |
