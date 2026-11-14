@@ -155,3 +155,21 @@ What I read: plan.md, `internal/collector/memory.go` (all of it), `internal/coll
 **Sample file:** `meminfo-sample.txt` holds only kB counters: no host name, user or path. It is fine to inline it in tests.
 
 **Findings:** no blocking findings. Unsigned overflow of `MemTotal × 1024` and `MemAvailable > MemTotal` (a negative used percent) are possible with content no kernel writes. Both predate this plan and are general hardening outside its scope, so I am not raising them as findings.
+
+## Challenge notes
+
+Plan challenge for issue #249 (/home/user/PiMonitor/specs/issue-249/plan.md)
+
+The plan holds up. I checked its claims against the code and they are correct:
+- `parseMeminfo` only fails on an empty map (`internal/collector/memory.go:42-44`) or on a non-numeric value (`memory.go:34-36`).
+- `memErr == nil` controls four things: `MemoryValid` (`collector.go:582`), the history points (`collector.go:612-613`), and the alert `MemoryValid`/`SwapValid` (`collector.go:635,637`).
+- The only fixtures that reach `parseMeminfo` are `meminfoFixture` (`memory_test.go:9-17`, which has all four required fields and a non-zero `MemTotal`) and the `"MemTotal: abc"` overwrite at `collector_test.go:1826`, which already expects an error. No existing test breaks.
+- The figures AC3 uses are in the sample: `MemTotal` 16473776 kB, `MemFree` 15666136 kB, and `SwapTotal`/`SwapFree` both 0 kB (`specs/issue-249/meminfo-sample.txt`, lines 1, 2, 15, 16).
+- The history fields AC4 names exist: `MemoryUsedPercent` and `SwapUsedPercent` (`collector.go:87-88`).
+- The doc lines the plan changes are the right ones: `docs/areas/metrics.md:91` ("0 when the total is 0") and `docs/API.md:231`.
+
+Objections:
+
+1. minor: The plan misses one other way bad content produces a made-up reading. In `memAndSwapFromFields` (`memory.go:59-64`), when `MemAvailable` (or the `MemFree` fallback) is larger than `MemTotal`, `memUsedPct` comes out negative. That content passes the new checks and is then reported as a valid reading. Like the missing fields, no real kernel produces it, but the guarantee "never a fabricated reading" covers it just the same. Instruction for the Lead/Dev: either add `available > MemTotal` as a third failed-read condition in `parseMeminfo`, with its own fixed error text and an AC2-style test derived from the sample, or write it under *Out of scope / follow-ups* as a known remaining case. Do not leave it unmentioned. This is minor because it does not change what the plan builds for the reported defect.
+
+2. minor: AC4 runs one tick on a new collector, where `MemoryValid` is already false and the history already empty (see `TestCollector_FastTick_MemoryValid_AC1`, "before the first tick false", `collector_test.go:1799-1804`). So part of what AC4 asserts holds even without the change. Instruction for the Tester: run one tick on the full sample first and require `MemoryValid` true as a precondition, the same way the `validTick` helper does at `collector_test.go:1788-1796`. Then replace the file with the sample minus its `MemTotal` line and run a second tick. Assert that `MemoryValid` becomes false and that neither history list gains a second point. This is minor because the plan's single-tick test also fails on the current code, since `MemoryValid` would come out true there.
