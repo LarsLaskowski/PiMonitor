@@ -157,6 +157,36 @@ type Config struct {
 	// processes_enabled so a typo is caught at startup even while the
 	// feature is off.
 	ProcessesTopN int `yaml:"processes_top_n"`
+	// OpenHAB configures the read-only status card for a local openHAB
+	// installation (GET /api/v1/openhab).
+	OpenHAB OpenHAB `yaml:"openhab"`
+}
+
+// OpenHAB is the openhab block of the configuration: whether and how PiMonitor
+// polls a local openHAB instance for its status.
+type OpenHAB struct {
+	// Enabled is auto, true or false (case-insensitive); see Mode.
+	Enabled string `yaml:"enabled"`
+	// BaseURL is the openHAB root URL; it must be an http URL with a loopback host.
+	BaseURL string `yaml:"base_url"`
+	// APIToken is the optional openHAB API token; never logged or served.
+	APIToken string `yaml:"api_token"`
+	// PollIntervalSeconds is the interval between openHAB polls.
+	PollIntervalSeconds int `yaml:"poll_interval_seconds"`
+}
+
+// OpenHABTokenEnvVar is the environment variable that overrides
+// openhab.api_token. It is read and unset in load, like APIKeyEnvVar.
+const OpenHABTokenEnvVar = "PIMONITOR_OPENHAB_TOKEN"
+
+// Mode returns Enabled lower-cased: auto, true or false.
+func (o OpenHAB) Mode() string {
+	return ""
+}
+
+// PollInterval returns PollIntervalSeconds as a duration.
+func (o OpenHAB) PollInterval() time.Duration {
+	return 0
 }
 
 // Default returns PiMonitor's built-in default configuration.
