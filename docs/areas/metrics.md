@@ -88,10 +88,16 @@ such as openHAB that poll single values.
 
 - Read from `/proc/meminfo`, whose values are kB; bytes are kB × 1024. The read fails when `MemTotal`, `MemFree`,
   `SwapTotal` or `SwapFree` is missing or `MemTotal` is 0 (`MemAvailable` stays optional), see
-  [0011](../decisions/0011-incomplete-meminfo-is-failed-reading.md).
+  [0011](../decisions/0011-incomplete-meminfo-is-failed-reading.md). It also fails when one of the five fields read
+  (`MemTotal`, `MemFree`, `MemAvailable`, `SwapTotal`, `SwapFree`) is above 18014398509481983 kB ((2^64−1)/1024,
+  the first in that order is named: `<field> exceeds the byte range in /proc/meminfo content`), and when `MemFree` or
+  `MemAvailable` exceeds `MemTotal` or `SwapFree` exceeds `SwapTotal` (`MemFree exceeds MemTotal in /proc/meminfo
+  content`, `MemAvailable exceeds MemTotal in /proc/meminfo content`, `SwapFree exceeds SwapTotal in /proc/meminfo
+  content`; a free value equal to its total is a reading), see
+  [0012](../decisions/0012-out-of-range-meminfo-is-failed-reading.md).
 - `memory.total_bytes` is `MemTotal`, `memory.available_bytes` is `MemAvailable`, or `MemFree` when `MemAvailable`
   is missing or 0. `memory.used_percent` is 100 × (1 − available / total).
-- `swap.total_bytes` is `SwapTotal`, `swap.used_bytes` is `SwapTotal − SwapFree` (never below 0),
+- `swap.total_bytes` is `SwapTotal`, `swap.used_bytes` is `SwapTotal − SwapFree`,
   `swap.used_percent` is used / total in percent, 0 on a host without swap.
 - Memory and swap come from one read. When it fails, both read 0 in the v1 snapshot, whose shape does not change;
   `GET /metrics` leaves the memory and swap families out for that tick, while a host without swap still writes its
@@ -222,6 +228,7 @@ such as openHAB that poll single values.
 - [0009: The first CPU tick is no reading](../decisions/0009-first-cpu-tick-is-no-reading.md)
 - [0010: A missing CPU or memory reading is left out of Prometheus, the v1 snapshot keeps its 0](../decisions/0010-missing-reading-left-out-of-prometheus.md)
 - [0011: Incomplete /proc/meminfo content is a failed memory reading](../decisions/0011-incomplete-meminfo-is-failed-reading.md)
+- [0012: Out-of-range /proc/meminfo content is a failed memory reading](../decisions/0012-out-of-range-meminfo-is-failed-reading.md)
 
 ## Not here
 
