@@ -25,6 +25,8 @@ const (
 	// The server side's addresses in TIME_WAIT.
 	procNetTCPTimeWait = "   3: 0100007F:1F90 0100007F:D431 06 00000000:00000000 03:00001770 00000000   102        0 0 3 0000000000000000\n"
 	procNetTCPGarbage  = "   4: not a socket line\n"
+	// The server side's entry with a uid that is not a number.
+	procNetTCPBadUID = "   5: 0100007F:1F90 0100007F:D431 01 00000000:00000000 00:00000000 00000000   abc        0 22222 1 0000000000000000 20 4 30 10 -1\n"
 
 	procNetTCP6Header = "  sl  local_address                         remote_address                        st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n"
 	// Dual-stack listener of uid 102 on [::]:8080.
@@ -61,6 +63,9 @@ func TestProcNetTCPOwner_AC6(t *testing.T) {
 		{"AC6 tcp6 mapped entry for mapped addresses", "", procNetTCP6Mapped, mappedClient, mappedServer, 102, false},
 		{"AC6 ::1 entry", "", procNetTCP6Listen + procNetTCP6Loopback, v6Client, v6Server, 102, false},
 		{"AC6 malformed line skipped", procNetTCPGarbage + procNetTCPServer, "", v4Client, v4Server, 102, false},
+		{"AC6 malformed uid skipped", procNetTCPBadUID, "", v4Client, v4Server, 0, true},
+		{"AC6 malformed uid skipped for a later entry", procNetTCPBadUID + procNetTCPServer, "", v4Client, v4Server, 102, false},
+		{"AC6 line longer than the scanner buffer", strings.Repeat("x", 70<<10) + "\n" + procNetTCPServer, "", v4Client, v4Server, 0, true},
 		{"AC6 LISTEN entry on the same port ignored", procNetTCPListen, procNetTCP6Listen, v4Client, v4Server, 0, true},
 		{"AC6 client side only", procNetTCPClient, "", v4Client, v4Server, 0, true},
 		{"AC6 entry not established", procNetTCPTimeWait, "", v4Client, v4Server, 0, true},
@@ -218,4 +223,30 @@ func TestOpenHABCollector_Logging_RefusedWithToken_AC10(t *testing.T) {
 	out := logBuf.String()
 	checkLogCount(t, out, "WARN", `msg="openhab systeminfo"`, 1)
 	checkLogCount(t, out, "INFO", `msg="openhab systeminfo"`, 0)
+}
+
+func TestParseProcNetAddr_AC6(t *testing.T) {
+	tests := []struct {
+		name   string
+		text   string
+		want   netip.AddrPort
+		wantOK bool
+	}{
+		{"AC6 IPv4 entry", "0100007F:1F90", netip.MustParseAddrPort("127.0.0.1:8080"), true},
+		{"AC6 IPv6 entry", "00000000000000000000000001000000:1F90", netip.MustParseAddrPort("[::1]:8080"), true},
+		{"AC6 no port separator", "0100007F", netip.AddrPort{}, false},
+		{"AC6 port not hex", "0100007F:ZZZZ", netip.AddrPort{}, false},
+		{"AC6 port above 16 bits", "0100007F:10000", netip.AddrPort{}, false},
+		{"AC6 address not hex", "0100007G:1F90", netip.AddrPort{}, false},
+		{"AC6 address of 6 bytes", "0100007F0000:1F90", netip.AddrPort{}, false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, ok := parseProcNetAddr(tc.text)
+
+			if ok != tc.wantOK || got != tc.want {
+				t.Fatalf("parseProcNetAddr(%q) = %v, %v, want %v, %v", tc.text, got, ok, tc.want, tc.wantOK)
+			}
+		})
+	}
 }

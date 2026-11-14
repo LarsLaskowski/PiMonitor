@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"math"
 	"net/http"
 	"net/http/httptest"
@@ -1110,5 +1111,209 @@ func TestOpenHABCollector_RealSamples_AC4(t *testing.T) {
 	t.Logf("sample: %d bytes, %d installed", len(body), want)
 	if got.AddonsInstalled == nil || *got.AddonsInstalled != want {
 		t.Fatalf("addons_installed = %v, want %d", got.AddonsInstalled, want)
+	}
+}
+
+// breakOHJava replaces one file of the openHAB JVM written by writeOHJava.
+type breakOHJava func(t *testing.T, pidDir string)
+
+func removeOHFile(name string) breakOHJava {
+	return func(t *testing.T, pidDir string) {
+		t.Helper()
+		mustRemoveAll(t, filepath.Join(pidDir, name))
+	}
+}
+
+func replaceOHFile(name, content string) breakOHJava {
+	return func(t *testing.T, pidDir string) {
+		t.Helper()
+		writeTempFile(t, pidDir, name, content)
+	}
+}
+
+func dirAsOHFile(name string) breakOHJava {
+	return func(t *testing.T, pidDir string) {
+		t.Helper()
+		mustRemoveAll(t, filepath.Join(pidDir, name))
+		mustMkdirAll(t, filepath.Join(pidDir, name))
+	}
+}
+
+func TestOpenHABCollector_Poll_UnreadableProcessFiles_AC3(t *testing.T) {
+	tests := []struct {
+		name   string
+		mutate breakOHJava
+	}{
+		{"AC3 cmdline missing", removeOHFile("cmdline")},
+		{"AC3 cmdline unreadable", dirAsOHFile("cmdline")},
+		{"AC3 stat malformed", replaceOHFile("stat", "938 java\n")},
+		{"AC3 status missing", removeOHFile("status")},
+		{"AC3 status VmRSS malformed", replaceOHFile("status", "Name:\tjava\nVmRSS:\tmany kB\n")},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := newOHServer(t)
+			srv.failAll(http.StatusServiceUnavailable)
+			root := newOHRoot(t, "var/lib/openhab")
+			writeOHJava(t, root)
+			tc.mutate(t, filepath.Join(root, "proc", "938"))
+			c, _ := newOHCollector(t, srv, root, 4<<30)
+
+			got := pollOnce(c)
+
+			if got.Process != nil || got.State != OpenHABStateNotRunning {
+				t.Fatalf("process, state = %+v, %q, want absent, %q", got.Process, got.State, OpenHABStateNotRunning)
+			}
+		})
+	}
+}
+
+func TestOpenHABCollector_Poll_NoProcDirectory_AC3(t *testing.T) {
+	srv := newOHServer(t)
+	srv.failAll(http.StatusServiceUnavailable)
+	root := newOHRoot(t, "var/lib/openhab")
+	mustRemoveAll(t, filepath.Join(root, "proc"))
+	c, buf := newOHCollector(t, srv, root, 4<<30)
+
+	got := pollOnce(c)
+
+	if got.Process != nil || got.State != OpenHABStateNotRunning {
+		t.Fatalf("process, state = %+v, %q, want absent, %q", got.Process, got.State, OpenHABStateNotRunning)
+	}
+	if n := countLogLines(buf.String(), "WARN", "list "+filepath.Join(root, "proc")); n != 1 {
+		t.Fatalf("warnings naming the unreadable proc directory = %d, want 1; log:\n%s", n, buf.String())
+	}
+}
+
+func TestOpenHABCollector_Poll_ProcessUptimeUnreadable_AC4(t *testing.T) {
+	tests := []struct {
+		name   string
+		uptime string // "" removes /proc/uptime
+	}{
+		{"AC4 /proc/uptime missing", ""},
+		{"AC4 /proc/uptime malformed", "soon\n"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := newOHServer(t)
+			srv.failAll(http.StatusServiceUnavailable)
+			root := newOHRoot(t, "var/lib/openhab")
+			writeOHJava(t, root)
+			if tc.uptime == "" {
+				mustRemoveAll(t, filepath.Join(root, "proc", "uptime"))
+			} else {
+				writeTempFile(t, filepath.Join(root, "proc"), "uptime", tc.uptime)
+			}
+			c, _ := newOHCollector(t, srv, root, 4<<30)
+
+			got := pollOnce(c)
+
+			if got.State != OpenHABStateUnreachable || got.Process == nil || got.Process.PID != 938 {
+				t.Fatalf("state, process = %q, %+v, want %q with pid 938", got.State, got.Process, OpenHABStateUnreachable)
+			}
+			if got.UptimeSeconds != nil {
+				t.Fatalf("uptime_seconds = %d, want absent", *got.UptimeSeconds)
+			}
+		})
+	}
+}
+
+func TestOpenHABCollector_Poll_DefaultTimeout_AC6(t *testing.T) {
+	srv := newOHServer(t)
+	c, _ := newOHCollector(t, srv, newOHRoot(t, "etc/openhab"), 4<<30, withTimeout(0))
+
+	got := pollOnce(c)
+
+	if got.State != OpenHABStateOK || len(srv.requests()) != len(ohRESTPaths) {
+		t.Fatalf("state, requests = %q, %v, want %q, %v with the default timeout", got.State, srv.requests(), OpenHABStateOK, ohRESTPaths)
+	}
+}
+
+func TestOpenHABCollector_Poll_InvalidBaseURL_AC6(t *testing.T) {
+	srv := newOHServer(t)
+	c, buf := newOHCollector(t, srv, newOHRoot(t), 4<<30, withAlways, withBaseURL("http://127.0.0.1:8080/\x7f"))
+
+	got := pollOnce(c)
+
+	if got.State != OpenHABStateNotRunning || len(srv.requests()) != 0 {
+		t.Fatalf("state, requests = %q, %v, want %q, none", got.State, srv.requests(), OpenHABStateNotRunning)
+	}
+	if n := countLogLines(buf.String(), "WARN", "build request"); n != 1 {
+		t.Fatalf("warnings naming the request build = %d, want 1; log:\n%s", n, buf.String())
+	}
+}
+
+func TestOpenHABCollector_Poll_TruncatedBody_AC6(t *testing.T) {
+	srv := newOHServer(t)
+	srv.route("/rest/", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Content-Length", strconv.Itoa(len(ohRootBody)))
+		_, _ = w.Write([]byte(ohRootBody[:10]))
+	})
+	c, buf := newOHCollector(t, srv, newOHRoot(t, "etc/openhab"), 4<<30)
+
+	got := pollOnce(c)
+
+	if got.State != OpenHABStateNotRunning || got.Version != "" {
+		t.Fatalf("state, version = %q, %q, want %q, empty", got.State, got.Version, OpenHABStateNotRunning)
+	}
+	if n := countLogLines(buf.String(), "WARN", "read response"); n != 1 {
+		t.Fatalf("warnings naming the truncated read = %d, want 1; log:\n%s", n, buf.String())
+	}
+}
+
+func TestOpenHABCollector_Run_PollsEveryInterval_AC11(t *testing.T) {
+	tests := []struct {
+		name      string
+		interval  time.Duration
+		wantPolls func(n int) bool
+		want      string
+	}{
+		{"AC11 interval of 20 ms polls again", 20 * time.Millisecond, func(n int) bool { return n >= 2 }, "at least 2"},
+		{"AC11 non-positive interval falls back to a minute", 0, func(n int) bool { return n == 1 }, "exactly 1"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := newOHServer(t)
+			c := NewOpenHABCollector(OpenHABConfig{Enabled: true, BaseURL: srv.URL, Interval: tc.interval,
+				Root: newOHRoot(t, "etc/openhab"), Timeout: 2 * time.Second}, nil, nil)
+
+			polls := runOHFor(c, srv, 200*time.Millisecond)
+
+			if !tc.wantPolls(polls) {
+				t.Fatalf("polls in 200 ms = %d, want %s", polls, tc.want)
+			}
+		})
+	}
+}
+
+// runOHFor runs c for d, waits for Run to return and counts the root calls
+// srv received, one per poll.
+func runOHFor(c *OpenHABCollector, srv *ohServer, d time.Duration) int {
+	ctx, cancel := context.WithTimeout(context.Background(), d)
+	defer cancel()
+	c.Run(ctx)
+	n := 0
+	for _, uri := range srv.requests() {
+		if uri == "/rest/" {
+			n++
+		}
+	}
+	return n
+}
+
+func TestOpenHABCollector_RootDefault_AC1(t *testing.T) {
+	c := NewOpenHABCollector(OpenHABConfig{}, nil, nil)
+
+	if got := c.root(); got != "/" {
+		t.Fatalf("root() with an empty Root = %q, want %q", got, "/")
+	}
+}
+
+func TestOpenHABCollector_LoggerDefault_AC10(t *testing.T) {
+	c := NewOpenHABCollector(OpenHABConfig{}, nil, nil)
+
+	if got := c.logger(); got != slog.Default() {
+		t.Fatalf("logger() with a nil logger = %p, want slog.Default() %p", got, slog.Default())
 	}
 }

@@ -2032,3 +2032,42 @@ func TestCollector_Run_OpenHABFirstPollHasRAMPercent_AC11(t *testing.T) {
 		t.Fatalf("rss_percent_of_ram = %v, want %v", *got.RSSPercentOfRAM, want)
 	}
 }
+
+func TestCollector_OpenHABDisabled_AC9(t *testing.T) {
+	srv := newOHServer(t)
+	root := newOHRoot(t, "usr/share/openhab", "etc/openhab", "var/lib/openhab")
+	writeOHJava(t, root)
+	c := New(Config{
+		FastInterval:    10 * time.Millisecond,
+		SlowInterval:    time.Hour,
+		HistoryCapacity: 10,
+		OpenHAB: OpenHABConfig{
+			Enabled:  false,
+			Always:   true,
+			BaseURL:  srv.URL,
+			Interval: time.Hour,
+			Root:     root,
+			Timeout:  5 * time.Second,
+		},
+	}, nil)
+	c.memory = &MemoryCollector{path: writeTempFile(t, t.TempDir(), "meminfo", meminfoFixture)}
+
+	stop := startRun(t, c)
+	first := c.Snapshot().Timestamp
+	ticked := waitFor(func() bool {
+		ts := c.Snapshot().Timestamp
+		return !ts.IsZero() && ts.After(first)
+	})
+	stop()
+
+	if !ticked {
+		t.Fatal("no fast tick within 5 s of Run, want the collector running")
+	}
+	if got := srv.requests(); len(got) != 0 {
+		t.Fatalf("requests with openhab.enabled false = %v, want none", got)
+	}
+	want := OpenHABStatus{State: OpenHABStateNotInstalled}
+	if got := c.OpenHAB(); mustJSON(t, got) != mustJSON(t, want) {
+		t.Fatalf("OpenHAB() = %s, want %s", mustJSON(t, got), mustJSON(t, want))
+	}
+}
