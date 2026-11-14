@@ -2,6 +2,7 @@ package collector
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"os"
 	"strconv"
@@ -36,11 +37,21 @@ func parseMeminfo(data string) (map[string]uint64, error) {
 	if err := scanner.Err(); err != nil {
 		return nil, fmt.Errorf("scan /proc/meminfo: %w", err)
 	}
-	if len(result) == 0 {
-		return nil, fmt.Errorf("no fields found in /proc/meminfo content")
+	for _, key := range requiredMeminfoKeys {
+		if _, ok := result[key]; !ok {
+			return nil, fmt.Errorf("no %s field in /proc/meminfo content", key)
+		}
+	}
+	if result["MemTotal"] == 0 {
+		return nil, errors.New("MemTotal is 0 in /proc/meminfo content")
 	}
 	return result, nil
 }
+
+// requiredMeminfoKeys lists the fields every kernel writes unconditionally;
+// content lacking one of them is not a valid reading. MemAvailable is
+// optional (missing before Linux 3.14).
+var requiredMeminfoKeys = []string{"MemTotal", "MemFree", "SwapTotal", "SwapFree"}
 
 func memAndSwapFromFields(fields map[string]uint64) (Memory, Swap) {
 	const kB = 1024

@@ -1831,6 +1831,38 @@ func TestCollector_FastTick_MemoryValid_AC1(t *testing.T) {
 	})
 }
 
+// TestCollector_FastTick_IncompleteMeminfo_AC4 covers issue #249: content
+// without MemTotal is a failed reading, so MemoryValid turns false and no
+// memory or swap history point is added.
+func TestCollector_FastTick_IncompleteMeminfo_AC4(t *testing.T) {
+	path := writeTempFile(t, t.TempDir(), "meminfo", meminfoRealSample)
+	c := New(Config{FastInterval: time.Second, SlowInterval: time.Minute, HistoryCapacity: 10}, nil)
+	c.memory = &MemoryCollector{path: path}
+	c.fastTick(context.Background())
+	if !c.Snapshot().MemoryValid {
+		t.Fatal("AC4: precondition: MemoryValid false after a tick on the full sample")
+	}
+	before := c.History()
+	if len(before.MemoryUsedPercent) != 1 || len(before.SwapUsedPercent) != 1 {
+		t.Fatalf("AC4: precondition: history points memory=%d swap=%d, want 1 each",
+			len(before.MemoryUsedPercent), len(before.SwapUsedPercent))
+	}
+
+	overwriteTempFile(t, path, meminfoWithout(t, meminfoRealSample, "MemTotal"))
+	c.fastTick(context.Background())
+
+	if c.Snapshot().MemoryValid {
+		t.Error("AC4: MemoryValid true after a tick on content without MemTotal, want false")
+	}
+	after := c.History()
+	if got := len(after.MemoryUsedPercent); got != 1 {
+		t.Errorf("AC4: memory_used_percent points = %d, want 1 (no new point)", got)
+	}
+	if got := len(after.SwapUsedPercent); got != 1 {
+		t.Errorf("AC4: swap_used_percent points = %d, want 1 (no new point)", got)
+	}
+}
+
 // cpuAlertState returns the alert state of the cpu metric, if any.
 func cpuAlertState(c *Collector) (alert.State, bool) {
 	for _, st := range c.Alerts().States {
