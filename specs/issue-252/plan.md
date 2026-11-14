@@ -167,3 +167,36 @@ I challenged plan.md for issue #252 once, in mode plan. The plan holds up. I fou
 **Objections**
 
 1. *minor* — Add a follow-up line under *Out of scope / follow-ups* in plan.md. The new checks compare raw kB values, but `memAndSwapFromFields` multiplies by 1024 afterwards (`memory.go:59-60, 71-72`), and that multiplication can overflow `uint64`. Example: `MemTotal` 18014398509481985 kB (2^54 + 1) passes every check and becomes 1024 bytes. That is a different defect from this issue's, so it stays out of this change. It belongs in the follow-ups because it is the same guarantee ("never a fabricated reading").
+
+## Security notes
+
+Security plan review: specs/issue-252/plan.md (mode `plan`, round 1)
+
+What I read: /home/user/PiMonitor/specs/issue-252/plan.md, /home/user/PiMonitor/internal/collector/memory.go, /home/user/PiMonitor/docs/decisions/0012-out-of-range-meminfo-is-failed-reading.md, and `.squad/project.md` (*Security areas*: "Parsing of local input") plus the `security`/`standard` rows of *Tiers* in `.squad/routing.md`.
+
+Tier: I agree with `standard`. The new comparisons only keep malformed input from becoming a reading, which is "a parser's validation" under *Tiers*. They add no guard, and the plan lists the area under *Security areas touched* correctly. Error texts: the three new texts are fixed and name fields only, with no file values, so nothing new reaches the log or HTTP. I agree with the plan here.
+
+Bypass classes I checked against the planned check:
+- Duplicate keys: the last one wins in the map, and the check and the computation read the same map. Not a bypass.
+- Key whitespace (`MemTotal :`): it is trimmed and behaves the same.
+- Case variants (`memtotal`): treated as a missing required key, so the read fails. Not a bypass.
+- Signs and non-digits: `ParseUint` rejects them, so the read fails.
+- Unit label (`MB`): it is ignored, as before, so this change adds nothing.
+- kB-to-bytes overflow: **this one gets past the check.** Details below.
+
+Findings
+
+1. [BLOCKING] The kB-to-bytes multiplication overflows, so out-of-range content still produces a negative or invented reading after the planned check.
+   - Where: plan *Approach*, and 0012 *Consequences* bullet 2 ("the used percent of a successful read lies in 0–100").
+   - Cause: `parseMeminfo` accepts any value up to 2^64−1 (`memory.go:31`, `strconv.ParseUint(rest[0], 10, 64)`). `memAndSwapFromFields` then multiplies each value by 1024 in `uint64` (`memory.go:57-58, 70-71`). The planned comparison runs on the kB values, before that multiplication. A file that passes `MemAvailable <= MemTotal` in kB can therefore still give available bytes greater than total bytes after the wrap.
+   - Measurement: a scratch program at /tmp/claude-0/-home-user-PiMonitor/654e53ce-7d53-538d-8013-7d9e1749ff0f/scratchpad/ovf/main.go, run with `go run main.go` in that folder. It does the same arithmetic as `memory.go`, with MemTotal = 2^54+1 kB and MemAvailable = 2^54−1 kB (the same values for SwapTotal and SwapFree). Output:
+     ```
+     true 1024 18446744073709550592 -1.8014398509481984e+18
+     true 1024 18446744073709550592 false
+     ```
+   - Reading the output: the kB check passes, total bytes become 1024, and used percent is about −1.8e18 %. On the swap side the check passes, but `swapTotal > swapFree` is false after the wrap, so the result is again the invented "0 % swap used".
+   - Wider effect: even with no free/total pair involved, any `MemTotal` or `SwapTotal` of 2^54 kB or more gives a wrapped (fabricated) `total_bytes`. This is the same input class as the issue and the same guarantee ("never a fabricated reading").
+   - Smallest fix: in `parseMeminfo`, fail the read with one fixed text (for example `<field> exceeds the byte range in /proc/meminfo content`) when any field PiMonitor reads (MemTotal, MemFree, MemAvailable, SwapTotal, SwapFree) is above `math.MaxUint64/1024`. Add an AC and a test for it (e.g. MemTotal = 2^54 kB fails, MemTotal = MaxUint64/1024 kB passes). Since every value is then at most MaxUint64/1024, the kB comparison is equivalent to the byte comparison and 0012's "0–100" consequence holds.
+   - Paperwork: add this to 0012 (Decision, or a short line under Options) and to the `docs/areas/metrics.md` bullet the plan already edits.
+
+No other findings. The ordering of the checks, the equal-to-total boundary (AC4), the absent `MemAvailable` reading as 0, and the unchanged failure path in `Collect` (AC5) are all sound from a security standpoint.
