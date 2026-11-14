@@ -906,3 +906,269 @@ func TestCheckIntegerOptions_CoversEveryIntField_AC4(t *testing.T) {
 		t.Fatalf("integerOptionNames = %v, want every int field of Config = %v", want, got)
 	}
 }
+
+func TestDefault_OpenHAB_AC7(t *testing.T) {
+	want := OpenHAB{Enabled: "auto", BaseURL: "http://127.0.0.1:8080", APIToken: "", PollIntervalSeconds: 60}
+
+	got := Default().OpenHAB
+
+	if got != want {
+		t.Fatalf("Default().OpenHAB = %+v, want %+v", got, want)
+	}
+	if mode := got.Mode(); mode != "auto" {
+		t.Fatalf("Default().OpenHAB.Mode() = %q, want auto", mode)
+	}
+	if interval := got.PollInterval(); interval != 60*time.Second {
+		t.Fatalf("Default().OpenHAB.PollInterval() = %v, want 1m0s", interval)
+	}
+	if err := Default().Validate(); err != nil {
+		t.Fatalf("Default().Validate() = %v, want nil", err)
+	}
+}
+
+const (
+	errOpenHABBaseURL  = "openhab.base_url must be an http URL with a loopback host (127.0.0.0/8, ::1 or localhost) and no user, path, query or fragment"
+	errOpenHABAPIToken = "openhab.api_token must not contain whitespace or control characters"
+)
+
+// validateOpenHAB validates the default configuration with its openhab block
+// changed by set.
+func validateOpenHAB(set func(*OpenHAB)) error {
+	cfg := Default()
+	set(&cfg.OpenHAB)
+	return cfg.Validate()
+}
+
+// checkErrText fails t unless err is nil for an empty want, or has exactly
+// the text want.
+func checkErrText(t *testing.T, err error, want string) {
+	t.Helper()
+	if want == "" {
+		if err != nil {
+			t.Fatalf("error = %q, want nil", err)
+		}
+		return
+	}
+	if err == nil || err.Error() != want {
+		t.Fatalf("error = %v, want %q", err, want)
+	}
+}
+
+func TestValidate_OpenHAB_AC7(t *testing.T) {
+	enabled := func(v string) func(*OpenHAB) { return func(o *OpenHAB) { o.Enabled = v } }
+	baseURL := func(v string) func(*OpenHAB) { return func(o *OpenHAB) { o.BaseURL = v } }
+	token := func(v string) func(*OpenHAB) { return func(o *OpenHAB) { o.APIToken = v } }
+	interval := func(v int) func(*OpenHAB) { return func(o *OpenHAB) { o.PollIntervalSeconds = v } }
+	tests := []struct {
+		name string
+		set  func(*OpenHAB)
+		want string
+	}{
+		{"AC7 enabled auto", enabled("auto"), ""},
+		{"AC7 enabled AUTO", enabled("AUTO"), ""},
+		{"AC7 enabled True", enabled("True"), ""},
+		{"AC7 enabled FALSE", enabled("FALSE"), ""},
+		{"AC7 enabled yes", enabled("yes"), `openhab.enabled must be auto, true or false (got "yes")`},
+		{"AC7 enabled empty", enabled(""), `openhab.enabled must be auto, true or false (got "")`},
+		{"AC7 enabled with space", enabled(" auto"), `openhab.enabled must be auto, true or false (got " auto")`},
+
+		{"AC7 base_url default", baseURL("http://127.0.0.1:8080"), ""},
+		{"AC7 base_url trailing slash", baseURL("http://127.0.0.1:8080/"), ""},
+		{"AC7 base_url upper-case scheme", baseURL("HTTP://127.0.0.1:8080"), ""},
+		{"AC7 base_url no port", baseURL("http://127.0.0.1"), ""},
+		{"AC7 base_url port 1", baseURL("http://127.0.0.1:1"), ""},
+		{"AC7 base_url port 65535", baseURL("http://127.0.0.1:65535"), ""},
+		{"AC7 base_url other 127/8 address", baseURL("http://127.1.2.3:8080"), ""},
+		{"AC7 base_url localhost", baseURL("http://localhost:8080"), ""},
+		{"AC7 base_url LocalHost", baseURL("http://LocalHost:8080"), ""},
+		{"AC7 base_url ::1", baseURL("http://[::1]:8080"), ""},
+		{"AC7 base_url mapped IPv4 loopback", baseURL("http://[::ffff:127.0.0.1]:8080"), ""},
+		{"AC7 base_url empty", baseURL(""), errOpenHABBaseURL},
+		{"AC7 base_url https", baseURL("https://127.0.0.1:8443"), errOpenHABBaseURL},
+		{"AC7 base_url ftp", baseURL("ftp://127.0.0.1:8080"), errOpenHABBaseURL},
+		{"AC7 base_url no scheme", baseURL("127.0.0.1:8080"), errOpenHABBaseURL},
+		{"AC7 base_url scheme-relative", baseURL("//127.0.0.1:8080"), errOpenHABBaseURL},
+		{"AC7 base_url opaque", baseURL("http:127.0.0.1"), errOpenHABBaseURL},
+		{"AC7 base_url user and password", baseURL("http://u:p@127.0.0.1:8080"), errOpenHABBaseURL},
+		{"AC7 base_url userinfo hides host", baseURL("http://127.0.0.1:80@evil"), errOpenHABBaseURL},
+		{"AC7 base_url path", baseURL("http://127.0.0.1:8080/rest"), errOpenHABBaseURL},
+		{"AC7 base_url query", baseURL("http://127.0.0.1:8080?x=1"), errOpenHABBaseURL},
+		{"AC7 base_url empty query", baseURL("http://127.0.0.1:8080?"), errOpenHABBaseURL},
+		{"AC7 base_url fragment", baseURL("http://127.0.0.1:8080#f"), errOpenHABBaseURL},
+		{"AC7 base_url port 0", baseURL("http://127.0.0.1:0"), errOpenHABBaseURL},
+		{"AC7 base_url port 65536", baseURL("http://127.0.0.1:65536"), errOpenHABBaseURL},
+		{"AC7 base_url port not numeric", baseURL("http://127.0.0.1:http"), errOpenHABBaseURL},
+		{"AC7 base_url localhost trailing dot", baseURL("http://localhost.:8080"), errOpenHABBaseURL},
+		{"AC7 base_url short 127.1", baseURL("http://127.1:8080"), errOpenHABBaseURL},
+		{"AC7 base_url decimal address", baseURL("http://2130706433:8080"), errOpenHABBaseURL},
+		{"AC7 base_url hex octet", baseURL("http://0x7f.0.0.1:8080"), errOpenHABBaseURL},
+		{"AC7 base_url leading zero octet", baseURL("http://0127.0.0.1:8080"), errOpenHABBaseURL},
+		{"AC7 base_url loopback-looking name", baseURL("http://127.0.0.1.nip.io:8080"), errOpenHABBaseURL},
+		{"AC7 base_url zone", baseURL("http://[::1%25lo]:8080"), errOpenHABBaseURL},
+		{"AC7 base_url LAN address", baseURL("http://192.168.1.2:8080"), errOpenHABBaseURL},
+		{"AC7 base_url remote name", baseURL("http://example.com:8080"), errOpenHABBaseURL},
+		{"AC7 base_url empty host", baseURL("http://:8080"), errOpenHABBaseURL},
+		{"AC7 base_url no host", baseURL("http://"), errOpenHABBaseURL},
+		{"AC7 base_url space in authority", baseURL("http://127.0.0.1 :8080"), errOpenHABBaseURL},
+		{"AC7 base_url backslash in authority", baseURL(`http://127.0.0.1\:8080`), errOpenHABBaseURL},
+
+		{"AC7 poll_interval_seconds 59", interval(59), "openhab.poll_interval_seconds must be between 60 and 86400 (got 59)"},
+		{"AC7 poll_interval_seconds 60", interval(60), ""},
+		{"AC7 poll_interval_seconds 86400", interval(86400), ""},
+		{"AC7 poll_interval_seconds 86401", interval(86401), "openhab.poll_interval_seconds must be between 60 and 86400 (got 86401)"},
+		{"AC7 poll_interval_seconds 0", interval(0), "openhab.poll_interval_seconds must be between 60 and 86400 (got 0)"},
+
+		{"AC7 api_token plain", token("oh.pimonitor.AbC123-_xyz"), ""},
+		{"AC7 api_token space", token("oh.pimonitor abc"), errOpenHABAPIToken},
+		{"AC7 api_token tab", token("abc\tdef"), errOpenHABAPIToken},
+		{"AC7 api_token trailing newline", token("abcdef\n"), errOpenHABAPIToken},
+		{"AC7 api_token carriage return", token("abc\rdef"), errOpenHABAPIToken},
+		{"AC7 api_token NUL", token("abc\x00def"), errOpenHABAPIToken},
+		{"AC7 api_token DEL", token("abc\x7fdef"), errOpenHABAPIToken},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateOpenHAB(tt.set)
+
+			checkErrText(t, err, tt.want)
+		})
+	}
+}
+
+func TestLoad_OpenHABEnabled_AC7(t *testing.T) {
+	tests := []struct {
+		name     string
+		yaml     string
+		wantMode string
+		wantErr  string
+	}{
+		{"AC7 auto", "openhab:\n  enabled: auto\n", "auto", ""},
+		{"AC7 AUTO", "openhab:\n  enabled: AUTO\n", "auto", ""},
+		{"AC7 True unquoted", "openhab:\n  enabled: True\n", "true", ""},
+		{"AC7 true unquoted", "openhab:\n  enabled: true\n", "true", ""},
+		{"AC7 false quoted", "openhab:\n  enabled: \"false\"\n", "false", ""},
+		{"AC7 FALSE unquoted", "openhab:\n  enabled: FALSE\n", "false", ""},
+		{"AC7 null keeps auto", "openhab:\n  enabled:\n", "auto", ""},
+		{"AC7 tilde keeps auto", "openhab:\n  enabled: ~\n", "auto", ""},
+		{"AC7 yes", "openhab:\n  enabled: yes\n", "", `openhab.enabled must be auto, true or false (got "yes")`},
+		{"AC7 no", "openhab:\n  enabled: no\n", "", `openhab.enabled must be auto, true or false (got "no")`},
+		{"AC7 on", "openhab:\n  enabled: on\n", "", `openhab.enabled must be auto, true or false (got "on")`},
+		{"AC7 off", "openhab:\n  enabled: off\n", "", `openhab.enabled must be auto, true or false (got "off")`},
+		{"AC7 1", "openhab:\n  enabled: 1\n", "", `openhab.enabled must be auto, true or false (got "1")`},
+		{"AC7 0", "openhab:\n  enabled: 0\n", "", `openhab.enabled must be auto, true or false (got "0")`},
+		{"AC7 quoted empty", "openhab:\n  enabled: \"\"\n", "", `openhab.enabled must be auto, true or false (got "")`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := loadYAMLText(t, tt.yaml)
+
+			checkErrText(t, err, tt.wantErr)
+			if got := result.Config.OpenHAB.Mode(); got != tt.wantMode {
+				t.Fatalf("Mode() = %q, want %q", got, tt.wantMode)
+			}
+		})
+	}
+}
+
+func TestLoad_OpenHABPollIntervalFraction_AC7(t *testing.T) {
+	tests := []struct {
+		name         string
+		yaml         string
+		wantInterval time.Duration
+		wantErr      string
+	}{
+		{"AC7 fraction", "openhab:\n  poll_interval_seconds: 60.5\n", 0,
+			"openhab.poll_interval_seconds must be a whole number (got 60.5)"},
+		{"AC7 fraction through alias", "poll_interval_seconds: &n 90.5\nopenhab: {poll_interval_seconds: *n}\n", 0,
+			"openhab.poll_interval_seconds must be a whole number (got 90.5)"},
+		{"AC7 not finite", "openhab:\n  poll_interval_seconds: .nan\n", 0,
+			"openhab.poll_interval_seconds must be a finite number"},
+		{"AC7 whole number written as decimal", "openhab:\n  poll_interval_seconds: 120.0\n", 120 * time.Second, ""},
+		{"AC7 whole number", "openhab:\n  poll_interval_seconds: 86400\n", 86400 * time.Second, ""},
+		{"AC7 below range from file", "openhab:\n  poll_interval_seconds: 59\n", 0,
+			"openhab.poll_interval_seconds must be between 60 and 86400 (got 59)"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := loadYAMLText(t, tt.yaml)
+
+			checkErrText(t, err, tt.wantErr)
+			if got := result.Config.OpenHAB.PollInterval(); got != tt.wantInterval {
+				t.Fatalf("PollInterval() = %v, want %v", got, tt.wantInterval)
+			}
+		})
+	}
+}
+
+// loadWithOpenHABEnv loads a config file holding fileYAML with env as the
+// environment and returns the result, the names unset and the error.
+func loadWithOpenHABEnv(t *testing.T, fileYAML string, env map[string]string) (Result, []string, error) {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	writeFile(t, path, fileYAML)
+	var unset []string
+	result, err := load([]string{"-config", path}, envFunc(env), func(key string) { unset = append(unset, key) })
+	return result, unset, err
+}
+
+func TestLoad_OpenHABTokenEnv_AC8(t *testing.T) {
+	const fileToken = "openhab:\n  api_token: file-token\n"
+	tests := []struct {
+		name      string
+		yaml      string
+		env       map[string]string
+		wantToken string
+		wantUnset []string
+		wantErr   string
+	}{
+		{"AC8 env overrides file", fileToken,
+			map[string]string{OpenHABTokenEnvVar: "env-token"}, "env-token", []string{OpenHABTokenEnvVar}, ""},
+		{"AC8 env without file token", "",
+			map[string]string{OpenHABTokenEnvVar: "env-token"}, "env-token", []string{OpenHABTokenEnvVar}, ""},
+		{"AC8 empty env keeps file token and is unset", fileToken,
+			map[string]string{OpenHABTokenEnvVar: ""}, "file-token", []string{OpenHABTokenEnvVar}, ""},
+		{"AC8 absent env keeps file token, nothing unset", fileToken,
+			map[string]string{}, "file-token", nil, ""},
+		{"AC8 both env vars unset", fileToken,
+			map[string]string{APIKeyEnvVar: "key", OpenHABTokenEnvVar: "env-token"}, "env-token",
+			[]string{APIKeyEnvVar, OpenHABTokenEnvVar}, ""},
+		{"AC8 env token is validated", fileToken,
+			map[string]string{OpenHABTokenEnvVar: "env token"}, "", []string{OpenHABTokenEnvVar}, errOpenHABAPIToken},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, unset, err := loadWithOpenHABEnv(t, tt.yaml, tt.env)
+
+			checkErrText(t, err, tt.wantErr)
+			if result.Config.OpenHAB.APIToken != tt.wantToken {
+				t.Fatalf("OpenHAB.APIToken = %q, want %q", result.Config.OpenHAB.APIToken, tt.wantToken)
+			}
+			slices.Sort(unset)
+			if !slices.Equal(unset, tt.wantUnset) {
+				t.Fatalf("unsetEnv calls = %v, want %v", unset, tt.wantUnset)
+			}
+		})
+	}
+}
+
+// TestLoad_OpenHABTokenEnvRealEnvironment_AC8 covers the wiring of the
+// exported Load to the real environment; like
+// TestLoad_UnsetsAPIKeyEnvVarInRealEnvironment it must not run in parallel.
+func TestLoad_OpenHABTokenEnvRealEnvironment_AC8(t *testing.T) {
+	t.Setenv(OpenHABTokenEnvVar, "env-token")
+
+	result, err := Load(nil)
+
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if result.Config.OpenHAB.APIToken != "env-token" {
+		t.Fatalf("OpenHAB.APIToken = %q, want env-token", result.Config.OpenHAB.APIToken)
+	}
+	if result.Config.APIKey != "" {
+		t.Fatalf("APIKey = %q, want empty (the openHAB token must not set the API key)", result.Config.APIKey)
+	}
+	if v, ok := os.LookupEnv(OpenHABTokenEnvVar); ok {
+		t.Fatalf("%s still set to %q after Load, want unset", OpenHABTokenEnvVar, v)
+	}
+}
