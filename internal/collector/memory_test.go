@@ -253,3 +253,88 @@ func TestParseMeminfo_Complete_AC3(t *testing.T) {
 		}
 	})
 }
+
+// wantMeminfoError fails the test unless parseMeminfo of content fails with
+// exactly want.
+func wantMeminfoError(t *testing.T, ac, content, want string) {
+	t.Helper()
+	_, err := parseMeminfo(content)
+	if err == nil {
+		t.Fatalf("%s: parseMeminfo: no error, want %q", ac, want)
+	}
+	if err.Error() != want {
+		t.Errorf("%s: error = %q, want %q", ac, err.Error(), want)
+	}
+}
+
+// meminfoSwap returns the real sample with both swap lines replaced.
+func meminfoSwap(t *testing.T, total, free string) string {
+	t.Helper()
+	content := meminfoWith(t, meminfoRealSample, "SwapTotal", "SwapTotal: "+total+" kB")
+	return meminfoWith(t, content, "SwapFree", "SwapFree: "+free+" kB")
+}
+
+func TestParseMeminfo_OutOfRange_AC1(t *testing.T) {
+	// The issue's example: MemTotal 100, MemFree 50, MemAvailable 300.
+	content := meminfoWith(t, meminfoRealSample, "MemTotal", "MemTotal: 100 kB")
+	content = meminfoWith(t, content, "MemFree", "MemFree: 50 kB")
+	content = meminfoWith(t, content, "MemAvailable", "MemAvailable: 300 kB")
+	wantMeminfoError(t, "AC1", content, "MemAvailable exceeds MemTotal in /proc/meminfo content")
+}
+
+func TestParseMeminfo_OutOfRange_AC2(t *testing.T) {
+	const want = "MemFree exceeds MemTotal in /proc/meminfo content"
+	t.Run("AC2 without MemAvailable", func(t *testing.T) {
+		content := meminfoWithout(t, meminfoRealSample, "MemAvailable")
+		content = meminfoWith(t, content, "MemFree", "MemFree: 16473777 kB")
+		wantMeminfoError(t, "AC2", content, want)
+	})
+	t.Run("AC2 with MemAvailable in range", func(t *testing.T) {
+		content := meminfoWith(t, meminfoRealSample, "MemFree", "MemFree: 16473777 kB")
+		wantMeminfoError(t, "AC2", content, want)
+	})
+	t.Run("AC2 both exceed", func(t *testing.T) {
+		content := meminfoWith(t, meminfoRealSample, "MemFree", "MemFree: 16473777 kB")
+		content = meminfoWith(t, content, "MemAvailable", "MemAvailable: 16473778 kB")
+		wantMeminfoError(t, "AC2", content, want)
+	})
+}
+
+func TestParseMeminfo_OutOfRange_AC3(t *testing.T) {
+	content := meminfoSwap(t, "1000", "1001")
+	wantMeminfoError(t, "AC3", content, "SwapFree exceeds SwapTotal in /proc/meminfo content")
+}
+
+func TestMemoryCollector_Collect_OutOfRange_AC5(t *testing.T) {
+	content := meminfoWith(t, meminfoRealSample, "MemTotal", "MemTotal: 100 kB")
+	content = meminfoWith(t, content, "MemFree", "MemFree: 50 kB")
+	content = meminfoWith(t, content, "MemAvailable", "MemAvailable: 300 kB")
+	c := &MemoryCollector{path: writeTempFile(t, t.TempDir(), "meminfo", content)}
+	mem, swap, err := c.Collect()
+	want := "MemAvailable exceeds MemTotal in /proc/meminfo content"
+	if err == nil || err.Error() != want {
+		t.Fatalf("AC5: Collect error = %v, want %q", err, want)
+	}
+	if mem != (Memory{}) {
+		t.Errorf("AC5: Memory = %+v, want zero", mem)
+	}
+	if swap != (Swap{}) {
+		t.Errorf("AC5: Swap = %+v, want zero", swap)
+	}
+}
+
+func TestParseMeminfo_ByteRange_AC6(t *testing.T) {
+	const over = "18014398509481984"
+	fields := []string{"MemTotal", "MemFree", "MemAvailable", "SwapTotal", "SwapFree"}
+	for _, key := range fields {
+		t.Run("AC6 "+key, func(t *testing.T) {
+			content := meminfoWith(t, meminfoRealSample, key, key+": "+over+" kB")
+			wantMeminfoError(t, "AC6", content, key+" exceeds the byte range in /proc/meminfo content")
+		})
+	}
+	t.Run("AC6 first field in order", func(t *testing.T) {
+		content := meminfoWith(t, meminfoRealSample, "MemFree", "MemFree: "+over+" kB")
+		content = meminfoWith(t, content, "SwapFree", "SwapFree: "+over+" kB")
+		wantMeminfoError(t, "AC6", content, "MemFree exceeds the byte range in /proc/meminfo content")
+	})
+}
