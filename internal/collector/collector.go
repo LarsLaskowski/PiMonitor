@@ -579,6 +579,7 @@ func (c *Collector) fastTick(ctx context.Context) {
 	c.latest.Throttled = s.throttled
 	c.latest.Memory = s.mem
 	c.latest.Swap = s.swap
+	c.latest.MemoryValid = s.memErr == nil
 	if s.disks == nil {
 		// A failed collection (e.g. /proc/mounts unreadable) leaves s.disks
 		// nil; keep Snapshot.Disks marshaling as [] rather than null.

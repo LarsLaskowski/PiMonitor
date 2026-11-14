@@ -31,8 +31,13 @@ func renderPrometheusMetrics(snap collector.Snapshot) []byte {
 	writeTemperatureMetrics(&buf, snap)
 	writeGPUTemperatureMetrics(&buf, snap.GPUTemperature)
 	writePMICTemperatureMetrics(&buf, snap.PMICTemperature)
-	writeMemoryMetrics(&buf, snap.Memory)
-	writeSwapMetrics(&buf, snap.Swap)
+	// A failed /proc/meminfo read leaves memory and swap at 0 in the v1
+	// snapshot; Prometheus omits them instead of exposing a fake reading
+	// (decision record 0010).
+	if snap.MemoryValid {
+		writeMemoryMetrics(&buf, snap.Memory)
+		writeSwapMetrics(&buf, snap.Swap)
+	}
 	writeDiskMetrics(&buf, snap.Disks)
 	writeNetworkMetrics(&buf, snap.Network)
 	writeUpdatesMetrics(&buf, snap.Updates)

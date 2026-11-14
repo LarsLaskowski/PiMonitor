@@ -244,13 +244,20 @@ type Snapshot struct {
 	Throttled        *Throttled          `json:"throttled,omitempty"`
 	Memory           Memory              `json:"memory"`
 	Swap             Swap                `json:"swap"`
-	Disks            []Disk              `json:"disks"`
-	DiskIO           []DiskIO            `json:"disk_io"`
-	Network          []NetworkInterface  `json:"network,omitempty"`
-	Wireless         []Wireless          `json:"wireless,omitempty"`
-	System           SystemInfo          `json:"system"`
-	Updates          Updates             `json:"updates"`
-	Pihole           Pihole              `json:"pihole"`
+	// MemoryValid reports whether the most recent fast tick read the memory
+	// and swap figures: false before the first tick and after a failed read.
+	// It is kept out of the JSON via json:"-" so the v1 shape stays
+	// unchanged; it exists for in-process consumers such as the Prometheus
+	// renderer in internal/httpapi, which must tell a real 0 reading apart
+	// from no reading at all.
+	MemoryValid bool               `json:"-"`
+	Disks       []Disk             `json:"disks"`
+	DiskIO      []DiskIO           `json:"disk_io"`
+	Network     []NetworkInterface `json:"network,omitempty"`
+	Wireless    []Wireless         `json:"wireless,omitempty"`
+	System      SystemInfo         `json:"system"`
+	Updates     Updates            `json:"updates"`
+	Pihole      Pihole             `json:"pihole"`
 }
 
 // HistoryPoint is a single timestamped sample in a metric's ring buffer.

@@ -150,6 +150,28 @@ func TestHandleMetrics_CPUValidNotInJSON_AC4(t *testing.T) {
 	}
 }
 
+// TestHandleMetrics_MemoryValidNotInJSON_AC4 covers issue #246: MemoryValid
+// never reaches the v1 JSON, so the bodies of both routes are byte-identical
+// for a snapshot with and without a memory reading.
+func TestHandleMetrics_MemoryValidNotInJSON_AC4(t *testing.T) {
+	for _, path := range []string{"/api/v1/metrics", "/api/v1/metrics/memory"} {
+		t.Run("AC4 "+path, func(t *testing.T) {
+			s, fm := newTestServer(Config{})
+			fm.snapshot.Memory = collector.Memory{TotalBytes: 4137000000, AvailableBytes: 2900000000, UsedPercent: 29.9}
+			fm.snapshot.Swap = collector.Swap{TotalBytes: 104857600, UsedBytes: 1024, UsedPercent: 0.1}
+
+			fm.snapshot.MemoryValid = true
+			valid := getBody(t, s, path)
+			fm.snapshot.MemoryValid = false
+			invalid := getBody(t, s, path)
+
+			if valid != invalid {
+				t.Errorf("AC4: body differs with MemoryValid\ntrue:  %s\nfalse: %s", valid, invalid)
+			}
+		})
+	}
+}
+
 // getBody serves a GET for path and returns the 200 response body.
 func getBody(t *testing.T, s *Server, path string) string {
 	t.Helper()

@@ -91,6 +91,9 @@ such as openHAB that poll single values.
   is missing or 0. `memory.used_percent` is 100 × (1 − available / total), 0 when the total is 0.
 - `swap.total_bytes` is `SwapTotal`, `swap.used_bytes` is `SwapTotal − SwapFree` (never below 0),
   `swap.used_percent` is used / total in percent, 0 on a host without swap.
+- Memory and swap come from one read. When it fails, both read 0 in the v1 snapshot, whose shape does not change;
+  `GET /metrics` leaves the memory and swap families out for that tick, while a host without swap still writes its
+  real `0` ([0010](../decisions/0010-missing-reading-left-out-of-prometheus.md)).
 
 ### Filesystems and disk I/O
 
@@ -215,7 +218,7 @@ such as openHAB that poll single values.
 - [0001: Optional metric sources log their failures once](../decisions/0001-optional-sources-log-failures-once.md)
 - [0002: Bound vcgencmd output in error texts, not the read](../decisions/0002-bound-vcgencmd-output-in-errors.md)
 - [0009: The first CPU tick is no reading](../decisions/0009-first-cpu-tick-is-no-reading.md)
-- [0010: A missing CPU reading is left out of Prometheus, the v1 snapshot keeps its 0](../decisions/0010-missing-cpu-reading-left-out-of-prometheus.md)
+- [0010: A missing CPU or memory reading is left out of Prometheus, the v1 snapshot keeps its 0](../decisions/0010-missing-reading-left-out-of-prometheus.md)
 
 ## Not here
 
