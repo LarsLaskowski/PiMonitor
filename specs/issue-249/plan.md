@@ -130,3 +130,28 @@ existing one of 0003/0010. `docs/ARCHITECTURE.md` needs no update.
 
 - Telling a failed memory reading from a real 0 in the v1 JSON (needs `/api/v2/...`, 0010 option 3).
 - Real-Pi check: none needed; the four fields are written by every kernel, Pi kernels included (fact 3).
+
+## Security notes
+
+Security review, mode `plan`: issue #249, /home/user/PiMonitor/specs/issue-249/plan.md
+
+What I read: plan.md, `internal/collector/memory.go` (all of it), `internal/collector/collector.go:525-585` (where the warning is logged and where `MemoryValid` is set), `specs/issue-249/meminfo-sample.txt`, `.squad/project.md` (*Security areas*), and `docs/areas/metrics.md` (*Memory and swap*). Decision record 0011 exists.
+
+**Tier:** `standard` is correct. The change tightens which `/proc/meminfo` content counts as a failed reading. It does not create, change or remove a security control: no limit, no authentication, no subprocess, no file write. It does not need to be raised to `security`.
+
+**Security areas touched:** "Parsing of local input" is listed, and it is the only area the plan touches. Logging is not touched in a way that needs listing: the existing `c.log.Warn("memory collection failed", "error", s.memErr)` (collector.go:533-535) stays, and the argument name `error` is not sensitive. The two new error texts put in only a fixed field name from the private list, never file content. The existing `%q` of a key from the content (memory.go:34-36) is unchanged. Nothing new is shown in the API or on the dashboard.
+
+**Parser and guard check:**
+- **Who writes the input:** `/proc/meminfo` is written by the kernel, not by an attacker. The new check is a validity guard, not a defence against bypass, so the bypass-class enumeration does not apply in any meaningful way.
+- **Edge cases, all harmless:**
+  - Duplicate keys: the last one wins, as today.
+  - Whitespace around the key: trimmed (memory.go:25).
+  - Lines without a unit: still parse (fact 5).
+- **Presence check:** using the two-value map lookup means a real `SwapTotal: 0 kB` passes, as the real sample with no swap requires (AC3).
+- **Memory use:** no resource bound is claimed, and no derived values are kept beyond the existing map.
+
+**Measurement:** none is needed. No security property in the plan depends on measured or library behavior. Fact 3, that the kernel always writes these four fields, is a source citation that only affects whether the check could reject real data, and the real sample (AC3) covers that.
+
+**Sample file:** `meminfo-sample.txt` holds only kB counters: no host name, user or path. It is fine to inline it in tests.
+
+**Findings:** no blocking findings. Unsigned overflow of `MemTotal × 1024` and `MemAvailable > MemTotal` (a negative used percent) are possible with content no kernel writes. Both predate this plan and are general hardening outside its scope, so I am not raising them as findings.
