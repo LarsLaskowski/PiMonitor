@@ -45,6 +45,5 @@ content is a failed memory reading like an unreadable file (option 1). The rules
   point, no alert evaluation and no Prometheus memory and swap families.
 - A kernel that dropped one of the four fields would stop PiMonitor's memory readings altogether, with the field
   named in the logged warning; relaxing the list then means changing this record.
-- The rule covers missing fields and a zero total only. Content with all four fields whose `MemAvailable` (or the
-  `MemFree` fallback) exceeds `MemTotal` still reads as a negative used percent; whether such content fails the
-  read or is clamped is left to a follow-up issue, since no kernel writes it and the issue did not report it.
+- The rule covers missing fields and a zero total only. Content with all four fields whose free values exceed
+  their totals is a separate decision, [0012](0012-out-of-range-meminfo-is-failed-reading.md).

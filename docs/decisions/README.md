@@ -73,4 +73,5 @@ once in the [area document](../areas/README.md) of the record's area, and the re
 | [0009](0009-first-cpu-tick-is-no-reading.md) | The first CPU tick after start counts as no reading | Accepted | 2026-11-13 |
 | [0010](0010-missing-reading-left-out-of-prometheus.md) | A missing CPU or memory reading is left out of Prometheus, the v1 snapshot keeps its 0 | Accepted | 2026-11-14 |
 | [0011](0011-incomplete-meminfo-is-failed-reading.md) | Incomplete /proc/meminfo content is a failed memory reading | Accepted | 2026-11-14 |
+| [0012](0012-out-of-range-meminfo-is-failed-reading.md) | /proc/meminfo content with a free value above its total is a failed memory reading | Proposed | 2026-11-14 |
 <!-- project:end index -->
