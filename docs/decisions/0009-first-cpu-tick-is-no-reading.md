@@ -41,5 +41,5 @@ snapshot keeps its 0, as for a failed reading. The rules are in [Metrics](../are
 
 - `cpu_percent` holds one point fewer than `memory_used_percent` per start, and `cpu` has no alert state until the
   second fast tick.
-- `GET /api/v1/metrics` and the Prometheus `pimonitor_cpu_usage_percent` still show 0 on the first tick; telling
-  that 0 apart needs a validity flag in the response, which is a v1 shape question.
+- `GET /api/v1/metrics` still shows 0 on the first tick, and Prometheus leaves the CPU families out:
+  [0010](0010-missing-cpu-reading-left-out-of-prometheus.md).
