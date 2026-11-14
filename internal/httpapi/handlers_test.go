@@ -28,6 +28,7 @@ type fakeMetrics struct {
 	historyCalls int
 	alerts       alert.Report
 	processes    collector.Processes
+	openhab      collector.OpenHABStatus
 }
 
 func (f *fakeMetrics) Snapshot() collector.Snapshot { return f.snapshot }
@@ -35,9 +36,10 @@ func (f *fakeMetrics) History() collector.History {
 	f.historyCalls++
 	return f.history
 }
-func (f *fakeMetrics) HistoryGeneration() uint64      { return f.historyGen }
-func (f *fakeMetrics) Alerts() alert.Report           { return f.alerts }
-func (f *fakeMetrics) Processes() collector.Processes { return f.processes }
+func (f *fakeMetrics) HistoryGeneration() uint64        { return f.historyGen }
+func (f *fakeMetrics) Alerts() alert.Report             { return f.alerts }
+func (f *fakeMetrics) Processes() collector.Processes   { return f.processes }
+func (f *fakeMetrics) OpenHAB() collector.OpenHABStatus { return f.openhab }
 
 func newTestServer(cfg Config) (*Server, *fakeMetrics) {
 	fm := &fakeMetrics{

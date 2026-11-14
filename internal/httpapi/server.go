@@ -31,6 +31,9 @@ type MetricsProvider interface {
 	// resident memory (RSS), served by GET /api/v1/processes when
 	// cfg.ProcessesEnabled is true.
 	Processes() collector.Processes
+	// OpenHAB returns the latest openHAB status, served by GET
+	// /api/v1/openhab when cfg.OpenHABEnabled is true.
+	OpenHAB() collector.OpenHABStatus
 }
 
 // defaultMaxInFlight bounds how many requests may be actively processing at
@@ -102,6 +105,9 @@ type Config struct {
 	// default) the route isn't registered at all, so it 404s rather than
 	// existing-but-empty. See config.Config.ProcessesEnabled.
 	ProcessesEnabled bool
+	// OpenHABEnabled registers GET /api/v1/openhab, the status of a local
+	// openHAB installation. See config.OpenHAB.
+	OpenHABEnabled bool
 	// Client is echoed back verbatim by GET /api/v1/config.
 	Client ClientConfig
 }
