@@ -398,3 +398,31 @@ loopback-only exception (0013) to the Pi-hole reasoning in ARCHITECTURE.
 ## Out of scope / follow-ups
 
 #182 (Prometheus), #183 (sparkline), #184 (alerts); spec *Out of scope*.
+
+## Security notes
+
+Security plan review, round 2 (feature 181): the Lead's revision at `ad21b06` resolves all four of my round-1 findings; one small new non-blocking point, so approved.
+
+**Round-1 findings, all resolved**
+1. **Token capture (blocking): resolved.**
+   - The check works on the server side of the connection actually being used, not on the listening socket, and it runs before any byte is sent. So nothing can slip in between the check and the request.
+   - The uid of the detected openHAB process is never used, so a fake `java -Dopenhab.home=…` process gains nothing.
+   - A mismatch, a failed lookup, a missing `/var/lib/openhab` or a platform other than Linux all close the connection without sending the token. Without a token nothing is checked, which is fine because there is nothing to steal.
+   - A local user cannot get past it: `/var/lib/openhab` is created by root, so a local user cannot own it, and an empty port cannot be shared with another user's listener.
+   - 0013, spec N6/E16/AC6 and the AC6 test cases are updated. The planned fixtures include the `LISTEN` entry on the same port.
+2. **`SECURITY.md` sentence on Thing data: resolved.** It is in *Documentation updates* word for word.
+3. **`by_status` limited to openHAB's statuses: resolved.** It is in *Approach*, spec AC5, and the AC5 test, which includes a status of `<script>`.
+4. **`os.Unsetenv` bullet in `SECURITY.md`: resolved.** It now names both variables and says "the key or token".
+
+**Fact 18 measured.** The check rests on fact 18: the kernel lists the server side of a new connection in `/proc/net/tcp` with the listener's uid, before the server accepts it.
+- How: a scratch program at `/tmp/claude-0/-home-user-PiMonitor/113ce554-10cb-543c-8a1b-23d4afcaa750/scratchpad/m181b/main.go`. It parses entries in state `01` the way the plan does (IPv4 hex in host order, `tcp6` as four 32-bit words, `::ffff:` unmapped, addresses swapped) and dials as root.
+- The listener, which never calls accept, ran as uid 65534: `setpriv --reuid=65534 --regid=65534 --clear-groups python3 -I -c '…bind(("127.0.0.1",18080)); listen(4096)…' &`, then `go run . 127.0.0.1:18080`.
+- Output: `127.0.0.1:18080: found exactly one server-side entry in 200/200, last: /proc/net/tcp uid=65534`. Confirmed for IPv4.
+
+**Not run.** The `tcp6` / dual-stack path. This sandbox has no IPv6 (`python3 -c 'import socket; socket.socket(socket.AF_INET6)'` → `OSError: [Errno 97] Address family not supported by protocol`). It needs a host with IPv6, or the Product Manager's check on the Pi (fact 20, tasks row 1). If it is wrong, the check fails closed, so it does not block.
+
+**New finding**
+1. **[NON-BLOCKING] `/proc/net/tcp*` is read whole on every connection.**
+   - Where: `plan.md` *Security considerations*, "`/proc/net/tcp*` read whole per connection (kernel files)", and *Approach*, *Token only to openHAB's account*.
+   - Why it matters: unlike `cmdline`, these files are not small. They grow with every socket on the host, and any local user can open thousands of sockets (about 150 bytes per line). The plan reads them up to five times per poll, so a local user can inflate PiMonitor's peak memory. My measurement program scans line by line and needs no full read.
+   - Smallest fix: read `net/tcp` and `net/tcp6` line by line with a `bufio.Scanner` and stop at the first match, instead of reading each file whole. Change the *Limits* line to "`/proc/net/tcp*` scanned line by line per connection, stopping at the matching entry". Recommendation: fix now; it is a one-line plan change.
