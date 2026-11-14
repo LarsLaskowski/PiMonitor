@@ -60,8 +60,7 @@ a link to its decision record where it was a real choice, and a link to the area
 - `/api/v1/...` response shapes are stable; a shape change adds `/api/v2/...` — [API.md](../docs/API.md),
   [Versioning](../docs/areas/http-api.md#versioning-and-stability)
 - A missing hardware source yields an empty/zero value and a logged warning, never a crash or a fabricated
-  reading — [Metrics](../docs/areas/metrics.md); where the code falls short of this today is listed under *Open
-  questions* there
+  reading — [Metrics](../docs/areas/metrics.md#limits-and-errors)
 - `gopkg.in/yaml.v3` is the only runtime dependency; `/proc`/`/sys` parsing stays hand-rolled —
   [Stability policy](../docs/CONTRIBUTING.md#stability-policy)
 - A hung or failing webhook never stalls collection, and `cleared` events bypass the rate limiter —
