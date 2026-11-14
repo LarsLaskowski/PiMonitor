@@ -33,3 +33,5 @@ are quoted in full.
 | 2026-11-14 18:13 | 6 Coverage skipped (G4) | Orchestrator | Gate passes (98.3% new/changed); assets not unit-coverable per plan; no deferred tests. |
 | 2026-11-14 18:13 | 5 Tests first skipped (G5) | Orchestrator | skipped — G5 is documentation only (tasks row 13, Dev), no production behaviour and no Tester row |
 | 2026-11-14 18:17 | 6 Implement (G5) | Dev | Documentation written (new area document openhab.md, area docs, API.md, ARCHITECTURE, SECURITY, README, integration doc, example config, unit comment-only, AGENTS/copilot project blocks); decision-check/config-check/figure-check pass. Orchestrator wrote the reported .squad/project.md text (outbound client, token, Test doubles). (sonnet/medium · 68,076 tokens · 26 tool uses · 210 s · 54 in · 24,277 out · 6,820,164 cache read · 67,295 cache write · 887,574 weighted · continued) |
+| 2026-11-14 18:17 | 6 Coverage skipped (G5) | Orchestrator | Documentation group; gate passes (new/changed 98.3%), no deferred tests. |
+| 2026-11-14 18:17 | 6 Documentation | Orchestrator | written in 6 Implement (G5) |
