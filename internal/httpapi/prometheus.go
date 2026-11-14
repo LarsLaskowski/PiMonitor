@@ -27,7 +27,7 @@ const prometheusContentType = "text/plain; version=0.0.4; charset=utf-8"
 func renderPrometheusMetrics(snap collector.Snapshot) []byte {
 	var buf bytes.Buffer
 
-	writeCPUMetrics(&buf, snap.CPU)
+	writeCPUMetrics(&buf, snap)
 	writeTemperatureMetrics(&buf, snap)
 	writeGPUTemperatureMetrics(&buf, snap.GPUTemperature)
 	writePMICTemperatureMetrics(&buf, snap.PMICTemperature)
@@ -47,7 +47,8 @@ func renderPrometheusMetrics(snap collector.Snapshot) []byte {
 // series it aggregates makes naive PromQL (sum(...), avg by (...)(...))
 // silently double-count unless every query remembers to exclude
 // core="overall".
-func writeCPUMetrics(buf *bytes.Buffer, cpu collector.CPUUsage) {
+func writeCPUMetrics(buf *bytes.Buffer, snap collector.Snapshot) {
+	cpu := snap.CPU
 	writeGaugeHeader(buf, "pimonitor_cpu_usage_percent", "Overall CPU usage percentage.")
 	writeMetric(buf, "pimonitor_cpu_usage_percent", "", "", cpu.OverallPercent)
 
