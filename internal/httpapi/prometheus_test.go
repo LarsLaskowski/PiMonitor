@@ -17,6 +17,7 @@ func fullSnapshot() collector.Snapshot {
 			OverallPercent: 12.5,
 			PerCorePercent: []float64{10, 15},
 		},
+		CPUValid:         true,
 		Temperature:      collector.Temperature{Zone: "cpu-thermal", Celsius: 48.6},
 		TemperatureValid: true,
 		GPUTemperature:   &collector.GPUTemperature{Celsius: 47.8},
@@ -109,6 +110,7 @@ func TestRenderPrometheusMetrics_HelpAndTypeComments(t *testing.T) {
 func TestRenderPrometheusMetrics_OmitsAbsentOptionalFields(t *testing.T) {
 	snap := collector.Snapshot{
 		CPU:              collector.CPUUsage{OverallPercent: 5},
+		CPUValid:         true,
 		Temperature:      collector.Temperature{Zone: "cpu-thermal", Celsius: 40},
 		TemperatureValid: true,
 	}
@@ -144,6 +146,7 @@ func TestRenderPrometheusMetrics_OmitsTemperatureWhenInvalid(t *testing.T) {
 	// (findCPUThermalZone can leave Zone empty on a genuine reading too).
 	snap := collector.Snapshot{
 		CPU:         collector.CPUUsage{OverallPercent: 5},
+		CPUValid:    true,
 		Temperature: collector.Temperature{Zone: "cpu-thermal", Celsius: 40},
 	}
 
@@ -151,6 +154,56 @@ func TestRenderPrometheusMetrics_OmitsTemperatureWhenInvalid(t *testing.T) {
 
 	if strings.Contains(body, "pimonitor_temperature_celsius") {
 		t.Fatalf("expected no pimonitor_temperature_celsius line when TemperatureValid is false, got:\n%s", body)
+	}
+}
+
+// TestRenderPrometheusMetrics_OmitsCPUWhenInvalid_AC2 covers issue #243: a
+// snapshot without a CPU reading (CPUValid false) leaves both CPU families out
+// entirely, even when CPU holds non-zero values, and keeps the other families.
+func TestRenderPrometheusMetrics_OmitsCPUWhenInvalid_AC2(t *testing.T) {
+	snap := fullSnapshot()
+	snap.CPUValid = false
+	snap.CPU = collector.CPUUsage{OverallPercent: 12.5, PerCorePercent: []float64{10, 15}}
+
+	body := string(renderPrometheusMetrics(snap))
+
+	for _, line := range strings.Split(body, "\n") {
+		for _, family := range []string{"pimonitor_cpu_usage_percent", "pimonitor_cpu_core_usage_percent"} {
+			if strings.Contains(line, family) {
+				t.Errorf("AC2: line %q mentions %s although CPUValid is false", line, family)
+			}
+		}
+	}
+	for _, want := range []string{
+		"pimonitor_temperature_celsius{",
+		"pimonitor_memory_used_percent 29.9",
+		`pimonitor_disk_used_percent{mount="/"} 25.8`,
+		"pimonitor_updates_pending 3",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("AC2: output lost %q with CPUValid false, got:\n%s", want, body)
+		}
+	}
+}
+
+// TestRenderPrometheusMetrics_RendersRealZeroCPU_AC3 covers issue #243: with
+// CPUValid true a real reading of 0 is written, not mistaken for a missing one.
+func TestRenderPrometheusMetrics_RendersRealZeroCPU_AC3(t *testing.T) {
+	snap := fullSnapshot()
+	snap.CPU = collector.CPUUsage{OverallPercent: 0, PerCorePercent: []float64{0, 0}}
+
+	body := string(renderPrometheusMetrics(snap))
+
+	for _, want := range []string{
+		"# HELP pimonitor_cpu_usage_percent ",
+		"# TYPE pimonitor_cpu_usage_percent gauge",
+		"pimonitor_cpu_usage_percent 0\n",
+		`pimonitor_cpu_core_usage_percent{core="0"} 0`,
+		`pimonitor_cpu_core_usage_percent{core="1"} 0`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("AC3: output missing %q for a real 0 reading, got:\n%s", want, body)
+		}
 	}
 }
 

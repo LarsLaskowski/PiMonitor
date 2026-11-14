@@ -44,6 +44,7 @@ func newTestServer(cfg Config) (*Server, *fakeMetrics) {
 		snapshot: collector.Snapshot{
 			Timestamp: time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC),
 			CPU:       collector.CPUUsage{OverallPercent: 12.5},
+			CPUValid:  true,
 			System:    collector.SystemInfo{KernelVersion: "6.1.0", Distribution: "Raspberry Pi OS", PiModel: "Raspberry Pi 4 Model B"},
 		},
 		history: collector.History{
@@ -126,6 +127,39 @@ func TestHandleMetrics(t *testing.T) {
 	if got.System.PiModel != "Raspberry Pi 4 Model B" {
 		t.Fatalf("System.PiModel = %q", got.System.PiModel)
 	}
+}
+
+// TestHandleMetrics_CPUValidNotInJSON_AC4 covers issue #243: CPUValid never
+// reaches the v1 JSON, so the bodies of both routes are byte-identical for a
+// snapshot with and without a CPU reading.
+func TestHandleMetrics_CPUValidNotInJSON_AC4(t *testing.T) {
+	for _, path := range []string{"/api/v1/metrics", "/api/v1/metrics/cpu"} {
+		t.Run("AC4 "+path, func(t *testing.T) {
+			s, fm := newTestServer(Config{})
+			fm.snapshot.CPU.PerCorePercent = []float64{10, 15}
+
+			fm.snapshot.CPUValid = true
+			valid := getBody(t, s, path)
+			fm.snapshot.CPUValid = false
+			invalid := getBody(t, s, path)
+
+			if valid != invalid {
+				t.Errorf("AC4: body differs with CPUValid\ntrue:  %s\nfalse: %s", valid, invalid)
+			}
+		})
+	}
+}
+
+// getBody serves a GET for path and returns the 200 response body.
+func getBody(t *testing.T, s *Server, path string) string {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodGet, path, nil)
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET %s status = %d, want 200", path, rec.Code)
+	}
+	return rec.Body.String()
 }
 
 func TestHandleHistory(t *testing.T) {
