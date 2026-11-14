@@ -1,0 +1,170 @@
+# Spec: Show the local openHAB status in the dashboard
+
+Source: Issue #181
+Status: Draft
+
+## Problem
+
+Many Pis that run PiMonitor also host openHAB (openHABian or the apt package), where it is usually the largest
+process and its health the most interesting fact about the Pi. Today PiMonitor only serves openHAB
+([`docs/integrations/openhab.md`](../../docs/integrations/openhab.md)) and shows nothing about it. The operator wants
+a compact health view of the local openHAB installation — memory, reachability, Thing health, counts — in the
+dashboard and the API, without item states ([issue #181](https://github.com/LarsLaskowski/PiMonitor/issues/181),
+*Out of scope*).
+
+## Scenarios
+
+- S1: Given openHAB runs on the Pi and answers on `base_url`, when the operator opens the dashboard, then an
+  "openHAB" card shows the process memory (absolute and in % of RAM), the JVM heap used/total (and max when
+  reported), the Things by status, the number of Items and of installed add-ons, the openHAB version and its uptime.
+- S2: Given one or more Things are not ONLINE, when the card refreshes, then it is in its warning state and lists
+  those Things (label, UID, status and status detail).
+- S3: Given openHAB is installed but its process is stopped, when the card refreshes, then it says openHAB is not
+  running and is in its warning state.
+- S4: Given openHAB runs but its REST API refuses PiMonitor (no or wrong `api_token`, `401`/`403`), when the card
+  refreshes, then the process memory is still shown, the values that need the refused calls show `n/a`, and the
+  card says openHAB is not reachable when the root call itself is refused.
+- S5: Given openHAB is neither installed nor running, when the dashboard loads, then no openHAB card appears and
+  PiMonitor sends no request to `base_url` and logs nothing about openHAB.
+- S6: Given `openhab.enabled: false`, then PiMonitor never looks for openHAB, `GET /api/v1/openhab` answers `404`
+  and the dashboard shows no card.
+- S7: Given an integration polls `GET /api/v1/openhab` (with the API key when one is set), then it gets the same
+  values as the card, as documented in `docs/API.md`.
+- S8: Given openHAB is installed, started or stopped while PiMonitor runs, then the next openHAB poll reflects it
+  without a PiMonitor restart, and an open dashboard shows or hides the card on its next openHAB poll.
+
+## Errors and edge cases
+
+- E1: A process whose command line mentions openHAB but is not the openHAB Java process (the `karaf` start script,
+  an editor on `/etc/openhab/…`) is not taken for openHAB.
+- E2: Several processes match: the one with the lowest PID is reported.
+- E3: `/proc` is mounted with `hidepid=`, or the process vanished during the read: the process values are absent;
+  the state then follows from the installation paths and the REST root call (N2).
+- E4: `base_url` answers but is not openHAB (for example PiMonitor itself on the same port, or an HTML page):
+  counts as not reachable, never as fabricated values.
+- E5: openHAB answers a call with a redirect: the redirect is not followed, and that value is absent.
+- E6: openHAB hangs or is very slow: each call is abandoned after its timeout (N4); the other calls and PiMonitor's
+  own metrics carry on.
+- E7: A response is malformed, of an unexpected shape, or larger than the size limit (N4): only that call's values
+  are absent.
+- E8: Thing labels, status details and the version are hostile text (markup, script): the card shows them as
+  literal text.
+- E9: More than 10 Things are not ONLINE: the list holds the first 10 by UID, the counts by status still cover all.
+- E10: A disabled Thing (status `UNINITIALIZED`, detail `DISABLED`) is counted under its status but is neither
+  listed nor a reason for the warning state — it is off by the operator's choice.
+- E11: openHAB is still starting (start level below 100): the card shows "starting (start level N)"; this alone is
+  no warning.
+- E12: PiMonitor's memory reading failed in the latest fast tick: the RSS percentage is absent, the absolute RSS is
+  still shown.
+- E13: Invalid configuration — `enabled` other than `auto`/`true`/`false`, `base_url` that is not `http`/`https`
+  with a loopback host, `poll_interval_seconds` below 60 or not an integer: startup fails with an error naming the
+  option, like every other invalid option ([Configuration](../../docs/areas/configuration.md)).
+- E14: openHAB reports no heap maximum, start level, uptime or other optional field (another 4.x/5.x release):
+  that value is absent, the rest is shown.
+
+## Non-functional requirements
+
+- N1: Detection runs on every openHAB poll. With `enabled: auto` openHAB counts as present when one of its
+  standard installation paths (`/usr/share/openhab`, `/etc/openhab`, `/var/lib/openhab`) exists or its Java
+  process runs; only then is any request sent. `enabled: true` always polls and never reports `not_installed`.
+- N2: The state is `not_installed` (only with `auto`, nothing found), `ok` (the REST root call answers as openHAB),
+  `running_unreachable` (process found, root call fails) or `installed_not_running` (no process found, root call
+  fails). The process values are reported whenever the process is found, whatever the REST calls do.
+- N3: Each source — process, root, system info, Things, Items, add-ons — is collected independently; a failure
+  leaves only its values absent (key omitted, never `null` or a made-up `0`). The Item and add-on lists are only
+  counted; no item state is read, stored or served.
+- N4: Every request goes only to `base_url`, has a short timeout (the issue proposes 5 s), reads a bounded body and
+  follows no redirect. The limits are stated in the area document.
+- N5: The openHAB poll has its own interval, `poll_interval_seconds` (default 60, minimum 60), runs once at startup,
+  and never delays the fast or the slow tick or `/healthz`.
+- N6: `api_token` (default empty) comes from the config file or from `PIMONITOR_OPENHAB_TOKEN`, which overrides the
+  file when non-empty and is removed from the environment after reading, as `PIMONITOR_API_KEY` is. There is no
+  flag. The token is sent only to `base_url` as `Authorization: Bearer <token>`, only when set, and never appears in
+  a log line, an API response or the dashboard.
+- N7: Logging follows the log-once rule of [0001](../../docs/decisions/0001-optional-sources-log-failures-once.md)
+  per source: a warning on the first failure and when its error changes, debug while it repeats, info on recovery.
+  While the state is `not_installed` nothing is logged.
+- N8: `GET /api/v1/openhab` is a new, additive `v1` route behind the API chain (key, gzip, no-store, in-flight
+  limit); it is registered only when `enabled` is not `false`. No existing `v1` response changes shape, the CSP is
+  unchanged and the browser never contacts openHAB.
+- N9: No new dependency; the main service stays unprivileged and its systemd unit unchanged.
+- N10: Compatibility: openHAB 4.x and 5.x, installed from the apt package or openHABian.
+
+## Acceptance criteria
+
+- AC1: With `enabled: auto`, no installation path and no openHAB process, `GET /api/v1/openhab` answers `200`
+  `{"state":"not_installed"}`, no request reaches `base_url` and nothing about openHAB is logged (S5, N1, N7).
+- AC2: The state follows N2 for every combination of installation paths found, process found and root call
+  succeeding, with `enabled: auto` and `enabled: true`, and is re-evaluated on every poll (S3, S8, E3, E4, N1, N2).
+- AC3: The openHAB Java process is recognised by its command line, other processes that mention openHAB are not
+  (E1), the lowest PID wins (E2), and the response carries its PID, RSS in bytes and RSS in percent of
+  `memory.total_bytes` (absent when that is 0) — also when every REST call fails (S1, S4, E12, N2).
+- AC4: From openHAB's REST API the response carries the openHAB version, start level, uptime in seconds, JVM heap
+  used, total and max in bytes, the Item count and the installed add-on count; each is absent when its call fails
+  or openHAB does not report it, without affecting the others; the parsers are tested against real responses of
+  openHAB 4.x and 5.x (S1, S4, E7, E14, N3, N10).
+- AC5: Things are reported as a total and a count per status, plus up to 10 Things that are not ONLINE and not
+  disabled, sorted by UID, each with UID, label, status and status detail (S2, E9, E10).
+- AC6: Requests go to `base_url` only, are abandoned after the timeout, read at most the body limit, follow no
+  redirect, and carry `Authorization: Bearer <token>` exactly when a token is configured; `go.mod` gains no
+  dependency and `pimonitor.service` is unchanged (E5, E6, E7, N4, N6, N9).
+- AC7: The `openhab` block has `enabled` (default `auto`), `base_url` (default `http://127.0.0.1:8080`), `api_token`
+  (default empty) and `poll_interval_seconds` (default 60); the invalid values of E13 fail startup with an error
+  naming the option, and a host other than `127.0.0.0/8`, `::1` or `localhost` is invalid (E13, N4).
+- AC8: `PIMONITOR_OPENHAB_TOKEN` overrides a file token when non-empty, is removed from the environment after
+  reading, and the token never appears in a log line, in `GET /api/v1/openhab`, `GET /api/v1/config` or any other
+  response (N6).
+- AC9: `GET /api/v1/openhab` requires the API key when one is set, has the API chain's headers and limits, and
+  answers `404` when `enabled` is `false`; with `enabled: false` no detection runs (S6, S7, N8).
+- AC10: Each source's failures are logged per N7: one warning per new error, info on recovery, no repeat warning on
+  later polls (N7).
+- AC11: The first openHAB poll runs at startup and then every `poll_interval_seconds`; a hung openHAB does not delay
+  the fast tick (E6, N5).
+- AC12: The dashboard shows the openHAB card exactly while the latest `GET /api/v1/openhab` answered `200` with a
+  state other than `not_installed`, polls it at the openHAB interval with the other polls' rules (one request
+  outstanding, pause while hidden, `401` handling), and lists the card in the layout dialog under id `openhab`
+  (S1, S5, S6, S8).
+- AC13: The card shows the values of S1 (`n/a` for an absent one), the state text of S3/S4/E11, the not-ONLINE list,
+  and its warning state exactly when the state is `installed_not_running` or `running_unreachable` or a listed Thing
+  exists; every text from openHAB is inserted as text, which `internal/web/xss_test.go` keeps enforcing (S1–S4, E8,
+  E11).
+
+## Out of scope
+
+- Item states, sitemaps, commands to openHAB ([issue #181](https://github.com/LarsLaskowski/PiMonitor/issues/181)).
+- A remote openHAB instance; port conflicts between PiMonitor and openHAB (the installer's concern).
+- Prometheus metrics (#182), a memory history sparkline (#183) and alert rules (#184) for openHAB.
+- A list of add-on names (the issue's optional tooltip).
+
+## Open questions
+
+- Does `enabled: false` answer `{"state":"not_installed"}` or `404`? Answered: `404` — a route whose option is
+  off is not registered ([HTTP API](../../docs/areas/http-api.md#routes)), and the feature is then fully inert.
+- Which state applies when no process is found but REST answers (a hidden `/proc`, openHAB in a container)?
+  Answered: `ok`, without process values (N2); the issue's states cover only the other cases.
+- `null` or omitted for a value not collected? Answered: omitted, as `gpu_temperature` is
+  ([`API.md`](../../docs/API.md)).
+- Do disabled Things warn? Answered: no (E10), Lead decision: the list is meant for actionable failures.
+- How does the dashboard learn the openHAB interval? Answered: without changing an existing `v1` response, whose
+  additive fields are an open question of [HTTP API](../../docs/areas/http-api.md#open-questions); the plan
+  chooses how.
+- Do the issue's claims about today's PiMonitor hold? Answered: from the code, the `/proc` walk and `VmRSS` reading exist
+  (`internal/collector/process.go`); `PIMONITOR_API_KEY` is unset after reading (`internal/config/config.go`);
+  `install.sh` sets the config file to mode `640`; the unit's hardening (no `ProtectProc`, `AF_INET` allowed,
+  read-only `/usr`, `/etc`, `/var`) lets the service see the paths, the process and loopback. Refuted in letter:
+  the CSP has no `connect-src`, but `default-src 'self'` covers it; the test conventions are `docs/UNIT_TESTS.md`,
+  not `docs/TESTS.md`; the log-once precedent is decision 0001 (issues #176/#197), #177 is the related vcgencmd
+  fix. openHAB's REST field names are unverified here and are the plan's to establish from real responses.
+
+## Area documents
+
+- A new area *openHAB status* (`docs/areas/openhab.md`, a plan decision): detection, states, sources and what each
+  value means, cadence, timeouts and size limits, logging, token use.
+- [Configuration](../../docs/areas/configuration.md): the `openhab` block, `PIMONITOR_OPENHAB_TOKEN` in the source
+  precedence.
+- [HTTP API](../../docs/areas/http-api.md): the route table row for `GET /api/v1/openhab`.
+- [Dashboard](../../docs/areas/dashboard.md): the endpoint list, the openHAB poll, the card and when it shows, its
+  warning state, the layout id `openhab`.
+- [`API.md`](../../docs/API.md): the response shape and every field; `SECURITY.md`: loopback outbound calls,
+  the token, the openHAB process files read; `docs/integrations/openhab.md`: the reverse direction and which
+  openHAB API security settings need a token.
