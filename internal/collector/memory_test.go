@@ -323,6 +323,32 @@ func TestMemoryCollector_Collect_OutOfRange_AC5(t *testing.T) {
 	}
 }
 
+func TestParseMeminfo_EqualToTotal_AC4(t *testing.T) {
+	t.Run("AC4 memory", func(t *testing.T) {
+		content := meminfoWith(t, meminfoRealSample, "MemFree", "MemFree: 16473776 kB")
+		content = meminfoWith(t, content, "MemAvailable", "MemAvailable: 16473776 kB")
+		content = meminfoWith(t, content, "MemTotal", "MemTotal: 16473776 kB")
+		fields, err := parseMeminfo(content)
+		if err != nil {
+			t.Fatalf("AC4: parseMeminfo: %v, want no error", err)
+		}
+		mem, _ := memAndSwapFromFields(fields)
+		if mem.UsedPercent != 0 {
+			t.Errorf("AC4: UsedPercent = %v, want 0", mem.UsedPercent)
+		}
+	})
+	t.Run("AC4 swap", func(t *testing.T) {
+		fields, err := parseMeminfo(meminfoSwap(t, "1000", "1000"))
+		if err != nil {
+			t.Fatalf("AC4: parseMeminfo: %v, want no error", err)
+		}
+		_, swap := memAndSwapFromFields(fields)
+		if swap.UsedBytes != 0 {
+			t.Errorf("AC4: swap UsedBytes = %d, want 0", swap.UsedBytes)
+		}
+	})
+}
+
 func TestParseMeminfo_ByteRange_AC6(t *testing.T) {
 	const over = "18014398509481984"
 	fields := []string{"MemTotal", "MemFree", "MemAvailable", "SwapTotal", "SwapFree"}
@@ -336,5 +362,16 @@ func TestParseMeminfo_ByteRange_AC6(t *testing.T) {
 		content := meminfoWith(t, meminfoRealSample, "MemFree", "MemFree: "+over+" kB")
 		content = meminfoWith(t, content, "SwapFree", "SwapFree: "+over+" kB")
 		wantMeminfoError(t, "AC6", content, "MemFree exceeds the byte range in /proc/meminfo content")
+	})
+	t.Run("AC6 largest value is a reading", func(t *testing.T) {
+		content := meminfoWith(t, meminfoRealSample, "MemTotal", "MemTotal: 18014398509481983 kB")
+		fields, err := parseMeminfo(content)
+		if err != nil {
+			t.Fatalf("AC6: parseMeminfo: %v, want no error", err)
+		}
+		mem, _ := memAndSwapFromFields(fields)
+		if want := uint64(18446744073709550592); mem.TotalBytes != want {
+			t.Errorf("AC6: TotalBytes = %d, want %d", mem.TotalBytes, want)
+		}
 	})
 }
