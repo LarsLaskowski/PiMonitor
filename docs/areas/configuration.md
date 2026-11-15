@@ -2,8 +2,8 @@
 
 ## Scope
 
-Where PiMonitor's runtime settings come from — built-in defaults, the YAML config file, the `PIMONITOR_API_KEY`
-environment variables and command-line flags — how they combine, every option with its type, default and valid
+Where PiMonitor's runtime settings come from — built-in defaults, the YAML config file, the `PIMONITOR_API_KEY` and
+`PIMONITOR_OPENHAB_TOKEN` environment variables and command-line flags — how they combine, every option with its type, default and valid
 range, and how the process fails at startup when the configuration is invalid. Operators editing
 `/etc/pimonitor/config.yaml` rely on it, and every other area takes the defaults and valid ranges of its options from
 here instead of restating them.

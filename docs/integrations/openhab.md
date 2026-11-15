@@ -180,8 +180,9 @@ call too, so the card then reads `Not reachable · api_token refused`.
 Things to know:
 
 - PiMonitor sends the token only to `base_url`, which must be `http` on a loopback address, and only to a server that
-  runs as the owner of `/var/lib/openhab` (the account openHAB runs as). An openHAB installed elsewhere, or in a
-  container whose `/var/lib/openhab` the Pi does not have, gets requests without the token.
+  runs as the owner of `/var/lib/openhab` (the account openHAB runs as). While a token is set, PiMonitor sends no
+  request at all to a server that does not run as that owner, such as an openHAB in a container or a Pi without
+  `/var/lib/openhab`: every REST value is then absent and a warning names the reason.
 - With a token set, `GET /api/v1/openhab` lists the Things that are not ONLINE with their labels and status
   descriptions, which openHAB serves only to authenticated users. Set `api_key` in PiMonitor if the LAN should not
   read them; in the HTTP binding the key then goes into the Thing's `headers`, as
