@@ -69,7 +69,8 @@ The orchestrator tells you which **mode** to run:
     cap on open connections), the seam its test observes the bound through, in *Approach* beside the bound;
   - the **documentation updates**, found by a sweep before they are listed: search the area documents and
     `docs/ARCHITECTURE.md` for every enumeration or "only these …" statement the change extends (routes,
-    rules, settings, tables, limits) and list each hit, besides the documents you already know the change
+    rules, settings, tables, limits) and list each hit — for a set the change alters (the clients that get a handler,
+    say), every list and sentence of that set, found by its members' names, not only the first — besides the documents you already know the change
     touches and every document the checklist of `.github/pull_request_template.md` (its project block included)
     asks to update for this change, such as a changelog entry for a user-visible change — each with the file and what changes in it, owned by the Dev (test documentation: the Tester) and never by the orchestrator — an edit of `.squad/stack.md` or
     `.squad/project.md` too: its owner reports the exact text, which the orchestrator writes in (`.squad/team.md`,
@@ -80,9 +81,9 @@ The orchestrator tells you which **mode** to run:
     tasks it waits for and a skeleton row for its *Signatures* (or "no new API");
   - the exact **signatures** of every new or changed API member (for the Dev's skeleton; no private member, and
     no backticks in a plan without API: the template's *Signatures*) and the existing files the skeleton must
-    rewrite — a file you call final is one you read and found so; every new name checked against the naming rules
-    the *Analyzer gate* enforces (`.squad/stack.md`, *Writing code*, and the analyzer configuration), so step 4
-    renames nothing;
+    rewrite — a file you call final is one you read and found so; every new name and signature checked against the
+    rules the *Analyzer gate* enforces on them (names, parameter count and names, nested types: `.squad/stack.md`,
+    *Writing code*, and the analyzer configuration), so step 4 renames and splits nothing;
   - the **test files**, named strictly by *Layout* in `.squad/stack.md` and `docs/UNIT_TESTS.md`, and the
     existing test call sites a changed signature affects, with who adapts them (*Loop limits*); a test kept
     unchanged has no input a new criterion handles differently, else it is adapted, with owner;
@@ -152,7 +153,8 @@ The orchestrator tells you which **mode** to run:
   resource bounds: a signature that still contradicts one (a promise of one file in memory at a time beside a
   method that takes four streams) is changed in the same revision. Do not append
   answers: move settled material (verified facts) to the
-  decision record, or into *Documentation updates* for the Dev, and shorten (a plan over its tier's
+  decision record, or into *Documentation updates* for the Dev; once a group is built, replace its settled paragraphs
+  by a pointer to the area document that now states them; and shorten (a plan over its tier's
   `PLAN_MAX_WORDS` needs a `Plan size:` line, `plan-check.py`). Update the
   affected decision records (a rejected option and the reason belong under *Options considered*).
 - `decide` — a loop limit was hit, members disagree, or a review round left non-blocking findings (step 8,

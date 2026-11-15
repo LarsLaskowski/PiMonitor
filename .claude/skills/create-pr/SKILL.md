@@ -74,7 +74,8 @@ repository.
    comes first (`.squad/orchestration.md`, *Merge conflicts*). Fix each failing
    check and every new issue `python3 .squad/tools/sonar-check.py pr <number>`
    lists, rerun step 4 on the fix (on merged files: the gates they need),
-   commit once per round and push. Mark the PR ready for review only when
+   commit once per round and push, never with `[skip ci]` (`.squad/orchestration.md`,
+   *Commits*). Mark the PR ready for review only when
    *Draft until green* holds; otherwise leave it a draft and tell the user
    what blocks it.
 10. Report the branch name, the PR URL and whether it is ready for review or

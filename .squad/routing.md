@@ -332,6 +332,11 @@ PR is opened, the branch stays without one, and the user is told so.
   compiling only because of a signature or field change the Dev made itself — mechanically, no assertion touched, listed in
   its report; these are the only cases in which the Dev edits test code. The **Tester** moves them in step 5
   when old and new signature coexist, and checks the Dev's edits in its coverage step.
+- **Manual criterion fails (step 7):** a manual test that fails on the stamped head goes to the Lead (mode `decide`),
+  which adds a task group to the same plan for the options it takes (a bug fix: a further implement round of the
+  Dev and the Tester's coverage pass); the group runs steps 4–7 like the others and
+  ends with a new gate stamp and the manual test again (one `7 Manual test` row per run). After **2 such groups** the
+  Lead escalates relaxing the criterion to the Product Manager.
 - **Dev ↔ Tester disagreements:** if the Dev believes a step-5 test's expectation is wrong, the Lead decides
   (the test is not changed silently). A defect the Dev reproduces without changing the test (a failing fixture
   or helper, not a disputed expectation) goes to the Tester as a fix round once the orchestrator has verified
