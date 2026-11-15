@@ -1271,7 +1271,7 @@
     const parts = [];
     const counts = things.by_status || {};
     if (counts.ONLINE) parts.push(counts.ONLINE + ' ONLINE');
-    Object.keys(counts).filter(k => k !== 'ONLINE' && counts[k] > 0).sort()
+    Object.keys(counts).filter(k => k !== 'ONLINE' && counts[k] > 0).sort((a, b) => a.localeCompare(b))
       .forEach(k => parts.push(counts[k] + ' ' + k));
     return parts.length ? parts.join(' · ') : '0 Things';
   }
@@ -1305,10 +1305,11 @@
     } else {
       rows.push(openhabRow('JVM heap', openhabMissing(st, 'systeminfo')));
     }
-    rows.push(openhabRow('Uptime', st.uptime_seconds !== undefined ? fmtUptime(st.uptime_seconds) : openhabMissing(st, 'systeminfo')));
-    rows.push(openhabRow('Items', st.items_count !== undefined ? String(st.items_count) : openhabMissing(st, 'items')));
-    rows.push(openhabRow('Add-ons', st.addons_installed !== undefined ? String(st.addons_installed) : openhabMissing(st, 'addons')));
-    rows.push(openhabRow('Things', st.things ? openhabThingsText(st.things) : openhabMissing(st, 'things')));
+    rows.push(
+      openhabRow('Uptime', st.uptime_seconds !== undefined ? fmtUptime(st.uptime_seconds) : openhabMissing(st, 'systeminfo')),
+      openhabRow('Items', st.items_count !== undefined ? String(st.items_count) : openhabMissing(st, 'items')),
+      openhabRow('Add-ons', st.addons_installed !== undefined ? String(st.addons_installed) : openhabMissing(st, 'addons')),
+      openhabRow('Things', st.things ? openhabThingsText(st.things) : openhabMissing(st, 'things')));
 
     const extra = notOnline.length ? [openhabThingsToggle(notOnline)] : [];
     body.replaceChildren(stateLine, ...rows, ...extra);
@@ -1317,10 +1318,10 @@
   // The openHAB poll has its own cadence: the interval the server reports
   // (at least 60 s), the metrics interval while the first poll is pending.
   function openhabIntervalMs() {
-    if (latestOpenHAB && latestOpenHAB.state === 'pending') {
+    if (latestOpenHAB?.state === 'pending') {
       return Math.max(1, config.poll_interval_seconds) * 1000;
     }
-    return Math.max(60, (latestOpenHAB && latestOpenHAB.poll_interval_seconds) || 60) * 1000;
+    return Math.max(60, latestOpenHAB?.poll_interval_seconds || 60) * 1000;
   }
 
   // In-flight guards: setInterval fires on a fixed schedule regardless of
