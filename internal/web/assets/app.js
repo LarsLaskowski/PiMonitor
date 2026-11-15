@@ -1244,7 +1244,7 @@
     details.className = 'openhab-things';
     details.open = openhabThingsOpen;
     const summary = document.createElement('summary');
-    summary.textContent = 'Not-online Things (' + notOnline.length + ')';
+    summary.textContent = 'Things offline: ' + notOnline.length;
     details.appendChild(summary);
     notOnline.forEach(t => {
       const item = document.createElement('div');

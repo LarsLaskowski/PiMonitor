@@ -121,9 +121,9 @@ client of the [HTTP API](http-api.md) like any third-party integration and has n
   `Not reachable · api_token refused`. The card is in its warning state (warning border, state line colored `warn`)
   when the state is `installed_not_running` or `running_unreachable` or a Thing is listed as not ONLINE. The Things
   the server lists as not ONLINE (at most 10, disabled ones left out) are counted in a toggle,
-  `Not-online Things (<n>)`, that is closed by default and holds only their labels (the UID when a Thing has no
-  label); no status, status detail or description is shown. The
-  toggle's state is kept per browser and survives the card's refreshes. Values of [openHAB](openhab.md).
+  `Things offline: <n>`, that is closed by default and holds only their labels (the UID when a Thing has no
+  label); no status, status detail or description is shown. The toggle's state is kept per browser and survives
+  the card's refreshes. Values of [openHAB](openhab.md).
 - The network card is shown only when its layout preference is visible, `network_enabled` is true in
   `/api/v1/config` and the snapshot holds at least one interface; all three must hold.
 - The Pi-hole section of the Updates card is shown only when the snapshot reports Pi-hole as installed. A Pi-hole
