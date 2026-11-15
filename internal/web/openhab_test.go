@@ -47,6 +47,18 @@ func checkAssetParts(t *testing.T, checks []assetCheck) {
 	}
 }
 
+// checkAssetPartsAbsent fails for every string of want that a part contains.
+func checkAssetPartsAbsent(t *testing.T, checks []assetCheck) {
+	t.Helper()
+	for _, c := range checks {
+		for _, w := range c.want {
+			if strings.Contains(c.part, w) {
+				t.Errorf("%s: expected no %q", c.name, w)
+			}
+		}
+	}
+}
+
 func TestAppJS_OpenHABPolling_AC12(t *testing.T) {
 	js := readAsset(t, "app.js")
 
@@ -124,7 +136,40 @@ func TestAppJS_OpenHABTexts_AC13(t *testing.T) {
 	checkAssetParts(t, []assetCheck{
 		{"app.js", js, []string{
 			"needs api_token", "api_token refused", "n/a", "Not running", "Not reachable", "Starting (start level ",
-			"Process memory", "JVM heap", "% of RAM",
+			"Process memory", "JVM heap", "% of RAM", "'Not-online Things ('",
 		}},
+	})
+}
+
+func TestAppJS_OpenHABRootRefusedStateText_AC13(t *testing.T) {
+	js := readAsset(t, "app.js")
+
+	checkAssetParts(t, []assetCheck{
+		{"openhabStateText", jsFunctionBody(js, "function openhabStateText("), []string{
+			"includes('root')", "openhabRefusedHint(",
+		}},
+		{"openhabRefusedHint", jsFunctionBody(js, "function openhabRefusedHint("), []string{
+			"'api_token refused'", "'needs api_token'", "api_token_configured",
+		}},
+	})
+}
+
+func TestAppJS_OpenHABThingsToggle_AC13(t *testing.T) {
+	js := readAsset(t, "app.js")
+	toggle := jsFunctionBody(js, "function openhabThingsToggle(")
+	render := jsFunctionBody(js, "function renderOpenHAB(")
+
+	if !strings.Contains(js, "const OPENHAB_THINGS_KEY = 'pimonitor-openhab-things';") {
+		t.Error("app.js: expected const OPENHAB_THINGS_KEY = 'pimonitor-openhab-things';")
+	}
+	checkAssetParts(t, []assetCheck{
+		{"openhabThingsToggle", toggle, []string{
+			"createElement('details')", "'Not-online Things ('", "'toggle'", "t.label || t.uid",
+		}},
+		{"renderOpenHAB", render, []string{"openhabThingsToggle("}},
+	})
+	checkAssetPartsAbsent(t, []assetCheck{
+		{"openhabThingsToggle", toggle, []string{".status", ".description", "innerHTML"}},
+		{"renderOpenHAB", render, []string{"t.uid"}},
 	})
 }
