@@ -174,7 +174,8 @@ Which calls need an openHAB API token: on a default openHAB 5.2.4 install, `/res
 Without a token the card therefore shows the process memory, the uptime, the version and the number of Items, and
 reads "needs api_token" for the JVM heap, the Things and the add-ons. To see them, create an API token in openHAB
 (*Profile → API Tokens*) and put it into `openhab.api_token`, or into `PIMONITOR_OPENHAB_TOKEN` (for example in the
-`EnvironmentFile=` of the service). If openHAB then still refuses, the card reads "api_token refused".
+`EnvironmentFile=` of the service). If openHAB then still refuses, the card reads "api_token refused". A token openHAB rejects makes it refuse the root
+call too, so the card then reads `Not reachable · api_token refused`.
 
 Things to know:
 

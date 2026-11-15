@@ -1178,6 +1178,12 @@
   // it refused (401/403), otherwise n/a.
   function openhabMissing(st, source) {
     if (!(st.refused || []).includes(source)) return 'n/a';
+    return openhabRefusedHint(st);
+  }
+
+  // The hint for a source openHAB refused: with a token configured the token
+  // is wrong, without one it is missing.
+  function openhabRefusedHint(st) {
     return st.api_token_configured ? 'api_token refused' : 'needs api_token';
   }
 
@@ -1207,12 +1213,58 @@
   }
 
   function openhabStateText(st) {
-    if (st.state === 'installed_not_running') return 'Not running';
-    if (st.state === 'running_unreachable') return 'Not reachable';
-    if (st.start_level !== undefined && st.start_level < 100) {
-      return 'Starting (start level ' + st.start_level + ')';
+    let text;
+    if (st.state === 'installed_not_running') {
+      text = 'Not running';
+    } else if (st.state === 'running_unreachable') {
+      text = 'Not reachable';
+    } else if (st.start_level !== undefined && st.start_level < 100) {
+      text = 'Starting (start level ' + st.start_level + ')';
+    } else {
+      text = 'Running · ' + (st.version || 'n/a');
     }
-    return 'Running · ' + (st.version || 'n/a');
+    // openHAB refusing the root call itself (a wrong token) says why it is
+    // not reachable.
+    if ((st.refused || []).includes('root')) text += ' · ' + openhabRefusedHint(st);
+    return text;
+  }
+
+  // The names of the Things that are not ONLINE sit behind a toggle that is
+  // closed by default; the choice is kept per browser.
+  const OPENHAB_THINGS_KEY = 'pimonitor-openhab-things';
+  let openhabThingsOpen = false;
+  try {
+    openhabThingsOpen = localStorage.getItem(OPENHAB_THINGS_KEY) === 'open';
+  } catch {
+    // Blocked storage: the toggle starts closed.
+  }
+
+  function openhabThingsToggle(notOnline) {
+    const details = document.createElement('details');
+    details.className = 'openhab-things';
+    details.open = openhabThingsOpen;
+    const summary = document.createElement('summary');
+    summary.textContent = 'Not-online Things (' + notOnline.length + ')';
+    details.appendChild(summary);
+    notOnline.forEach(t => {
+      const item = document.createElement('div');
+      item.className = 'openhab-thing';
+      item.textContent = t.label || t.uid;
+      details.appendChild(item);
+    });
+    details.addEventListener('toggle', () => {
+      openhabThingsOpen = details.open;
+      try {
+        if (openhabThingsOpen) {
+          localStorage.setItem(OPENHAB_THINGS_KEY, 'open');
+        } else {
+          localStorage.removeItem(OPENHAB_THINGS_KEY);
+        }
+      } catch (e) {
+        console.warn('failed to persist the openHAB Things toggle', e);
+      }
+    });
+    return details;
   }
 
   function openhabThingsText(things) {
@@ -1258,21 +1310,8 @@
     rows.push(openhabRow('Add-ons', st.addons_installed !== undefined ? String(st.addons_installed) : openhabMissing(st, 'addons')));
     rows.push(openhabRow('Things', st.things ? openhabThingsText(st.things) : openhabMissing(st, 'things')));
 
-    const list = notOnline.map(t => {
-      const item = document.createElement('div');
-      item.className = 'openhab-thing';
-      const label = document.createElement('div');
-      label.textContent = t.label || t.uid;
-      const uid = document.createElement('span');
-      uid.className = 'metric-sub';
-      uid.textContent = t.uid;
-      const detail = document.createElement('div');
-      detail.className = 'metric-sub';
-      detail.textContent = t.status + ' – ' + (t.description || t.status_detail || '');
-      item.append(label, uid, detail);
-      return item;
-    });
-    body.replaceChildren(stateLine, ...rows, ...list);
+    const extra = notOnline.length ? [openhabThingsToggle(notOnline)] : [];
+    body.replaceChildren(stateLine, ...rows, ...extra);
   }
 
   // The openHAB poll has its own cadence: the interval the server reports

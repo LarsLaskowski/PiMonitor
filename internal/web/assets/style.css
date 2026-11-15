@@ -249,8 +249,14 @@ main {
   overflow-wrap: anywhere;
 }
 
-.openhab-thing .metric-sub {
-  display: block;
+.openhab-things {
+  margin-top: 0.6rem;
+  font-size: 0.8125rem;
+}
+
+.openhab-things summary {
+  cursor: pointer;
+  color: var(--muted);
 }
 
 /* Cards that open a metric detail view on click/Enter. */

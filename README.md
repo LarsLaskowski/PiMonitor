@@ -31,8 +31,8 @@ automation systems like openHAB). Runs as a systemd service.
   Core, Web or FTL have an update, read from Pi-hole's own daily version
   check
 - **openHAB status** - when openHAB runs on the same Pi, a card with its
-  process memory, JVM heap, Things by status (and the ones that are not
-  ONLINE), Items, add-ons, version and uptime, read from its REST API on
+  process memory, JVM heap, Things by status (the names of those not
+  ONLINE on request), Items, add-ons, version and uptime, read from its REST API on
   loopback; hidden when openHAB is not installed
 - Short metric history (default: last 60 minutes) for sparklines,
   periodically snapshotted to a compact binary file so it survives

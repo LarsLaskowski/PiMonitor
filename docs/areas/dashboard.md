@@ -116,10 +116,13 @@ client of the [HTTP API](http-api.md) like any third-party integration and has n
   number of Items and of add-ons, the Things by status (ONLINE first, the others by name) and the version, with
   `n/a` for an absent value. A value of a source the server lists as refused reads `needs api_token` (no token
   configured) or `api_token refused`. The state line reads `Running · <version>`, `Starting (start level N)` while
-  the start level is below 100, `Not running` or `Not reachable`. The card is in its warning state (warning border,
-  state line colored `warn`) when the state is `installed_not_running` or `running_unreachable` or a Thing is listed
-  as not ONLINE; each listed Thing shows its label, its UID and `STATUS – description` (the status detail when
-  there is no description). Values of [openHAB](openhab.md).
+  the start level is below 100, `Not running` or `Not reachable`; when the server lists the root call as refused
+  (a token openHAB rejects makes it refuse the root call too) the hint is appended, for example
+  `Not reachable · api_token refused`. The card is in its warning state (warning border, state line colored `warn`)
+  when the state is `installed_not_running` or `running_unreachable` or a Thing is listed as not ONLINE. The Things
+  that are not ONLINE are shown as a count, `Not-online Things (<n>)`, whose labels (the UID when a Thing has no
+  label) are behind a toggle that is closed by default; no UID, status, status detail or description is shown. The
+  toggle's state is kept per browser and survives the card's refreshes. Values of [openHAB](openhab.md).
 - The network card is shown only when its layout preference is visible, `network_enabled` is true in
   `/api/v1/config` and the snapshot holds at least one interface; all three must hold.
 - The Pi-hole section of the Updates card is shown only when the snapshot reports Pi-hole as installed. A Pi-hole
@@ -191,8 +194,9 @@ client of the [HTTP API](http-api.md) like any third-party integration and has n
 
 ### Browser storage
 
-- The dashboard stores exactly three `localStorage` entries: `pimonitor-api-key`, `pimonitor-theme` and
-  `pimonitor-layout`. When storage is unavailable (private browsing, blocked storage) every feature keeps working
+- The dashboard stores exactly four `localStorage` entries: `pimonitor-api-key`, `pimonitor-theme`,
+  `pimonitor-layout` and `pimonitor-openhab-things` (the value `open` while the openHAB card's list of not-online
+  Things is expanded; the entry is absent otherwise). When storage is unavailable (private browsing, blocked storage) every feature keeps working
   for the current page with defaults, and nothing is stored.
 
 ## Limits and errors
