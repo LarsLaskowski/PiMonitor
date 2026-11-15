@@ -136,8 +136,11 @@ func TestAppJS_OpenHABTexts_AC13(t *testing.T) {
 	checkAssetParts(t, []assetCheck{
 		{"app.js", js, []string{
 			"needs api_token", "api_token refused", "n/a", "Not running", "Not reachable", "Starting (start level ",
-			"Process memory", "JVM heap", "% of RAM", "'Not-online Things ('",
+			"Process memory", "JVM heap", "% of RAM", "'Things offline: '",
 		}},
+	})
+	checkAssetPartsAbsent(t, []assetCheck{
+		{"app.js", js, []string{"Not-online Things"}},
 	})
 }
 
@@ -164,7 +167,7 @@ func TestAppJS_OpenHABThingsToggle_AC13(t *testing.T) {
 	}
 	checkAssetParts(t, []assetCheck{
 		{"openhabThingsToggle", toggle, []string{
-			"createElement('details')", "'Not-online Things ('", "'toggle'", "t.label || t.uid",
+			"createElement('details')", "'Things offline: '", "'toggle'", "t.label || t.uid",
 		}},
 		{"renderOpenHAB", render, []string{"openhabThingsToggle("}},
 	})
