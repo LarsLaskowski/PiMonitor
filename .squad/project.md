@@ -42,7 +42,14 @@ limits, patterns or sequences.
 - File writes: `<data_dir>/history.bin` (atomic write, bounded decode) in `internal/collector/persist.go` —
   [History](../docs/areas/history.md)
 - Outbound calls: webhook delivery (`text/template` bodies with the `json` helper, retries, per-webhook queues) in
-  `internal/alert/notify.go` — [Notifications](../docs/areas/notifications.md)
+  `internal/alert/notify.go` — [Notifications](../docs/areas/notifications.md); the openHAB REST client
+  (`internal/collector/openhab.go`): loopback `http` only, `base_url` guarded at startup
+  (`internal/config/config.go`) and again at connect time, no proxy, no redirect, 5 s timeout, 8 MiB body limit
+- openHAB API token: `openhab.api_token` / `PIMONITOR_OPENHAB_TOKEN` (`internal/config/config.go`,
+  `internal/collector/openhab.go`, `openhab_linux.go`): sent only as a bearer header to `base_url`, only over a
+  connection whose server side runs as the owner of `/var/lib/openhab` (looked up in `/proc/net/tcp*`), never
+  logged or served; `GET /api/v1/openhab` serves Thing data that openHAB shows only to authenticated users, so
+  `api_key` governs who reads it — [openHAB](../docs/areas/openhab.md)
 - Logging: `slog` calls across `internal/` and `cmd/pimonitor`; no call logs the API key; the notifier names a
   webhook by its index in `alerts.webhooks` and by its URL's scheme and host, and redacts the URL in `*url.Error`
   texts, so it never logs the URL's userinfo, path, query or fragment itself — except where the endpoint echoes
@@ -121,6 +128,11 @@ otherwise), one line each: the double, where it lives and what it stands in for;
   `writeWirelessFixture` (the matching `internal/collector/*_test.go`) — fake `/sys` and `/proc` files
 - `feed` (`internal/alert/alert_test.go`) — drives the alert engine with explicit, increasing timestamps
 - `httptest.NewServer` handlers in `internal/alert/notify_test.go` — the webhook endpoints
+- `ohServer`/`newOHServer`, `newOHRoot`, `writeOHProcess`/`writeOHJava`, `newOHCollector`
+  (`internal/collector/openhab_test.go`) — the openHAB REST API as an `httptest` server recording URIs and
+  Authorization headers, a fake root with install paths and `/proc/<pid>` JVMs, and the collector built against
+  them; `peerOwnerRecorder` and `writeProcNet` (`openhab_linux_test.go`) — a recording `PeerOwnerFunc` and fake
+  `/proc/net/tcp*`
 
 ## Analyzer exclusions
 

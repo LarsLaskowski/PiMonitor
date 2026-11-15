@@ -24,6 +24,8 @@ under [`areas/`](areas/README.md); this document links them instead of repeating
   concurrency limit, security headers, `/healthz`, Prometheus, server stats, TLS and timeouts.
 - [Dashboard](areas/dashboard.md) — asset serving and caching, polling, the history merge, API key handling,
   rendering, coloring, alert badges, layout and theme.
+- [openHAB](areas/openhab.md) — detecting a local openHAB, its states and values, the poll cadence, the loopback-only
+  requests and the handling of its API token.
 - [Configuration](areas/configuration.md) — sources and their precedence, every option with its default and valid
   range, validation and startup failure.
 - [Deployment](areas/deployment.md) — the release archive, `install.sh`, the systemd units and their sandboxing,
@@ -37,6 +39,7 @@ under [`areas/`](areas/README.md); this document links them instead of repeating
 flowchart LR
     Proc["/proc, /sys,\n/etc/os-release,\napt cache,\n/etc/pihole/versions"] --> Collector[collector.Collector]
     VCGen["vcgencmd\n(optional, Pi-only)"] --> Collector
+    OH["openHAB REST API\n(loopback only)"] --> Collector
     Collector -->|fast tick| Alerts[alert.Engine]
     Alerts -->|events| Notifier[alert.Notifier]
     Notifier -->|HTTP POST| Webhooks[("Slack / Discord /\nHome Assistant / ntfy / ...")]
@@ -102,7 +105,7 @@ and never a fabricated reading. What each missing or failing source yields, and 
 [Metrics](areas/metrics.md#limits-and-errors).
 
 **Two independent tickers** drive collection, both served by the single `Run` goroutine, so a fast and a slow tick
-never run in parallel:
+never run in parallel; a third loop, the optional openHAB poll, runs beside them (below):
 
 - **Fast tick** (`fastTick`, every `poll_interval_seconds`): the cheap, fast-moving metrics — CPU, load,
   temperatures, throttling, memory, disks, disk I/O, network. The sources are read one after another and isolated
@@ -122,6 +125,15 @@ never run in parallel:
   into `Updates.Count`, so integrations reading the apt count keep its meaning. On `master` only version numbers
   are compared, because the installed hash is the release tag's and legitimately differs from what the update
   checker records as the remote hash.
+
+**openHAB poll** (`openhab.go`, [decision 0014](decisions/0014-openhab-poll-runs-on-its-own-loop.md)). When
+`openhab.enabled` is not `false`, `Collector.Run` starts an `OpenHABCollector` loop in its own goroutine after the
+first fast tick (so its first poll sees the memory total) and joins it on shutdown. It detects openHAB from its install
+paths and its `java` process in `/proc`, and calls openHAB's REST API one request at a time. Since an unreachable or
+hung openHAB can hold a poll for several seconds, the loop is separate from both ticks: it can never delay them or
+`/healthz`. `GET /api/v1/openhab` serves the last finished result, or `pending` before the first. Behavior:
+[openHAB](areas/openhab.md). The one deviation from "no network access in the collector" (see the Pi-hole reasoning
+above) is loopback HTTP to openHAB, guarded in [decision 0013](decisions/0013-openhab-requests-only-to-loopback-http.md).
 
 **Snapshot + history, guarded by one `sync.RWMutex`.** `Collector.latest` holds the most
 recent value of every metric (`Snapshot()` returns a copy under `RLock`); each scalar
@@ -497,8 +509,11 @@ apt package cache (`apt-get update`) requires root while reading its result
 (`apt list --upgradable`) and everything else PiMonitor collects does not:
 
 - **`pimonitor.service`** runs as a dedicated, unprivileged system user. It only reads world-readable state —
-  `/proc`, `/sys`, `/etc/os-release`, the existing apt cache and Pi-hole's `/etc/pihole/versions` — and runs only
-  read-only commands (`apt list --upgradable`, the optional `vcgencmd` queries), all with fixed argument lists
+  `/proc`, `/sys`, `/etc/os-release`, the existing apt cache and Pi-hole's `/etc/pihole/versions` — and, when openHAB
+  status is enabled, the existence and owner of openHAB's install directories (`/usr/share/openhab`, `/etc/openhab`,
+  `/var/lib/openhab`), the `cmdline`, `stat` and `status` files of other users' processes and `/proc/net/tcp*`. Its
+  only outbound request is loopback HTTP to openHAB ([decision 0013](decisions/0013-openhab-requests-only-to-loopback-http.md)),
+  and it runs only read-only commands (`apt list --upgradable`, the optional `vcgencmd` queries), all with fixed argument lists
   (never user input interpolated into a shell command), further sandboxed via systemd unit hardening directives.
   Its only supplementary group is `video`, which `vcgencmd` needs in order to open its device nodes on Raspberry Pi
   OS. The exact file and command list is in [Metrics](areas/metrics.md) and, as a threat model, in

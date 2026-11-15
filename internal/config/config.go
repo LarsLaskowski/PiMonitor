@@ -10,8 +10,13 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"net/netip"
+	"net/url"
 	"os"
+	"strconv"
+	"strings"
 	"time"
+	"unicode"
 
 	"gopkg.in/yaml.v3"
 )
@@ -157,6 +162,87 @@ type Config struct {
 	// processes_enabled so a typo is caught at startup even while the
 	// feature is off.
 	ProcessesTopN int `yaml:"processes_top_n"`
+	// OpenHAB configures the read-only status card for a local openHAB
+	// installation (GET /api/v1/openhab).
+	OpenHAB OpenHAB `yaml:"openhab"`
+}
+
+// OpenHAB is the openhab block of the configuration: whether and how PiMonitor
+// polls a local openHAB instance for its status.
+type OpenHAB struct {
+	// Enabled is auto, true or false (case-insensitive); see Mode.
+	Enabled string `yaml:"enabled"`
+	// BaseURL is the openHAB root URL; it must be an http URL with a loopback host.
+	BaseURL string `yaml:"base_url"`
+	// APIToken is the optional openHAB API token; never logged or served.
+	APIToken string `yaml:"api_token"`
+	// PollIntervalSeconds is the interval between openHAB polls.
+	PollIntervalSeconds int `yaml:"poll_interval_seconds"`
+}
+
+// OpenHABTokenEnvVar is the environment variable that overrides
+// openhab.api_token. It is read and unset in load, like APIKeyEnvVar.
+const OpenHABTokenEnvVar = "PIMONITOR_OPENHAB_TOKEN"
+
+// Mode returns Enabled lower-cased: auto, true or false.
+func (o OpenHAB) Mode() string {
+	return strings.ToLower(o.Enabled)
+}
+
+// PollInterval returns PollIntervalSeconds as a duration.
+func (o OpenHAB) PollInterval() time.Duration {
+	return time.Duration(o.PollIntervalSeconds) * time.Second
+}
+
+// Bounds of openhab.poll_interval_seconds.
+const (
+	minOpenHABPollSeconds = 60
+	maxOpenHABPollSeconds = 86400
+)
+
+// validate checks the openhab block. It runs regardless of Enabled so a typo
+// is caught at startup; the base URL and the token are never echoed.
+func (o OpenHAB) validate() error {
+	switch o.Mode() {
+	case "auto", "true", "false":
+	default:
+		return fmt.Errorf("openhab.enabled must be auto, true or false (got %q)", o.Enabled)
+	}
+	if !loopbackHTTPURL(o.BaseURL) {
+		return errors.New("openhab.base_url must be an http URL with a loopback host (127.0.0.0/8, ::1 or localhost) and no user, path, query or fragment")
+	}
+	if o.PollIntervalSeconds < minOpenHABPollSeconds || o.PollIntervalSeconds > maxOpenHABPollSeconds {
+		return fmt.Errorf("openhab.poll_interval_seconds must be between %d and %d (got %v)", minOpenHABPollSeconds, maxOpenHABPollSeconds, o.PollIntervalSeconds)
+	}
+	if strings.IndexFunc(o.APIToken, func(r rune) bool { return unicode.IsSpace(r) || unicode.IsControl(r) }) >= 0 {
+		return errors.New("openhab.api_token must not contain whitespace or control characters")
+	}
+	return nil
+}
+
+// loopbackHTTPURL reports whether raw is a plain http URL whose host is
+// localhost or a loopback IP literal, without user info, path, query or
+// fragment.
+func loopbackHTTPURL(raw string) bool {
+	u, err := url.Parse(raw)
+	if err != nil || u.Scheme != "http" || u.Opaque != "" || u.User != nil {
+		return false
+	}
+	if (u.Path != "" && u.Path != "/") || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" {
+		return false
+	}
+	if port := u.Port(); port != "" {
+		n, err := strconv.Atoi(port)
+		if err != nil || n < 1 || n > 65535 {
+			return false
+		}
+	}
+	host := u.Hostname()
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	addr, err := netip.ParseAddr(host)
+	return err == nil && addr.Zone() == "" && addr.IsLoopback()
 }
 
 // Default returns PiMonitor's built-in default configuration.
@@ -201,6 +287,11 @@ func Default() Config {
 		},
 		ProcessesEnabled: false,
 		ProcessesTopN:    5,
+		OpenHAB: OpenHAB{
+			Enabled:             "auto",
+			BaseURL:             "http://127.0.0.1:8080",
+			PollIntervalSeconds: 60,
+		},
 	}
 }
 
@@ -328,7 +419,7 @@ func (c Config) Validate() error {
 	if c.ProcessesTopN < 1 || c.ProcessesTopN > maxProcessesTopN {
 		return fmt.Errorf("processes_top_n must be between 1 and %d (got %v)", maxProcessesTopN, c.ProcessesTopN)
 	}
-	return nil
+	return c.OpenHAB.validate()
 }
 
 // validateFinite rejects NaN and infinite values for every number option.
@@ -516,7 +607,7 @@ func loadYAMLFile(path string, cfg *Config) error {
 // integerOptionNames are the YAML key paths of the int-typed options. The
 // decoder truncates a fractional value for them, so checkIntegerOptions
 // inspects each one before the real decode.
-var integerOptionNames = []string{"processes_top_n", "alerts.notify_max_retries"}
+var integerOptionNames = []string{"processes_top_n", "alerts.notify_max_retries", "openhab.poll_interval_seconds"}
 
 // checkIntegerOptions decodes data a second time, with the same decoder and
 // so the same alias, merge-key and tag resolution, into float64 fields for the
@@ -528,14 +619,18 @@ func checkIntegerOptions(data []byte) error {
 		Alerts        struct {
 			NotifyMaxRetries *float64 `yaml:"notify_max_retries"`
 		} `yaml:"alerts"`
+		OpenHAB struct {
+			PollIntervalSeconds *float64 `yaml:"poll_interval_seconds"`
+		} `yaml:"openhab"`
 	}
 	if err := yaml.NewDecoder(bytes.NewReader(data)).Decode(&shadow); err != nil {
 		// Not this check's error to report; see the doc comment.
 		return nil //nolint:nilerr
 	}
 	values := map[string]*float64{
-		"processes_top_n":           shadow.ProcessesTopN,
-		"alerts.notify_max_retries": shadow.Alerts.NotifyMaxRetries,
+		"processes_top_n":               shadow.ProcessesTopN,
+		"alerts.notify_max_retries":     shadow.Alerts.NotifyMaxRetries,
+		"openhab.poll_interval_seconds": shadow.OpenHAB.PollIntervalSeconds,
 	}
 	for _, name := range integerOptionNames {
 		v := values[name]
@@ -636,6 +731,15 @@ func load(args []string, lookupEnv func(string) (string, bool), unsetEnv func(st
 		// service user itself) can still recover the key for the life of
 		// the process regardless of this call. See SECURITY.md.
 		unsetEnv(APIKeyEnvVar)
+	}
+
+	// The openHAB token follows the same rules as the API key: a non-empty
+	// value overrides the file, and the variable is removed once read.
+	if v, ok := lookupEnv(OpenHABTokenEnvVar); ok {
+		if v != "" {
+			cfg.OpenHAB.APIToken = v
+		}
+		unsetEnv(OpenHABTokenEnvVar)
 	}
 
 	if *listenAddr != "" {

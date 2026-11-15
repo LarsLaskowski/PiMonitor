@@ -119,6 +119,7 @@ func serverConfig(cfg config.Config, version string) httpapi.Config {
 		TLSKeyFile:          cfg.TLSKeyFile,
 		PrometheusEnabled:   cfg.PrometheusEnabled,
 		ProcessesEnabled:    cfg.ProcessesEnabled,
+		OpenHABEnabled:      cfg.OpenHAB.Mode() != "false",
 		HealthzMaxStaleness: cfg.HealthzMaxStaleness(collector.WorstCaseTickOverhead),
 		Client:              clientConfig(cfg, version),
 	}
@@ -182,6 +183,13 @@ func collectorConfig(cfg config.Config, notifier *alert.Notifier) collector.Conf
 		Notifier:              notifier,
 		ProcessesEnabled:      cfg.ProcessesEnabled,
 		ProcessesTopN:         cfg.ProcessesTopN,
+		OpenHAB: collector.OpenHABConfig{
+			Enabled:  cfg.OpenHAB.Mode() != "false",
+			Always:   cfg.OpenHAB.Mode() == "true",
+			BaseURL:  cfg.OpenHAB.BaseURL,
+			Token:    cfg.OpenHAB.APIToken,
+			Interval: cfg.OpenHAB.PollInterval(),
+		},
 	}
 	if cfg.HistoryPersistEnabled {
 		collCfg.PersistPath = filepath.Join(cfg.DataDir, "history.bin")

@@ -18,7 +18,7 @@ fix, not as license to pick either one.
 <!-- project:begin overview -->
 PiMonitor is a lightweight system-monitoring dashboard for the Raspberry Pi. A single Go binary collects system
 metrics (CPU usage and load average, CPU temperature, RAM/swap, filesystem usage, network throughput, host name,
-kernel version, distribution, Pi model, available apt updates), serves a self-contained web dashboard, and exposes a
+kernel version, distribution, Pi model, available apt updates, the status of a local openHAB), serves a self-contained web dashboard, and exposes a
 versioned REST API (`/api/v1/...`, contract in [`docs/API.md`](/docs/API.md)) for third-party integration such as
 openHAB. It runs as an unprivileged systemd service on the Pi; a separate, root-privileged systemd timer refreshes
 the apt package cache so the main service itself never needs elevated privileges. See
@@ -91,7 +91,7 @@ All commands, with what each one checks, are listed in [`.squad/stack.md`](/.squ
 
 <!-- project:begin architecture -->
 - `cmd/pimonitor` — the binary: flag parsing, config loading, wiring of collector, alerts and HTTP server.
-- `internal/collector` — hand-rolled `/proc`, `/sys`, `vcgencmd`, apt and Pi-hole parsers, the snapshot type, ring-buffer
+- `internal/collector` — hand-rolled `/proc`, `/sys`, `vcgencmd`, apt and Pi-hole parsers, the loopback-only openHAB status poll (`openhab.go`), the snapshot type, ring-buffer
   history and its persistence (`persist.go`).
 - `internal/alert` — threshold/debounce engine and the webhook notifier (queue, retry, rate limit).
 - `internal/httpapi` — the `net/http` server: `/api/v1/...` routes, middleware (API key, gzip, no-store,

@@ -63,7 +63,8 @@ is running: it does not wait to see whether `pimonitor.service` stays up (check 
   root and holds no capabilities.
 - Starts after `network-online.target`, is wanted by `multi-user.target`, and is restarted 5 s after it exits with
   a failure (`Restart=on-failure`, `RestartSec=5`).
-- The API key may be kept out of the config file in an environment file holding `PIMONITOR_API_KEY=<key>`: the unit
+- The API key may be kept out of the config file in an environment file holding `PIMONITOR_API_KEY=<key>`, and the
+  openHAB API token in the same file as `PIMONITOR_OPENHAB_TOKEN=<token>`: the unit
   carries a commented-out `EnvironmentFile=/etc/pimonitor/pimonitor.env`, to be enabled (preferably in a drop-in)
   with that file owned `root:root`, mode `600`. The key is never put on the `ExecStart=` command line
   ([Configuration](configuration.md#environment)).

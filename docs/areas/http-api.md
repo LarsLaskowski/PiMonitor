@@ -37,6 +37,7 @@ here.
 | `GET /api/v1/config` | always | yes |
 | `GET /api/v1/serverstats` | always | yes |
 | `GET /api/v1/processes` | only when `processes_enabled` is true | yes |
+| `GET /api/v1/openhab` | only when `openhab.enabled` is not `false` | yes |
 | `GET /metrics` | only when `prometheus_enabled` is true | yes |
 | `GET /` and every other path | always (the embedded dashboard assets) | no |
 
@@ -151,8 +152,8 @@ under it by design.
 - Every request the server answers, on every route and with every status, is counted once its response is
   complete: in a total, in its status class (`1xx` to `5xx`) and in exactly one route bucket. A call to
   `/api/v1/serverstats` therefore does not see itself; a later call does.
-- The route buckets are fixed: one per path in the route table above — including `/metrics` and
-  `/api/v1/processes` whether or not they are registered — plus `other-api` for any other path under `/api/v1/`
+- The route buckets are fixed: one per path in the route table above — including `/metrics`,
+  `/api/v1/processes` and `/api/v1/openhab` whether or not they are registered — plus `other-api` for any other path under `/api/v1/`
   and `static` for every other path. The bucket comes from the request path, not from the handler that answered,
   so a request to a disabled route is counted under its own path with a `4xx`. A client probing arbitrary paths
   cannot grow the set.
@@ -207,9 +208,9 @@ under it by design.
 - The JSON shape of each endpoint, field names, units and examples: [`API.md`](../API.md).
 - Which metrics exist, their sources and units, and when they are empty: [Metrics](metrics.md).
 - What the history window holds and how `since` slices it at the data level: [History](history.md).
-- The meaning of `GET /api/v1/alerts`: [Alerts](alerts.md).
+- The meaning of `GET /api/v1/alerts`: [Alerts](alerts.md); of `GET /api/v1/openhab`: [openHAB](openhab.md).
 - Defaults and valid ranges of `listen_addr`, `api_key`, `tls_cert`, `tls_key`, `access_log_enabled`,
-  `healthz_max_staleness_seconds`, `prometheus_enabled`, `processes_enabled`, and where the key may come from:
+  `healthz_max_staleness_seconds`, `prometheus_enabled`, `processes_enabled`, `openhab.*`, and where the key may come from:
   [Configuration](configuration.md).
 - The embedded dashboard, its asset caching and its use of the API key: [Dashboard](dashboard.md).
 - Protecting the config file that holds the key, and the service's privileges: [Deployment](deployment.md).

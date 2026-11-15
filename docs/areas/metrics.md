@@ -26,6 +26,8 @@ such as openHAB that poll single values.
 - Fast and slow ticks run one at a time, never in parallel. A tick that falls due while another one is running
   starts late, once that one ends; further ticks of the same kind that fall due meanwhile are dropped, not queued.
   A slow tick therefore delays the fast tick by as long as it runs.
+- The openHAB status is not part of either tick: its poll runs on a loop of its own and never delays them
+  ([openHAB](openhab.md)).
 - A non-positive interval (which configuration validation already rejects) is replaced by 1 s with a warning,
   never a crash.
 - A fast tick may take longer than instant file reads in two cases: each `vcgencmd` call (at most three per tick)

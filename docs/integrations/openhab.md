@@ -159,6 +159,37 @@ String               PiMonitor_Kernel      "Kernel [%s]"                  <netwo
   like `temperature` and `gpu_temperature` read as empty on non-Pi hosts and
   `gpu_temperature` is omitted entirely without `vcgencmd`.
 
+## The other direction: openHAB status in PiMonitor
+
+PiMonitor can also show the status of an openHAB that runs on the **same** Pi: the dashboard gets an "openHAB" card,
+and [`GET /api/v1/openhab`](../API.md#get-apiv1openhab) serves the same values to other systems. PiMonitor finds
+openHAB itself (its install directories and its Java process) and polls openHAB's REST API on loopback; nothing has
+to be configured for a default install (`openhab.enabled: auto`, `base_url: http://127.0.0.1:8080`). The card is
+hidden while openHAB is not installed. See the `openhab` block of
+[`packaging/pimonitor.example.yaml`](../../packaging/pimonitor.example.yaml) and
+[`docs/areas/openhab.md`](../areas/openhab.md).
+
+Which calls need an openHAB API token: on a default openHAB 5.2.4 install, `/rest/systeminfo`, `/rest/things` and
+`/rest/addons` answer `401` without one, while the root call (`/rest/`) and the Item list (`/rest/items`) answer.
+Without a token the card therefore shows the process memory, the uptime, the version and the number of Items, and
+reads "needs api_token" for the JVM heap, the Things and the add-ons. To see them, create an API token in openHAB
+(*Profile → API Tokens*) and put it into `openhab.api_token`, or into `PIMONITOR_OPENHAB_TOKEN` (for example in the
+`EnvironmentFile=` of the service). If openHAB then still refuses, the card reads "api_token refused". A token openHAB rejects makes it refuse the root
+call too, so the card then reads `Not reachable · api_token refused`.
+
+Things to know:
+
+- PiMonitor sends the token only to `base_url`, which must be `http` on a loopback address, and only to a server that
+  runs as the owner of `/var/lib/openhab` (the account openHAB runs as). While a token is set, PiMonitor sends no
+  request at all to a server that does not run as that owner, such as an openHAB in a container or a Pi without
+  `/var/lib/openhab`: every REST value is then absent and a warning names the reason.
+- With a token set, `GET /api/v1/openhab` lists the Things that are not ONLINE with their labels and status
+  descriptions, which openHAB serves only to authenticated users. Set `api_key` in PiMonitor if the LAN should not
+  read them; in the HTTP binding the key then goes into the Thing's `headers`, as
+  [above](#with-an-api-key).
+- `/api/v1/openhab` is a plain JSON document like the metrics: bind it with the same HTTP binding and `JSONPATH`
+  transformations (for example `JSONPATH:$.things.by_status.OFFLINE`).
+
 ## Prometheus alternative
 
 PiMonitor exposes a native `GET /metrics` endpoint in the Prometheus text

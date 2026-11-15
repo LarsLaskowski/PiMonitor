@@ -26,6 +26,8 @@ RestartSec=5
 # out of it entirely by uncommenting the line below and putting
 # PIMONITOR_API_KEY=<secret> into a root-only file (chown root:root, chmod
 # 600 - systemd reads it as PID 1, before dropping to the pimonitor user).
+# The same file can hold PIMONITOR_OPENHAB_TOKEN=<token>, the openHAB API
+# token (openhab.api_token in the config file).
 # Never pass the key via the -api-key flag here: the command line of a
 # running process is world-readable through /proc/<pid>/cmdline.
 #EnvironmentFile=/etc/pimonitor/pimonitor.env
@@ -35,7 +37,12 @@ RestartSec=5
 # /etc/os-release, and the apt cache under
 # /var/lib/apt/lists/ (via `apt list --upgradable`) and, if Pi-hole is
 # installed, the world-readable /etc/pihole/versions, plus binds a TCP
-# listener - it needs no elevated privileges. The one exception is the
+# listener - it needs no elevated privileges. When the openHAB status is
+# enabled (openhab.enabled in config.yaml, "auto" by default) it also reads
+# the existence and owner of /usr/share/openhab, /etc/openhab and
+# /var/lib/openhab, other users' /proc/<pid>/{cmdline,stat,status} and
+# /proc/net/tcp*, and sends HTTP requests to openHAB on loopback only
+# (AF_INET/AF_INET6 below); it needs no elevated privileges for that either. The one exception is the
 # video group (SupplementaryGroups= above) for vcgencmd's device access.
 # Its only filesystem write access is the state directory below, where it
 # persists metric history across restarts (data_dir in config.yaml,

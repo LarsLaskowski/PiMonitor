@@ -685,6 +685,73 @@ Notes:
   /api/v1/metrics`, so the main snapshot's payload size doesn't grow with
   however many processes are running on the host.
 
+### `GET /api/v1/openhab`
+
+Returns the status of the openHAB installation on the same Pi, as of the last finished poll: process memory, JVM
+heap, Things, Items, add-ons, version and uptime. Detection, states and sources are described in
+[`docs/areas/openhab.md`](areas/openhab.md).
+
+It is registered unless `openhab.enabled` is `false`; with `false` the route returns `404 Not Found` and no request
+to openHAB is ever made. Authentication, gzip, `Cache-Control: no-store` and the shared in-flight limit apply as for
+every other `/api/v1/...` endpoint.
+
+```json
+{
+  "state": "ok",
+  "poll_interval_seconds": 60,
+  "api_token_configured": true,
+  "collected_at": "2026-11-14T12:00:00Z",
+  "version": "5.2.4",
+  "start_level": 100,
+  "uptime_seconds": 362335,
+  "process": { "pid": 938, "rss_bytes": 1417166848, "rss_percent_of_ram": 17.4 },
+  "jvm": { "heap_used_bytes": 664407376, "heap_total_bytes": 729808896 },
+  "things": {
+    "total": 3,
+    "by_status": { "ONLINE": 2, "OFFLINE": 1 },
+    "not_online": [
+      {
+        "uid": "hue:device:b1:lamp_2D1",
+        "label": "Hall lamp",
+        "status": "OFFLINE",
+        "status_detail": "NONE",
+        "description": "Can't find device"
+      }
+    ]
+  },
+  "items_count": 214,
+  "addons_installed": 12
+}
+```
+
+| Field | Type | Meaning |
+| ----- | ---- | ------- |
+| `state` | string | Always present. `pending` (no poll has finished since startup; no other value follows), `not_installed` (`openhab.enabled` is `auto` and nothing was found), `ok` (the REST root answered as openHAB), `running_unreachable` (the process runs, the root call fails) or `installed_not_running` (no process, the root call fails). |
+| `poll_interval_seconds` | number | Always present. The `openhab.poll_interval_seconds` in use. |
+| `api_token_configured` | bool | Always present. Whether an API token is set; the token itself is never served. |
+| `collected_at` | string | Time the poll finished (RFC 3339, UTC). Absent in `pending` and `not_installed`. |
+| `version` | string | openHAB's version (`runtimeInfo.version`). |
+| `start_level` | number | openHAB's start level; below 100 it is still starting. |
+| `uptime_seconds` | number | Seconds since the openHAB process started; openHAB's own value only when no process was found. |
+| `process` | object | `pid`, `rss_bytes` and `rss_percent_of_ram` (percent of `memory.total_bytes`, absent when that is 0) of the openHAB Java process with the lowest PID. Present whenever the process is found, also when every REST call fails. |
+| `jvm` | object | `heap_used_bytes` (total minus free) and `heap_total_bytes` of the JVM heap. |
+| `things` | object | `total` (every Thing), `by_status` (counts for `UNINITIALIZED`, `INITIALIZING`, `UNKNOWN`, `ONLINE`, `OFFLINE`, `REMOVING`, `REMOVED`; other status strings are not counted per status) and `not_online`, always an array: up to 10 Things that are not `ONLINE` and not disabled (`UNINITIALIZED` with detail `DISABLED`), sorted by `uid`, each with `uid`, `label`, `status`, `status_detail` and, when openHAB gives one, `description`. |
+| `items_count` | number | Number of Items; no Item state is read or served. |
+| `addons_installed` | number | Number of installed add-ons. |
+| `refused` | array | Names of the sources openHAB answered with `401` or `403` (`root`, `systeminfo`, `things`, `items`, `addons`, in the order of the calls). Omitted when empty. |
+
+Notes:
+
+- Every value except the three always-present fields is **omitted** when it is not available (its source failed, was
+  refused or openHAB does not report it), never `null` or `0`.
+- Before the first poll finishes the answer is `{"state":"pending","poll_interval_seconds":60,"api_token_configured":false}`.
+- On a default openHAB 5.2.4 install without an API token, `/rest/systeminfo`, `/rest/things` and `/rest/addons` are
+  refused: `start_level`, `jvm`, `things` and `addons_installed` are then absent and `refused` lists `systeminfo`,
+  `things` and `addons`; `uptime_seconds` still comes from the process.
+- Thing labels, status details and descriptions are openHAB's text; clients must treat them as plain text. With an
+  `openhab.api_token` set they are served to everyone who can reach PiMonitor unless `api_key` is set.
+- The values come from a poll that runs on its own interval, not per request.
+
 ### `GET /api/v1/serverstats`
 
 Returns in-memory counters of PiMonitor's own HTTP traffic: total requests
@@ -719,6 +786,7 @@ off.
     "/api/v1/alerts": 5,
     "/api/v1/config": 3,
     "/api/v1/processes": 0,
+    "/api/v1/openhab": 0,
     "/api/v1/serverstats": 1,
     "other-api": 0,
     "static": 2
@@ -735,8 +803,8 @@ Notes:
   (the dashboard's static assets) under `static` — this keeps the counter
   set a fixed, bounded size regardless of what a client (or a scanner)
   requests. `/metrics` (see [`GET /metrics`](#get-metrics-prometheus)) always
-  has its own key, regardless of `prometheus_enabled` — the response shape
-  doesn't vary with configuration. The key stays `0` until something
+  has its own key, regardless of `prometheus_enabled`, and so do `/api/v1/processes` and `/api/v1/openhab`
+  regardless of their options — the response shape doesn't vary with configuration. The key stays `0` until something
   actually requests that path; a scraper pointed at an instance with the
   endpoint disabled shows up here too, with a matching `4xx` count, since the
   bucket comes from the request path, not from which handler — or the mux's

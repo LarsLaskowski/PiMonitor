@@ -1,6 +1,7 @@
 package collector
 
 import (
+	"context"
 	"log/slog"
 	"sync"
 )
@@ -25,6 +26,12 @@ type failureLog struct {
 // observe records the outcome of one collection attempt (err == nil means
 // success) and logs it under msg according to the rules on failureLog.
 func (f *failureLog) observe(log *slog.Logger, msg string, err error) {
+	f.observeAt(log, msg, err, slog.LevelWarn)
+}
+
+// observeAt is observe with the level of a new or changed failure; a
+// repeated failure is still logged at DEBUG and a recovery at INFO.
+func (f *failureLog) observeAt(log *slog.Logger, msg string, err error, level slog.Level) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -44,5 +51,5 @@ func (f *failureLog) observe(log *slog.Logger, msg string, err error) {
 	}
 	f.failing = true
 	f.lastErr = text
-	log.Warn(msg, "error", err)
+	log.Log(context.Background(), level, msg, "error", err)
 }

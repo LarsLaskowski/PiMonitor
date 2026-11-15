@@ -5,9 +5,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -1902,5 +1904,170 @@ func TestCollector_FastTick_FirstCPUTickNotEvaluated_AC4(t *testing.T) {
 	}
 	if diffFloat(st.Value, 66.67) > 0.01 {
 		t.Errorf("cpu alert value = %v, want about 66.67", st.Value)
+	}
+}
+
+// newOpenHABRunCollector builds a Collector with a 10 ms fast tick, the
+// fixture meminfo (MemTotal 1000000 kB) and the openHAB poll enabled
+// against srv and root with an hour between polls.
+func newOpenHABRunCollector(t *testing.T, srv *ohServer, root string) *Collector {
+	t.Helper()
+	c := New(Config{
+		FastInterval:    10 * time.Millisecond,
+		SlowInterval:    time.Hour,
+		HistoryCapacity: 10,
+		OpenHAB: OpenHABConfig{
+			Enabled:  true,
+			BaseURL:  srv.URL,
+			Interval: time.Hour,
+			Root:     root,
+			Timeout:  5 * time.Second,
+		},
+	}, nil)
+	c.memory = &MemoryCollector{path: writeTempFile(t, t.TempDir(), "meminfo", meminfoFixture)}
+	return c
+}
+
+// startRun runs c until the returned stop function cancels it; stop fails
+// the test when Run does not return within 5 s.
+func startRun(t *testing.T, c *Collector) (stop func()) {
+	t.Helper()
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		c.Run(ctx)
+		close(done)
+	}()
+	return func() {
+		cancel()
+		select {
+		case <-done:
+		case <-time.After(5 * time.Second):
+			t.Fatal("Run did not return within 5 s of cancellation")
+		}
+	}
+}
+
+// waitFor polls cond every 5 ms for up to 5 s.
+func waitFor(cond func() bool) bool {
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if cond() {
+			return true
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	return cond()
+}
+
+func TestCollector_Run_OpenHABPollsAtStartup_AC11(t *testing.T) {
+	srv := newOHServer(t)
+	c := newOpenHABRunCollector(t, srv, newOHRoot(t, "etc/openhab"))
+	if got := c.OpenHAB().State; got != OpenHABStatePending {
+		t.Fatalf("state before Run = %q, want %q", got, OpenHABStatePending)
+	}
+
+	stop := startRun(t, c)
+	ok := waitFor(func() bool { return c.OpenHAB().State == OpenHABStateOK })
+	time.Sleep(50 * time.Millisecond)
+	stop()
+
+	if !ok {
+		t.Fatalf("state = %q, want %q after the startup poll", c.OpenHAB().State, OpenHABStateOK)
+	}
+	if got := srv.requests(); len(got) != len(ohRESTPaths) {
+		t.Fatalf("requests = %v, want exactly one poll %v within the hour interval", got, ohRESTPaths)
+	}
+}
+
+func TestCollector_Run_HungOpenHABDoesNotDelayFastTick_AC11(t *testing.T) {
+	srv := newOHServer(t)
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	var once sync.Once
+	srv.route("/rest/", func(_ http.ResponseWriter, r *http.Request) {
+		once.Do(func() { close(entered) })
+		select {
+		case <-release:
+		case <-r.Context().Done():
+		}
+	})
+	defer close(release)
+	c := newOpenHABRunCollector(t, srv, newOHRoot(t, "etc/openhab"))
+
+	stop := startRun(t, c)
+	defer stop()
+	select {
+	case <-entered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("openHAB root call not made within 5 s of Run")
+	}
+	hungAt := c.Snapshot().Timestamp
+	advanced := waitFor(func() bool { return c.Snapshot().Timestamp.After(hungAt) })
+
+	if !advanced {
+		t.Fatalf("snapshot timestamp stuck at %v while the openHAB call hangs, want further fast ticks", hungAt)
+	}
+	if got := c.OpenHAB().State; got != OpenHABStatePending {
+		t.Fatalf("state during the hung first poll = %q, want %q", got, OpenHABStatePending)
+	}
+}
+
+func TestCollector_Run_OpenHABFirstPollHasRAMPercent_AC11(t *testing.T) {
+	srv := newOHServer(t)
+	root := newOHRoot(t, "etc/openhab")
+	writeOHProcess(t, root, 938, ohJavaArgv, 250000, 100000)
+	c := newOpenHABRunCollector(t, srv, root)
+
+	stop := startRun(t, c)
+	ok := waitFor(func() bool { return c.OpenHAB().State == OpenHABStateOK })
+	stop()
+
+	got := c.OpenHAB().Process
+	want := 25.0 // 250000 kB of the fixture's 1000000 kB
+	if !ok || got == nil || got.RSSPercentOfRAM == nil {
+		t.Fatalf("state, process = %q, %+v, want %q with rss_percent_of_ram", c.OpenHAB().State, got, OpenHABStateOK)
+	}
+	if diffFloat(*got.RSSPercentOfRAM, want) > 1e-9 {
+		t.Fatalf("rss_percent_of_ram = %v, want %v", *got.RSSPercentOfRAM, want)
+	}
+}
+
+func TestCollector_OpenHABDisabled_AC9(t *testing.T) {
+	srv := newOHServer(t)
+	root := newOHRoot(t, "usr/share/openhab", "etc/openhab", "var/lib/openhab")
+	writeOHJava(t, root)
+	c := New(Config{
+		FastInterval:    10 * time.Millisecond,
+		SlowInterval:    time.Hour,
+		HistoryCapacity: 10,
+		OpenHAB: OpenHABConfig{
+			Enabled:  false,
+			Always:   true,
+			BaseURL:  srv.URL,
+			Interval: time.Hour,
+			Root:     root,
+			Timeout:  5 * time.Second,
+		},
+	}, nil)
+	c.memory = &MemoryCollector{path: writeTempFile(t, t.TempDir(), "meminfo", meminfoFixture)}
+
+	stop := startRun(t, c)
+	first := c.Snapshot().Timestamp
+	ticked := waitFor(func() bool {
+		ts := c.Snapshot().Timestamp
+		return !ts.IsZero() && ts.After(first)
+	})
+	stop()
+
+	if !ticked {
+		t.Fatal("no fast tick within 5 s of Run, want the collector running")
+	}
+	if got := srv.requests(); len(got) != 0 {
+		t.Fatalf("requests with openhab.enabled false = %v, want none", got)
+	}
+	want := OpenHABStatus{State: OpenHABStateNotInstalled}
+	if got := c.OpenHAB(); mustJSON(t, got) != mustJSON(t, want) {
+		t.Fatalf("OpenHAB() = %s, want %s", mustJSON(t, got), mustJSON(t, want))
 	}
 }
