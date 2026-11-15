@@ -68,6 +68,7 @@ Exit code 0 when it printed the next step, 1 when the work folder has no log, 2 
 """
 import argparse
 import collections
+import fnmatch
 import importlib.util
 import os
 import re
@@ -139,6 +140,8 @@ WAITS = re.compile(r"\bwaits? for\b|\bposted for agreement\b", re.I)
 CHECKLIST = re.compile(r"^\s*(?:re-)?approved by checklist\b", re.I)
 # A step-5 Tester row names its deferred tests after `Deferred:` (`Deferred: none` without one).
 DEFERRED = re.compile(r"\bDeferred:\s*(?P<names>[^\n|]*)", re.I)
+# A Dev row that removed the code a deferred test was deferred for (`removed the fallback branch of test_a`).
+REMOVED = re.compile(r"\b(?:remov|delet|drop)", re.I)
 # A step-11 Orchestrator row that the PR was merged or closed: the watching ends, step 12 runs at once.
 PR_ENDED = re.compile(r"\b(?:merged|closed)\b", re.I)
 # A continuation that a fix, delta or revise round makes in another mode is no change of mode.
@@ -149,6 +152,10 @@ SPEC_SETTLED = re.compile(r"\bspec (?:approved|corrected)\b", re.I)
 CORRECTED = re.compile(r"\bspec corrected\b", re.I)
 NOTES = re.compile(r"^#{2,6}[ \t]+Challenge(?: notes)?\b", re.I | re.M)
 NOTES_ROW = re.compile(r"\bnotes\b", re.I)
+# A `7 Manual test` row that reports a failure (`FAIL` in capitals), and the task groups a failed manual test may
+# add before the Lead escalates (*Loop limits*, *Manual criterion fails*).
+MANUAL_FAILED = re.compile(r"\bFAIL(?:ED|S)?\b")
+MANUAL_GROUPS = 2
 CONTINUATION_CAP = 5
 CONTINUATION_TOKENS = 300_000
 SPEC_APPROVAL = getattr(settings, "SPEC_APPROVAL", "lead")
@@ -181,7 +188,8 @@ SKIPPED = re.compile(r"\bskip", re.I)
 # (`NON-BLOCKING 2 (1 plan)`): their owner fixes them without a Lead decision (PlexToJellyfinSync#292).
 PLAN_FINDINGS = re.compile(r"NON-BLOCKING\s+\d+\s*\((\d+)\s+plan\b", re.I)
 # The tags a verbatim row names its findings by, as the Reviewer wrote them (`[NON-BLOCKING, verbatim]`).
-NONBLOCKING_TAG = re.compile(r"\[NON-BLOCKING, verbatim\]", re.I)
+NONBLOCKING_TAG = re.compile(r"\[NON-BLOCKING, (?:plan, )?verbatim\]", re.I)
+PLAN_VERBATIM_TAG = re.compile(r"\[NON-BLOCKING, plan, verbatim\]", re.I)
 BLOCKING_TAG = re.compile(r"\[BLOCKING, verbatim\]", re.I)
 STATUS_FIELD = re.compile(r"^[+-]- \*\*Status:\*\*")
 DECISIONS = "docs/decisions/"
@@ -303,6 +311,7 @@ def agent_chains(run, agent):
             chain["continuations"] += 1
             if chain["mixed"] is None and other_mode(agent, chain["mode"], row):
                 chain["mixed"] = row.step
+            by_step.setdefault(row.step, index)
             last = index
     return chains, fresh, last
 
@@ -840,7 +849,20 @@ def skeleton_gaps(run, group):
         touched = tool.changed(run.root, tool.merge_base(run.root)) | set(tool.uncommitted(run.root))
     except tool.Refusal:
         return []
-    return sorted(path for path in planned if path not in touched)
+    return sorted(path for path in planned if not planned_path_changed(path, touched))
+
+
+def planned_path_changed(path, touched):
+    """True when a path a *Files* cell names matches a changed file: a glob by `fnmatch`, a directory (`src/A.B` too) by
+    prefix, a bare file name by the file names of the changed paths (DockerUpdateGuard#465, #477, Censio#202)."""
+    path = path[2:] if path.startswith("./") else path
+    if any(char in path for char in "*?["):
+        prefix = path.split("**", 1)[0] if "**" in path else None
+        return any(fnmatch.fnmatchcase(changed, path) or (prefix is not None and changed.startswith(prefix))
+                   for changed in touched)
+    if path in touched or any(changed.startswith(path.rstrip("/") + "/") for changed in touched):
+        return True
+    return "/" not in path and any(changed.rsplit("/", 1)[-1] == path for changed in touched)
 
 
 def skeleton_gap_lines(run, group):
@@ -940,6 +962,16 @@ def deferred_row(run, group):
     return rows[-1] if rows else None
 
 
+def deferral_settled(run, group):
+    """True when a later Dev row that says it removed something names every deferred test of the group (the branch
+    the test was deferred for is gone, Vandox#470), so no coverage pass waits for it."""
+    row = deferred_row(run, group)
+    names = [name.strip(" `'\"") for name in re.split(r"[,;]\s*", deferred_tests(run, group)) if name.strip()]
+    later = " ".join(squad_log().ANY_TRAILER.sub("", other.result) for other in run.of(DEV, after=row.index)
+                     if REMOVED.search(other.result))
+    return bool(names) and all(name.split(" (")[0] in later for name in names)
+
+
 def implement_ended(run, group):
     """True when the group's implementation is over: a Dev implement row of step 6, or an orchestrator row of step 6
     that says it skipped the implementation and names the group (`6 Implement skipped (G1)`: steps 4–5 left nothing to
@@ -954,7 +986,7 @@ def coverage_ended(run, group):
     """True when the group's coverage pass is over: a Tester row of step 6, an orchestrator coverage row of step 6 that
     names the group, or one without a group after the group's implementation (`6 Coverage gate (all groups)`). With
     deferred tests open, only a Tester row of step 6 ends it."""
-    if deferred_tests(run, group):
+    if deferred_tests(run, group) and not deferral_settled(run, group):
         tests_first = deferred_row(run, group).index
         return any(row.index > tests_first for row in group_rows(run, TESTER, "6", group))
     if group_rows(run, TESTER, "6", group) or [row for row in run.of(ORCHESTRATOR, {"6"}, word="coverage")
@@ -962,6 +994,9 @@ def coverage_ended(run, group):
         return True
     implemented = group_rows(run, DEV, "6", group, word="implement")
     after = implemented[-1].index if implemented else len(run.rows)
+    # Vandox#470: a passing full stamp on a head that holds the group's implementation passed its Coverage gate.
+    if implemented and last_full_stamp_row(run) > after:
+        return True
     return any(not GROUP.search(row.step) for row in run.of(ORCHESTRATOR, {"6"}, after=after, word="coverage"))
 
 
@@ -1180,7 +1215,8 @@ def code_check(run):
     dirty = tool.uncommitted(run.root)
     lines = heading(f"step {step.split()[0]} — Code check: {problem}") + (
         [f"  Commit first, these files outside specs/ are uncommitted: {', '.join(dirty[:10])}"] if dirty else []) + [
-        DO + "git fetch origin main and merge main when it moved (*Merge conflicts*); commit; then run",
+        DO + "git fetch origin main and merge main when it moved (*Merge conflicts*); commit (a finished step's "
+        "commit without `[skip ci]`, *Commits*); then run",
         f"    {STAMP_TOOL} {run.name}" + (STDIN if run.after_pr else "")]
     if last is not None and last.group("verdict") == "PASS" and verbatim_fix(run, last):
         lines.append("  A verbatim documentation fix since the stamp: add --verbatim (Format check, decision-check.py "
@@ -1219,16 +1255,17 @@ def verbatim_rows(run, after):
 
 
 def verbatim_findings(run, after):
-    """(blocking, non-blocking) findings the Orchestrator's verbatim rows after the row index `after` applied: each
-    `BLOCKING` and `NON-BLOCKING` tag a row names counts once; a row that names no tag counts as one blocking
-    finding."""
-    blocking = nonblocking = 0
+    """(blocking, non-blocking, plan-ordered) findings the Orchestrator's verbatim rows after the row index `after`
+    applied: each `BLOCKING` and `NON-BLOCKING` tag a row names counts once, `[NON-BLOCKING, plan, verbatim]` as a
+    plan-ordered one too; a row that names no tag counts as one blocking finding."""
+    blocking = nonblocking = planned = 0
     for row in verbatim_rows(run, after):
         tagged_nonblocking = len(NONBLOCKING_TAG.findall(row.result))
         tagged_blocking = len(BLOCKING_TAG.findall(row.result))
         nonblocking += tagged_nonblocking
+        planned += len(PLAN_VERBATIM_TAG.findall(row.result))
         blocking += tagged_blocking if tagged_blocking or tagged_nonblocking else 1
-    return blocking, nonblocking
+    return blocking, nonblocking, planned
 
 
 def verbatim_fix(run, last):
@@ -1318,6 +1355,9 @@ def manual_check(run):
     (Vandox#451, Censio#188)."""
     if run.after_pr or run.plan is None or run.base_tier in ("docs", "patch") or not stamp_ok(run):
         return None
+    failed = manual_failure(run)
+    if failed is not None:
+        return failed or None
     logged = [row for who in (MANAGER, ORCHESTRATOR) for row in run.of(who, {"7", "8", "9"}, word="manual")]
     if logged or any(review_rows(run, agent, -1) for agent, _ in review_set(run)):
         return None
@@ -1330,7 +1370,53 @@ def manual_check(run):
     return heading(f"step 7 — the manual test of {what} before the review") + [f"  Plan: {line}" for line in prose[:3]] + [
         DO + "ask the Product Manager (or the stand-in the plan names) to run it on the stamped head, as the plan "
         "says, and wait; a document the run corrects is committed and stamped again before step 8",
-        f"  Log: {LOG_TOOL} {run.name} \"7 Manual test\" \"Product Manager\" \"<the result per criterion>\""]
+        f"  Log: {LOG_TOOL} {run.name} \"7 Manual test\" \"Product Manager\" \"<PASS or FAIL per criterion, then the result>\""]
+
+
+def manual_failure(run):
+    """None when the last `7 Manual test` row did not fail; else the lines of what follows a failed manual test
+    (*Loop limits*, *Manual criterion fails*, Vandox#469): the Lead's decision, the work it added until a new stamp,
+    then the manual test again."""
+    rows = sorted((row for who in (MANAGER, ORCHESTRATOR) for row in run.of(who, {"7"}, word="manual")),
+                  key=lambda row: row.index)
+    if not rows or not MANUAL_FAILED.search(rows[-1].result):
+        return None
+    runs = sum(1 for row in rows if MANUAL_FAILED.search(row.result))
+    decided = run.of(LEAD, after=rows[-1].index)
+    if not decided:
+        if runs > MANUAL_GROUPS:
+            return heading(f"step 7 — the manual test failed after {MANUAL_GROUPS} added task groups") + launch(
+                run, LEAD, "decide", "7 Decide (manual test)", "the failed manual test's rows and the groups added "
+                "for it: it escalates relaxing the criterion to the Product Manager (*Loop limits*)")
+        return heading(f"step 7 — the manual test failed (task group {runs} of {MANUAL_GROUPS} for it)") + launch(
+            run, LEAD, "decide", "7 Decide (manual test)", "the failed manual test's row and the plan: it adds a "
+            "task group for the options it takes, which runs steps 4–7 and the manual test again (*Loop limits*)")
+    if last_full_stamp_row(run) < decided[-1].index:
+        return manual_rework(run, decided[0])
+    return heading(f"step 7 — the manual test again, on the stamp after the added task group (run {runs + 1})") + [
+        DO + "ask the Product Manager (or the stand-in the plan names) to run it on the stamped head, as the plan "
+        "says, and wait",
+        f"  Log: {LOG_TOOL} {run.name} \"7 Manual test\" \"Product Manager\" \"<PASS or FAIL per criterion, then the result>\""]
+
+
+def manual_rework(run, decision):
+    """The work a Lead decision on a failed manual test added, before its stamp: a feature's group runs from tasks.md
+    (`code_steps` comes first), so only a bug fix, or a feature whose group is not in tasks.md yet, gets here."""
+    handover = f"the Lead's decision (row \"{decision.step}\") on the failed manual test, {BASE_HANDOVER}"
+    if run.feature:
+        return heading("step 7 — the Lead's decision on the failed manual test adds a task group that tasks.md does "
+                       "not hold yet") + launch(run, LEAD, "revise", "7 Plan revise (manual test)", "its decision: "
+                                            "it writes the group's rows into tasks.md", rule=LAST)
+    if not run.of(DEV, after=decision.index):
+        return heading("step 7 — the Dev's work the Lead's decision on the failed manual test orders") + launch(
+            run, DEV, "implement", "6 Implement (manual test)", handover)
+    if not run.of(TESTER, after=decision.index):
+        return heading("step 7 — the Tester's coverage pass on that work") + launch(
+            run, TESTER, "coverage", "6 Coverage (manual test)", handover)
+    return heading("step 7 — the work the Lead's decision ordered changed no code since the stamp") + [
+        DO + "when the decision orders no code (a rerun, a corrected test setup), stamp this head again; the manual "
+        "test follows. Otherwise the decision is not carried out: back to the Dev with it",
+        f"    {STAMP_TOOL} {run.name}"]
 
 
 def manual_criteria(run):
@@ -1419,10 +1505,17 @@ def review(run):
     stale = unmatched_review(run, stamp_index, rows)
     if stale:
         return stale
-    fixed_blocking, fixed_nonblocking = verbatim_findings(run, max(r.index for r in rows))
+    fixed_blocking, fixed_nonblocking, fixed_planned = verbatim_findings(run, max(r.index for r in rows))
     planned = sum(plan_ordered(row) for row in rows)
+    # A verbatim fix of a plan-ordered finding needs no owner (DockerUpdateGuard#479): a tag naming `plan` takes it
+    # off the planned ones, and untagged verbatim fixes beyond the other non-blocking findings do too.
+    others = max(sum(v[1] for v in verdicts) - planned, 0)
+    plain = fixed_nonblocking - fixed_planned
+    # A plan tag on a verdict line without a `(n plan)` note still names a non-blocking finding it fixed.
+    surplus = max(fixed_planned - planned, 0)
+    planned = max(planned - fixed_planned - max(plain - others, 0), 0)
     blocking = sum(v[0] for v in verdicts) - fixed_blocking + planned
-    nonblocking = sum(v[1] for v in verdicts) - fixed_nonblocking - planned
+    nonblocking = others - plain - surplus
     return review_outcome(run, rows, max(blocking, 0), max(nonblocking, 0))
 
 
@@ -1682,7 +1775,7 @@ def cap_warnings(run):
         if not trailer.group("continued"):
             continue
         chains, fresh, current = log.agent_chains(run.raw[:launches[-1]], member)
-        index = fresh.get(trailer.group("origin")) if trailer.group("origin") else current
+        index = log.chain_of_step(chains, fresh, trailer.group("origin")) if trailer.group("origin") else current
         if index is not None and log.at_cap(chains[index]):
             found.append(f"WARNING: {member}'s last launch, \"{rows[1]}\", continued an agent past the continuation "
                          "cap (.squad/orchestration.md, *Continuing a member*): its next launch is a new agent with a "

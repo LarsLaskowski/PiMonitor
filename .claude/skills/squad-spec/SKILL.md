@@ -60,7 +60,8 @@ cells in `log.md`); steps 4–12 follow `squad-issue` with the changes listed af
 
 - **Steps 4–6** run per task group — the *Group* column of `tasks.md`, in table order; tick tasks off as they
   are done. The Tester's tests first are the tests *Tests per criterion* names for the group's
-  criteria. `squad-next.py` prints each group's launches; the step cell names the group (`4 Skeleton (G2)`). The
+  criteria. `squad-next.py` prints each group's launches; the step cell names the group (`4 Skeleton (G2)`), also for a
+  group a Lead decision adds in step 7 or 8, whose launches are never logged as `8 Fix`. The
   documentation rows are the Dev's, done once the last group's *Coverage gate* passes (`squad-issue`
   step 6; *Documentation* in `squad-dev.md`).
 - **Code-free changes:** as *Changes without production or test code*; *Verification without tests* then

@@ -48,7 +48,9 @@ one language, is never carried over to another (the .NET profile's `== false` is
 
 **Format.** The member that changed files — Dev, Tester, Code Officer, or the orchestrator for its own edits —
 runs *Format* from `stack.md` before handing back and keeps its result to those files: every other file the
-formatter touched is reported as "formatted outside the change", not edited, and the orchestrator restores it.
+formatter touched is reported as "formatted outside the change", not edited, and the orchestrator restores it. It
+runs in the foreground under a time limit (`timeout 600 <command>`), on the changed files or their directories where
+the formatter takes paths; a run that hits the limit is reported, never left running in the background.
 
 **Git and GitHub.** Members never run Git write operations and never post to GitHub (no GitHub MCP write tool
 either); the hook `.claude/hooks/git-guard.py` denies such Bash commands. Read-only Git, `git add` and a scratch `git
@@ -74,7 +76,7 @@ orchestrator's: the member that owns the content (the Tester for *Test doubles*,
 exact text, and the orchestrator writes it verbatim and runs *Format*. Both hooks prevent accidents and are
 no security boundary: an interpreter or a shell redirect gets past them, and these rules bind there all the same.
 
-**Reporting against a SHA.** Before the PR the orchestrator may commit your edits as work in progress while
+**Reporting against a SHA.** The orchestrator may commit your edits as work in progress while
 you work (`orchestration.md`, *The stop hook*), so a clean `git status` at hand-back is expected: report your
 changes against the head SHA you were given (`git diff <sha>`). Your report is one final reply (or one
 `SubagentHandback` call where the harness offers it), never split across several and sent once: finish within your
