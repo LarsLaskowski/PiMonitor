@@ -7,6 +7,8 @@ Security areas touched: Outbound calls (new openHAB HTTP client), API key and se
 its environment variable), HTTP surface (new route `GET /api/v1/openhab`), Dashboard XSS (openHAB text rendered in
 `app.js`), Parsing of local input (`/proc/<pid>/cmdline`, `status`, `stat`, `/proc/uptime`, openHAB's JSON, the
 YAML `openhab` block), Logging (new log lines that must never carry the token)
+Plan size: about 4400 words — the plan was built within 4000; the step-7 amendment of AC13 adds about 400, and the
+built cases and signatures stay until the step-8 review checks the code against them.
 
 ## Problem / root cause
 
@@ -34,6 +36,7 @@ Feature: see [spec.md](spec.md).
 | 20 | openHAB's listener on the Pi is dual-stack: port 8080 appears only in `/proc/net/tcp6`, a wildcard `LISTEN` entry and `ESTABLISHED` entries with `::ffff`-mapped IPv4 addresses, uid 102; a loopback connection is therefore found as `::ffff:127.0.0.1` in `tcp6`, so the unmapping is required | Product Manager on the Pi: `grep -i ':1F90 ' /proc/net/tcp /proc/net/tcp6` (tasks row 1) | confirmed |
 | 21 | `applyLayout` toggles the `hidden` class on every card but `network`, which `applyNetworkVisibility` alone decides; `style.css` has `metric-warn`, no `warn` class | `internal/web/assets/app.js:577-650`, `style.css:302` | confirmed |
 | 22 | `enabled:` and `enabled: ~` leave a string field at its default in yaml.v3; `enabled: ""` sets it empty | `docs/areas/configuration.md` *Config file* (null keeps the default) | confirmed |
+| 23 | With a wrong token openHAB 5.2.4 answers the root call `401`, so `refused` is `["root"]` and the state `running_unreachable` | to verify: the PM's re-run of case (3); basis: case (3) showed "Not reachable" with process values only, which only a failed root call gives (`openhab.go:443-449`), while the correct token passed the same peer check in (2) | unverified |
 | 17 | `net/http` decompresses a gzip response transparently, so a reader on `resp.Body` counts decoded bytes | `$GOROOT/src/net/http/transport.go` (`DisableCompression`, `gzipReader`) | confirmed |
 
 ## Tests per criterion
@@ -52,7 +55,7 @@ Feature: see [spec.md](spec.md).
 | AC10 | `TestOpenHABCollector_Logging_AC10` | `internal/collector/openhab_test.go` |
 | AC11 | `TestCollector_Run_OpenHABPollsAtStartup_AC11`, `TestCollector_Run_HungOpenHABDoesNotDelayFastTick_AC11`, `TestCollector_Run_OpenHABFirstPollHasRAMPercent_AC11`, `TestCollectorConfig_OpenHAB_AC11` | `internal/collector/collector_test.go`, `cmd/pimonitor/main_test.go` |
 | AC12 | `TestAppJS_OpenHABPolling_AC12`, `TestAppJS_OpenHABCardVisibility_AC12`, `TestAppJS_OpenHABPendingRepoll_AC12` | `internal/web/openhab_test.go` |
-| AC13 | manual: Product Manager, on a local `make build-arm64` of the branch head on their openHAB Pi, before step 9: card with and without `api_token`, with a wrong token, with openHAB stopped, and a Thing label containing `<b>x</b>` shown literally | — |
+| AC13 | manual: Product Manager, on a local `make build-arm64` of the branch head on their openHAB Pi, before step 9: card with and without `api_token`, with a wrong token, and a Thing label containing `<b>x</b>` shown literally; after the amendment the re-run of cases (2) and (3) | — |
 
 Cases the tests must hold (Tester):
 
@@ -107,6 +110,13 @@ Cases the tests must hold (Tester):
   needs both the layout preference and a qualifying answer (a hidden preference keeps the card hidden in every
   state); hidden for `not_installed`, `pending` and `404`; while `pending` the next poll uses the metrics interval;
   `card-warn` is used in `app.js` and defined in `style.css` (`TestAppJS_OpenHABWarnClassDefined_AC13`, same file).
+- AC13 (amendment, static, `internal/web/openhab_test.go`): `TestAppJS_OpenHABTexts_AC13` gains
+  `'Not-online Things ('`; new `TestAppJS_OpenHABRootRefusedStateText_AC13`: `openhabStateText` holds
+  `includes('root')` and `openhabRefusedHint(`, which holds both hints; new `TestAppJS_OpenHABThingsToggle_AC13`:
+  `const OPENHAB_THINGS_KEY = 'pimonitor-openhab-things';`, and `openhabThingsToggle` holds
+  `createElement('details')`, `'Not-online Things ('`, `'toggle'`, `t.label || t.uid` and none of `.status`,
+  `.description`; `renderOpenHAB` calls it and holds no `t.uid`. Case (4), openHAB stopped, is not re-run (live
+  system): `Not running` follows from the state (AC2 tests) through a one-line mapping.
 
 ## Approach
 
@@ -195,10 +205,18 @@ last in the default order. Visibility follows the network card: `applyLayout` le
 state is `pending`, restarted when the interval to use changes, cleared in `stopPolling`; `404` hides the
 card and clears the timer until reload; `401` opens the API key dialog like the other polls; other failures leave
 the card as it is. Layout, top to bottom: state line (`Running · <version>`, `Starting (start level N)`, `Not
-running`, `Not reachable`); rows `Process memory` (`<bytes> (<x.y> % of RAM)`), `JVM heap` (`used / total` with a
+running`, `Not reachable`), followed, when `refused` holds `root` (openHAB answered the root call `401`/`403`:
+`openhab.go` `record`, lines 528-536), by ` · ` and the hint of the private `openhabRefusedHint(st)`, which
+`openhabMissing` uses too; rows `Process memory` (`<bytes> (<x.y> % of RAM)`), `JVM heap` (`used / total` with a
 bar), `Uptime`, `Items`, `Add-ons`; `Things` summary `<n> ONLINE · <n> OFFLINE · …` (ONLINE first, the rest by
-name); then the not-ONLINE list, one entry per Thing: label, UID muted, `STATUS – description` (or status detail
-when no description). An absent value reads `n/a`; a refused source's values read `needs api_token` (no token)
+name); then, only while `not_online` is non-empty, the element the private `openhabThingsToggle(notOnline)` builds: a
+`<details class="openhab-things">` whose `<summary>` reads `Not-online Things (<n>)`, n = `not_online.length`,
+holding one `<div class="openhab-thing">` per Thing with `textContent = t.label || t.uid` — nothing else of the Thing.
+Its `open` comes from a module variable read once from `localStorage` key `OPENHAB_THINGS_KEY`
+(`pimonitor-openhab-things`, value `open`; absent means closed); its `toggle` listener sets the variable and writes
+`open` or removes the key, both in `try`/`catch` like the theme, so without storage the state holds for the page and
+survives each re-render. The `.openhab-thing .metric-sub` rule goes; the summary's styling is free for the Dev,
+approved in step 9. An absent value reads `n/a`; a refused source's values read `needs api_token` (no token)
 or `api_token refused`. Warning state: the card gets a new class `card-warn` (border in `var(--warn)`, `style.css`), the state
 line `metric-warn`. All openHAB text through
 `textContent`.
@@ -341,6 +359,17 @@ records 0013–0016 until they exist.
 - `.squad/project.md` — the Dev reports the exact text, the orchestrator writes it: *Security areas* "Outbound
   calls" gains the openHAB client (`internal/collector/openhab.go`, loopback guard); a line for the openHAB token;
   *Test doubles* gains the openHAB `httptest` server and fake `/proc` helpers of `openhab_test.go`.
+
+Amendment of AC13 (step 7), by the Dev against the changed `app.js`:
+
+- `docs/areas/dashboard.md` *Rendering*, the openHAB bullet: the state line's ` · needs api_token` / ` · api_token
+  refused` suffix when the root call was refused; the not-ONLINE Things as counts, the closed-by-default
+  `Not-online Things (<n>)` toggle with labels only (UID when the label is empty), warning state whether open or not.
+  *Browser storage*: "exactly three" becomes four, with `pimonitor-openhab-things` (`open` while the toggle is open).
+- `README.md` feature list: "(and the ones that are not ONLINE)" becomes "(the names of those not ONLINE on request)".
+- `docs/integrations/openhab.md` *Which calls need an openHAB API token*: a token openHAB refuses makes it refuse the
+  root call as well, so the card reads `Not reachable · api_token refused`.
+- Unchanged: `docs/API.md`, `docs/areas/openhab.md` (the API still serves every field), `SECURITY.md`.
 
 ## Architecture check
 

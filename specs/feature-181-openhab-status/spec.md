@@ -13,15 +13,15 @@ item states ([issue #181](https://github.com/LarsLaskowski/PiMonitor/issues/181)
 
 - S1: Given openHAB runs on the Pi and answers on `base_url`, when the operator opens the dashboard, then an
   "openHAB" card shows the process memory (absolute and in % of RAM), the JVM heap used/total, the Things by status, the number of Items and of installed add-ons, the openHAB version and its uptime.
-- S2: Given one or more Things are not ONLINE, when the card refreshes, then it is in its warning state and lists
-  those Things (label, UID, status and status detail).
+- S2: Given one or more Things are not ONLINE, when the card refreshes, then it is in its warning state, its Things
+  line counts them by status, and a toggle, closed by default and remembered per browser, lists their labels only.
 - S3: Given openHAB is installed but its process is stopped, when the card refreshes, then it says openHAB is not
   running and is in its warning state.
 - S4: Given a default openHAB install and no `api_token` (openHAB 5.2.4 then refuses system info, Things and
   add-ons with `401`, while the root call and the Item list answer), when the card refreshes, then the process
   memory, uptime, version and Item count are shown and heap, start level, Things and add-ons read "needs
   api_token"; with a token openHAB refuses, they read "api_token refused". The card says openHAB is not reachable
-  when the root call itself fails.
+  when the root call itself fails, followed by the same hint when openHAB refused the root call (a wrong token).
 - S5: Given openHAB is neither installed nor running, when the dashboard loads, then no openHAB card appears and
   PiMonitor sends no request to `base_url` and logs nothing about openHAB.
 - S6: Given `openhab.enabled: false`, then PiMonitor never looks for openHAB, `GET /api/v1/openhab` answers `404`
@@ -144,10 +144,14 @@ item states ([issue #181](https://github.com/LarsLaskowski/PiMonitor/issues/181)
   interval (at the metrics interval while `pending`) with the other polls' rules (one request
   outstanding, pause while hidden, `401` handling), and lists the card in the layout dialog under id `openhab`
   (S1, S5, S6, S8, S9).
-- AC13: The card shows the values of S1 (`n/a` for an absent one, the texts of S4 for a refused one), the state text of S3/S4/E11, the not-ONLINE list,
-  and its warning state exactly when the state is `installed_not_running` or `running_unreachable` or a listed Thing
-  exists; every text from openHAB is inserted as text, which `internal/web/xss_test.go` keeps enforcing (S1–S4, E8,
-  E11).
+- AC13: The card shows the values of S1 (`n/a` for an absent one, the texts of S4 for a refused one); the state text
+  of S3/S4/E11, followed by ` · needs api_token` (no token configured) or ` · api_token refused` when `refused` holds
+  `root`; the not-ONLINE Things only in the counts of the Things line and, while any is listed, a toggle
+  `Not-online Things (<n>)` (n listed), closed by default, its open state kept per browser, that lists each listed
+  Thing by its label alone (its UID only when the label is empty; no status, detail or description); and its warning
+  state exactly when the state is `installed_not_running` or `running_unreachable` or a listed Thing exists, toggle
+  open or not; every text from openHAB is inserted as text, which `internal/web/xss_test.go` keeps enforcing (S1–S4,
+  E8, E11).
 
 ## Out of scope
 
@@ -193,3 +197,9 @@ item states ([issue #181](https://github.com/LarsLaskowski/PiMonitor/issues/181)
 6. (minor) `collected_at` — accepted: AC4.
 7. (minor) Uptime fallback — accepted: E14, AC4.
 8. (minor) `https` certificates — accepted: `https` dropped (N4, E13, AC7).
+
+## Amendments
+
+| Criterion | Change | Reason | Step | Decided by |
+| --------- | ------ | ------ | ---- | ---------- |
+| AC13 | Changed: the not-ONLINE Things show as counts only, their labels behind a toggle closed by default and kept per browser (no UID, status, detail or description); the state line adds the token hint when `refused` holds `root`. S2 and S4 follow. `GET /api/v1/openhab` is unchanged. | Product Manager's manual test on openHAB 5.2.4: the list carried too much detail; with a wrong token openHAB refused the root call too, so the card said only "Not reachable" | 7 (manual test) | Lead |
