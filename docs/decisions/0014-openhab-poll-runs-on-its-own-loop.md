@@ -1,6 +1,6 @@
 # 0014: The openHAB poll runs on its own loop and serves its last finished result
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-14
 - **Area:** openHAB
 - **Source:** Issue #181

@@ -1,6 +1,6 @@
 # 0015: openHAB values are built from real openHAB 5.2.4 responses; uptime from the process
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-14
 - **Area:** openHAB
 - **Source:** Issue #181

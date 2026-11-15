@@ -1,6 +1,6 @@
 # 0013: openHAB requests go only to a loopback address over plain HTTP
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-14
 - **Area:** openHAB
 - **Source:** Issue #181

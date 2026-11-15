@@ -1,6 +1,6 @@
 # 0016: A refused openHAB call without a configured token is logged at info
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-14
 - **Area:** openHAB
 - **Source:** Issue #181
