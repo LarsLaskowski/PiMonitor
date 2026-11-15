@@ -20,4 +20,7 @@ Plan: [plan.md](plan.md)
 | 14 | G6 | Amendment AC13, tests first: adapt `TestAppJS_OpenHABTexts_AC13`; new `TestAppJS_OpenHABRootRefusedStateText_AC13`, `TestAppJS_OpenHABThingsToggle_AC13` (plan *Tests per criterion*, AC13 amendment) | `internal/web/openhab_test.go` | AC13 | 13 | Tester | [ ] |
 | 15 | G6 | no new API: `openhabRefusedHint`, root hint on the state line, `openhabThingsToggle` with `OPENHAB_THINGS_KEY`; drop the UID and detail lines and the `.openhab-thing .metric-sub` rule | `internal/web/assets/app.js`, `internal/web/assets/style.css` | AC13 | 14 | Dev | [ ] |
 | 16 | G6 | no new API: documentation of the AC13 amendment (plan *Documentation updates*) | `docs/areas/dashboard.md`, `README.md`, `docs/integrations/openhab.md` | AC13 | 15 | Dev | [ ] |
-| 17 | G6 | Re-run manual cases (2) and (3) of AC13 on a `make build-arm64` of the new head | — | AC13 | 16 | Product Manager | [ ] |
+| 17 | G6 | Re-run manual cases (2) and (3) of AC13 on a `make build-arm64` of the new head | — | AC13 | 16 | Product Manager | [x] |
+| 18 | G7 | Summary rename, tests first: in `TestAppJS_OpenHABTexts_AC13` and `TestAppJS_OpenHABThingsToggle_AC13` replace `"'Not-online Things ('"` with `"'Things offline: '"`; `TestAppJS_OpenHABTexts_AC13` also fails when app.js contains `Not-online Things` | `internal/web/openhab_test.go` | AC13 | 17 | Tester | [ ] |
+| 19 | G7 | no new API: `openhabThingsToggle` summary `'Things offline: ' + notOnline.length`; `docs/areas/dashboard.md` line 124 `Not-online Things (<n>)` becomes `Things offline: <n>` | `internal/web/assets/app.js`, `docs/areas/dashboard.md` | AC13 | 18 | Dev | [ ] |
+| 20 | G7 | See the summary `Things offline: <n>` on a `make build-arm64` of the fixed head | — | AC13 | 19 | Product Manager | [ ] |

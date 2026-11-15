@@ -147,7 +147,7 @@ item states ([issue #181](https://github.com/LarsLaskowski/PiMonitor/issues/181)
 - AC13: The card shows the values of S1 (`n/a` for an absent one, the texts of S4 for a refused one); the state text
   of S3/S4/E11, followed by ` · needs api_token` (no token configured) or ` · api_token refused` when `refused` holds
   `root`; the not-ONLINE Things only in the counts of the Things line and, while any is listed, a toggle
-  `Not-online Things (<n>)` (n listed), closed by default, its open state kept per browser, that lists each listed
+  `Things offline: <n>` (n listed), closed by default, its open state kept per browser, that lists each listed
   Thing by its label alone (its UID only when the label is empty; no status, detail or description); and its warning
   state exactly when the state is `installed_not_running` or `running_unreachable` or a listed Thing exists, toggle
   open or not; every text from openHAB is inserted as text, which `internal/web/xss_test.go` keeps enforcing (S1–S4,
@@ -203,3 +203,4 @@ item states ([issue #181](https://github.com/LarsLaskowski/PiMonitor/issues/181)
 | Criterion | Change | Reason | Step | Decided by |
 | --------- | ------ | ------ | ---- | ---------- |
 | AC13 | Changed: the not-ONLINE Things show as counts only, their labels behind a toggle closed by default and kept per browser (no UID, status, detail or description); the state line adds the token hint when `refused` holds `root`. S2 and S4 follow. `GET /api/v1/openhab` is unchanged. | Product Manager's manual test on openHAB 5.2.4: the list carried too much detail; with a wrong token openHAB refused the root call too, so the card said only "Not reachable" | 7 (manual test) | Lead |
+| AC13 | Changed: the toggle's summary reads `Things offline: <n>` instead of `Not-online Things (<n>)`; n is unchanged (every listed Thing). | Product Manager's re-run of manual cases (2) and (3): the summary wording | 9 (manual re-run) | Product Manager |
