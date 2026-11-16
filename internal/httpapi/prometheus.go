@@ -14,6 +14,16 @@ import (
 // See https://prometheus.io/docs/instrumenting/exposition_formats/.
 const prometheusContentType = "text/plain; version=0.0.4; charset=utf-8"
 
+// openHABMaxVersionLabel is the longest openHAB version, in bytes before
+// escaping, that is written as the version label.
+const openHABMaxVersionLabel = 64
+
+// renderOpenHABMetrics encodes the openHAB status as Prometheus text-exposition
+// gauges; it returns nil outside the states in which openHAB was polled.
+func renderOpenHABMetrics(status collector.OpenHABStatus) []byte {
+	return nil
+}
+
 // renderPrometheusMetrics encodes snap as Prometheus text-exposition
 // gauges. Every metric is prefixed pimonitor_ and, where the underlying
 // data is per-device, labeled the same way GET /api/v1/metrics already

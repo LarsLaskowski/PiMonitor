@@ -133,6 +133,12 @@ var openHABInstallPaths = []string{"usr/share/openhab", "etc/openhab", openHABDa
 // openHABThingStatuses are the Thing statuses counted in by_status.
 var openHABThingStatuses = []string{"UNINITIALIZED", "INITIALIZING", "UNKNOWN", "ONLINE", "OFFLINE", "REMOVING", "REMOVED"}
 
+// OpenHABThingStatuses returns a copy of the seven Thing statuses counted in
+// by_status, in their fixed order.
+func OpenHABThingStatuses() []string {
+	return nil
+}
+
 // errNoOpenHABProcess is the failure of the process source.
 var errNoOpenHABProcess = errors.New("no openHAB process found")
 
