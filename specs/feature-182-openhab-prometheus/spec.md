@@ -1,7 +1,7 @@
 # Spec: Expose local openHAB status as Prometheus metrics
 
 Source: Issue #182
-Status: Draft
+Status: Approved by Lead
 
 ## Problem
 
@@ -31,6 +31,7 @@ Values are those of the stored status that `GET /api/v1/openhab` serves ([openHA
 
 - E1: Before the first poll (`pending`) no openHAB series is written: `up 0` would be an outage that never happened.
 - E2: A value openHAB did not deliver (refused or failed source, no `/proc/uptime`) has no series; never a `0`.
+  Heap used and total come as a pair: when free exceeds total neither is written.
 - E3: When the Things source answered, each of the seven counted statuses (`UNINITIALIZED`, `INITIALIZING`, `UNKNOWN`,
   `ONLINE`, `OFFLINE`, `REMOVING`, `REMOVED`, in this order) has a series, `0` when no Thing has it, so an emptied
   status drops to `0` instead of vanishing; other statuses count in none, as in `by_status`.
@@ -46,17 +47,18 @@ Values are those of the stored status that `GET /api/v1/openhab` serves ([openHA
 
 ## Acceptance criteria
 
-- AC1: While the openHAB state is `not_installed` or `pending`, `GET /metrics` contains no line naming a
+- AC1: While the openHAB state is none of `installed_not_running`, `running_unreachable` and `ok` (so `not_installed`,
+  `pending`, or any other value, the empty one included), `GET /metrics` contains no line naming a
   `pimonitor_openhab_` metric, and the rest of its body is unchanged; `openhab.enabled: false` reports `not_installed` (S5, E1, N1, N4).
-- AC2: In every other state, `pimonitor_openhab_up` is `1` when the state is `ok` and `0` otherwise, and
+- AC2: In those three states, `pimonitor_openhab_up` is `1` when the state is `ok` and `0` otherwise, and
   `pimonitor_openhab_process_running` is `1` when the status has a process and `0` otherwise (S1–S4).
 - AC3: `pimonitor_openhab_process_resident_bytes`, `…_jvm_heap_used_bytes`, `…_jvm_heap_total_bytes`,
   `…_uptime_seconds`, `…_start_level`, `…_items` and `…_addons_installed` are each written, unlabeled, exactly when the
   matching field of `GET /api/v1/openhab` (`process.rss_bytes`, `jvm.heap_used_bytes`, `jvm.heap_total_bytes`,
   `uptime_seconds`, `start_level`, `items_count`, `addons_installed`) of the stored status is present, with its value;
   the scrape itself polls nothing (S1–S4, E2, N3).
-- AC4: When the status has Things, `pimonitor_openhab_things` has exactly seven series, one per counted status in
-  the order of E3, each with its count from `by_status` or `0`; without Things it has none (S1, S2, E3, N2).
+- AC4: When the Things source answered (`things` present in the status, also with total 0), `pimonitor_openhab_things` has exactly seven series, one per counted status in
+  the order of E3, each with its count from `by_status` or `0`; without `things` it has none (S1, S2, E3, N2).
 - AC5: When the status has a version, `pimonitor_openhab_info{version="<version>"} 1` is written with the label
   escaped as in E4; without a version it is not written (S1, S3, E4, N2).
 - AC6: Each openHAB family that has a series is preceded once by `# HELP` and `# TYPE <name> gauge`, after the
@@ -91,25 +93,17 @@ Values are those of the stored status that `GET /api/v1/openhab` serves ([openHA
 - `docs/API.md`, *`GET /metrics`*: the new rows with source field and when each is omitted.
 - `docs/integrations/openhab.md`, *Prometheus alternative*: the examples of S6.
 
-## Challenge notes
+## Challenge
 
-I challenged the spec once (mode `spec`) against the code and docs. All three places where the Lead departs from the issue's wording hold up. I found four minor problems and nothing that would make the feature build the wrong thing.
+The Devil's Advocate found the three deviations from the issue sound (all seven statuses, nothing while `pending`, no
+heap maximum) and raised four minor objections.
 
-**The three departures checked:**
-- **Write all seven Thing statuses, with 0 when empty — sound.** `summarizeThings` counts only the fixed list `openHABThingStatuses` (`/home/user/PiMonitor/internal/collector/openhab.go:134`, `:511-512`). So a 0 for one of those statuses is a real count, not an invented one, and it stops a series from vanishing when the last OFFLINE Thing recovers.
-- **Write no series while `pending` — sound.** Before the first poll, `Status()` returns only the base fields with state `pending` (`openhab.go:216-219`). Nothing has been measured yet, so `up 0` would be an invented reading. That breaks the issue's own "no fake zero" rule and decision record 0010.
-- **Leave `heap_max` out — sound.** The fields the code reads from `systeminfo` have no maximum (`openhab.go:415-422`, `:499-501`). Decision record 0015 (lines 14 and 28) and `docs/areas/openhab.md:45` both say openHAB 5.2.4 reports no heap maximum, and this feature collects nothing new.
-
-**Objections (all minor)**
-
-1. **minor — AC4 contradicts E3 when there are no Things.** E3 says "With no Things at all the seven series read `0`". AC4 says "without Things it has none". When `/rest/things` returns an empty list, `summarizeThings` still returns a non-nil `Things` with an empty `by_status` (`openhab.go:507`), so that answer is a real reading. A Dev who checks `Things.Total > 0` would pass a literal reading of AC4 and still break E3.
-   *Instruction:* read AC4's condition as "the Things source answered (`things` present in `GET /api/v1/openhab`, even with total 0)". The Tester adds a case with an empty Things list that expects all seven series at `0`, and a case with `Things == nil` that expects no `things` series.
-
-2. **minor — E2's heap example hides that both heap series go together.** When free exceeds total, `applySystemInfo` leaves the whole `JVM` struct nil (`openhab.go:499-501`). So `jvm.heap_total_bytes` is missing as well as heap used, even though total was reported. `docs/areas/openhab.md:45` says only "Heap used is absent", which is misleading in the same way.
-   *Instruction:* the Tester expects neither `pimonitor_openhab_jvm_heap_used_bytes` nor `…_jvm_heap_total_bytes` when `JVM` is nil. The Dev writes the two series together from `status.JVM != nil`. The `openhab.md` paragraph says "heap used and total are absent when free exceeds total".
-
-3. **minor — the state rule only lists the states that are excluded.** AC1 and AC2 say "every other state" writes `up`/`process_running`. So a status whose `State` is anything else, including the empty string, would write `up 0`. The httpapi test fake returns a zero `OpenHABStatus` by default (`fakeMetrics.openhab`, `/home/user/PiMonitor/internal/httpapi/handlers_test.go:42-56`). Its `State` is `""`, so every existing `/metrics` test would start emitting openHAB lines.
-   *Instruction:* the Dev writes openHAB series only for the states `installed_not_running`, `running_unreachable` and `ok`, and writes none for any other value. The Tester adds one case with `State: ""` that expects no `pimonitor_openhab_` line.
-
-4. **minor — the S6 alert example fires forever when a Thing is disabled.** A disabled Thing is counted under `UNINITIALIZED`, but the dashboard card does not warn about it (`docs/areas/openhab.md`, *Not-ONLINE list*). So `pimonitor_openhab_things{status!="ONLINE"} > 0` stays firing on any install with a disabled Thing.
-   *Instruction:* in `docs/integrations/openhab.md`, put a one-line note under the example. It should say that disabled Things count as `UNINITIALIZED` and keep the alert firing, and that operators can exclude that status if they disable Things on purpose.
+1. AC4 contradicted E3 for an empty Things list. Accepted: AC4 now applies whenever `things` is present, total 0
+   included; the Tester covers an empty list (seven `0` series) and a nil `Things` (none).
+2. E2 hid that the heap series go together. Accepted: E2 says so; AC3 already follows the `jvm` object, which is
+   absent as a whole when free exceeds total. The plan corrects the same wording in `docs/areas/openhab.md`.
+3. The state rule listed only the excluded states, so the zero `OpenHABStatus` of the test fake would emit series.
+   Accepted: AC1 and AC2 name the three states that write series; any other value, the empty one included, writes
+   none, with a test for `State: ""`.
+4. The S6 alert keeps firing for a disabled Thing (counted as `UNINITIALIZED`). Accepted: the integration guide adds
+   a note under the example saying so and how to exclude that status.
