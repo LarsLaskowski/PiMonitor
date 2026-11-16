@@ -136,7 +136,7 @@ var openHABThingStatuses = []string{"UNINITIALIZED", "INITIALIZING", "UNKNOWN", 
 // OpenHABThingStatuses returns a copy of the seven Thing statuses counted in
 // by_status, in their fixed order.
 func OpenHABThingStatuses() []string {
-	return nil
+	return slices.Clone(openHABThingStatuses)
 }
 
 // errNoOpenHABProcess is the failure of the process source.

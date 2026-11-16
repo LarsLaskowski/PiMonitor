@@ -21,7 +21,94 @@ const openHABMaxVersionLabel = 64
 // renderOpenHABMetrics encodes the openHAB status as Prometheus text-exposition
 // gauges; it returns nil outside the states in which openHAB was polled.
 func renderOpenHABMetrics(status collector.OpenHABStatus) []byte {
-	return nil
+	switch status.State {
+	case collector.OpenHABStateNotRunning, collector.OpenHABStateUnreachable, collector.OpenHABStateOK:
+	default:
+		return nil
+	}
+	var buf bytes.Buffer
+
+	writeOpenHABStateMetrics(&buf, status)
+	writeOpenHABValueMetrics(&buf, status)
+	writeOpenHABThingsMetrics(&buf, status.Things)
+	writeOpenHABCountMetrics(&buf, status)
+	writeOpenHABInfoMetrics(&buf, status.Version)
+
+	return buf.Bytes()
+}
+
+// boolValue converts a flag to the 1 or 0 of a gauge.
+func boolValue(b bool) float64 {
+	if b {
+		return 1
+	}
+	return 0
+}
+
+// writeOpenHABStateMetrics writes the up and process_running gauges, which
+// exist in every polled state.
+func writeOpenHABStateMetrics(buf *bytes.Buffer, status collector.OpenHABStatus) {
+	writeGaugeHeader(buf, "pimonitor_openhab_up", "Whether the openHAB REST API answered (1) or not (0).")
+	writeMetric(buf, "pimonitor_openhab_up", "", "", boolValue(status.State == collector.OpenHABStateOK))
+	writeGaugeHeader(buf, "pimonitor_openhab_process_running", "Whether the openHAB Java process was found (1) or not (0).")
+	writeMetric(buf, "pimonitor_openhab_process_running", "", "", boolValue(status.Process != nil))
+}
+
+// writeOpenHABValueMetrics writes the process, JVM heap, uptime and start
+// level gauges; a value that is absent writes no series.
+func writeOpenHABValueMetrics(buf *bytes.Buffer, status collector.OpenHABStatus) {
+	if p := status.Process; p != nil {
+		writeGaugeHeader(buf, "pimonitor_openhab_process_resident_bytes", "Resident memory of the openHAB process in bytes.")
+		writeMetric(buf, "pimonitor_openhab_process_resident_bytes", "", "", float64(p.RSSBytes))
+	}
+	if j := status.JVM; j != nil {
+		writeGaugeHeader(buf, "pimonitor_openhab_jvm_heap_used_bytes", "openHAB JVM heap used in bytes.")
+		writeMetric(buf, "pimonitor_openhab_jvm_heap_used_bytes", "", "", float64(j.HeapUsedBytes))
+		writeGaugeHeader(buf, "pimonitor_openhab_jvm_heap_total_bytes", "openHAB JVM heap total in bytes.")
+		writeMetric(buf, "pimonitor_openhab_jvm_heap_total_bytes", "", "", float64(j.HeapTotalBytes))
+	}
+	if status.UptimeSeconds != nil {
+		writeGaugeHeader(buf, "pimonitor_openhab_uptime_seconds", "Seconds since the openHAB process started.")
+		writeMetric(buf, "pimonitor_openhab_uptime_seconds", "", "", float64(*status.UptimeSeconds))
+	}
+	if status.StartLevel != nil {
+		writeGaugeHeader(buf, "pimonitor_openhab_start_level", "openHAB start level.")
+		writeMetric(buf, "pimonitor_openhab_start_level", "", "", float64(*status.StartLevel))
+	}
+}
+
+// writeOpenHABThingsMetrics writes one sample per counted Thing status, 0 for
+// a status without Things (decision record 0017).
+func writeOpenHABThingsMetrics(buf *bytes.Buffer, things *collector.OpenHABThings) {
+	if things == nil {
+		return
+	}
+	writeGaugeHeader(buf, "pimonitor_openhab_things", "Number of openHAB Things per status.")
+	for _, st := range collector.OpenHABThingStatuses() {
+		writeMetric(buf, "pimonitor_openhab_things", "status", st, float64(things.ByStatus[st]))
+	}
+}
+
+// writeOpenHABCountMetrics writes the Item and add-on counts when known.
+func writeOpenHABCountMetrics(buf *bytes.Buffer, status collector.OpenHABStatus) {
+	if status.ItemsCount != nil {
+		writeGaugeHeader(buf, "pimonitor_openhab_items", "Number of openHAB Items.")
+		writeMetric(buf, "pimonitor_openhab_items", "", "", float64(*status.ItemsCount))
+	}
+	if status.AddonsInstalled != nil {
+		writeGaugeHeader(buf, "pimonitor_openhab_addons_installed", "Number of installed openHAB add-ons.")
+		writeMetric(buf, "pimonitor_openhab_addons_installed", "", "", float64(*status.AddonsInstalled))
+	}
+}
+
+// writeOpenHABInfoMetrics writes the version info series, unless the version
+// is empty or longer than openHABMaxVersionLabel bytes; it is never truncated.
+func writeOpenHABInfoMetrics(buf *bytes.Buffer, version string) {
+	if version == "" || len(version) > openHABMaxVersionLabel {
+		return
+	}
+	writeGaugeHeader(buf, "pimonitor_openhab_info", "openHAB version; the value is always 1.")
+	writeMetric(buf, "pimonitor_openhab_info", "version", version, 1)
 }
 
 // renderPrometheusMetrics encodes snap as Prometheus text-exposition
