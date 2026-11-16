@@ -111,7 +111,7 @@ All by the Dev, once the code is green:
 
 - `docs/API.md`, *`GET /metrics`*: first sentence "the current snapshot and the openHAB status"; the eleven rows of
   *Approach* in the metrics table, with source field, label and when omitted (state rule, absent field, seven
-  statuses, `info` only for a version of at most 64 bytes); `pimonitor_openhab_up 1` and one `things` line in the example. *`GET /api/v1/openhab`*: one sentence
+  statuses, `info` only for a version of at most 64 bytes); `pimonitor_openhab_up 1` and the seven `things` lines in the fixed order of decision 0017 in the example. *`GET /api/v1/openhab`*: one sentence
   linking the Prometheus rows.
 - `docs/areas/http-api.md`, *Prometheus endpoint*: "current snapshot" sentence as above; the label list gains
   `status` and `version`; the families left out gain the openHAB ones (outside the three states, absent field, `info` for a
