@@ -94,7 +94,7 @@ type Config struct {
 	// rejecting the case where only one is set.
 	TLSCertFile string
 	TLSKeyFile  string
-	// PrometheusEnabled registers GET /metrics: the current snapshot
+	// PrometheusEnabled registers GET /metrics: the current snapshot and the openHAB status
 	// rendered in the Prometheus text exposition format, for a Prometheus
 	// server to scrape directly. Left false (the default) the route isn't
 	// registered at all, so it 404s rather than existing-but-empty. See

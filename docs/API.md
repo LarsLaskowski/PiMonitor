@@ -689,8 +689,8 @@ Notes:
 
 Returns the status of the openHAB installation on the same Pi, as of the last finished poll: process memory, JVM
 heap, Things, Items, add-ons, version and uptime. Detection, states and sources are described in
-[`docs/areas/openhab.md`](areas/openhab.md). The same values are exported on
-[`GET /metrics`](#get-metrics-prometheus) as `pimonitor_openhab_*` series.
+[`docs/areas/openhab.md`](areas/openhab.md). The state, process memory, JVM heap, uptime, start level, Thing counts per status, Item and add-on counts and version
+are also exported on [`GET /metrics`](#get-metrics-prometheus) as `pimonitor_openhab_*` series.
 
 It is registered unless `openhab.enabled` is `false`; with `false` the route returns `404 Not Found` and no request
 to openHAB is ever made. Authentication, gzip, `Cache-Control: no-store` and the shared in-flight limit apply as for
@@ -872,7 +872,13 @@ pimonitor_pihole_update_available{component="ftl"} 0
 pimonitor_openhab_up 1
 # HELP pimonitor_openhab_things Number of openHAB Things per status.
 # TYPE pimonitor_openhab_things gauge
+pimonitor_openhab_things{status="UNINITIALIZED"} 0
+pimonitor_openhab_things{status="INITIALIZING"} 0
+pimonitor_openhab_things{status="UNKNOWN"} 0
 pimonitor_openhab_things{status="ONLINE"} 41
+pimonitor_openhab_things{status="OFFLINE"} 1
+pimonitor_openhab_things{status="REMOVING"} 0
+pimonitor_openhab_things{status="REMOVED"} 0
 ```
 
 Metrics exposed (all gauges, prefixed `pimonitor_`):
