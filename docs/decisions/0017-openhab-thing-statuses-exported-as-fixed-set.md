@@ -1,6 +1,6 @@
 # 0017: openHAB Thing counts are exported to Prometheus as the fixed set of seven statuses
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-16
 - **Area:** HTTP API
 - **Source:** Issue #182
