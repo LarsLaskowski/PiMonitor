@@ -1122,3 +1122,51 @@ func TestHandleOpenHAB_TokenNotServed_AC8(t *testing.T) {
 		t.Fatalf("body = %s, want no token", body)
 	}
 }
+
+// promGet serves one GET /metrics against a server whose snapshot is fixed and
+// whose openHAB status is status.
+func promGet(t *testing.T, status collector.OpenHABStatus) (string, collector.Snapshot) {
+	t.Helper()
+	s, fm := newTestServer(Config{PrometheusEnabled: true})
+	fm.openhab = status
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	return rec.Body.String(), fm.snapshot
+}
+
+func TestHandlePrometheusMetrics_OpenHABNotInstalledKeepsBody_AC1(t *testing.T) {
+	for _, state := range []string{collector.OpenHABStateNotInstalled, collector.OpenHABStatePending, ""} {
+		t.Run("AC1 state "+state, func(t *testing.T) {
+			status := collector.OpenHABStatus{State: state, Version: "5.2.4", ItemsCount: new(int)}
+			body, snap := promGet(t, status)
+			if want := string(renderPrometheusMetrics(snap)); body != want {
+				t.Fatalf("body differs from renderPrometheusMetrics:\ngot:\n%s\nwant:\n%s", body, want)
+			}
+			if strings.Contains(body, "pimonitor_openhab_") {
+				t.Fatalf("body names an openHAB metric:\n%s", body)
+			}
+		})
+	}
+}
+
+func TestHandlePrometheusMetrics_OpenHABAfterExistingFamilies_AC6(t *testing.T) {
+	status := collector.OpenHABStatus{State: collector.OpenHABStateOK, Version: "5.2.4"}
+	body, snap := promGet(t, status)
+	existing := string(renderPrometheusMetrics(snap))
+	if !strings.HasPrefix(body, existing) {
+		t.Fatalf("AC6 body does not start with the existing families:\n%s", body)
+	}
+	rest := strings.TrimPrefix(body, existing)
+	if !strings.HasPrefix(rest, "# HELP pimonitor_openhab_up ") {
+		t.Fatalf("AC6 openHAB part = %q, want it to start with the up family", rest)
+	}
+	if !strings.Contains(rest, "pimonitor_openhab_up 1\n") {
+		t.Fatalf("AC6 openHAB part lacks up 1:\n%s", rest)
+	}
+	if strings.Contains(existing, "pimonitor_openhab_") {
+		t.Fatalf("AC6 existing families name an openHAB metric:\n%s", existing)
+	}
+}
