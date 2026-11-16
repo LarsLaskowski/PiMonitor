@@ -36,12 +36,15 @@ Values are those of the stored status that `GET /api/v1/openhab` serves ([openHA
   `ONLINE`, `OFFLINE`, `REMOVING`, `REMOVED`, in this order) has a series, `0` when no Thing has it, so an emptied
   status drops to `0` instead of vanishing; other statuses count in none, as in `by_status`.
 - E4: A hostile `version` (quotes, backslashes, line feed) is escaped as `\\`, `\"`, `\n`; the scrape still parses.
+  A `version` longer than 64 bytes writes no `info` series, as if absent: whoever answers on `base_url` without a
+  token chooses it, and every distinct value is a series Prometheus stores.
 - E5: With `api_key` set, `GET /metrics` stays refused without the key, as today.
 
 ## Non-functional requirements
 
 - N1: No new configuration.
-- N2: At most one `info` and seven `things` series; no per-Thing series, no label besides `status` and `version`.
+- N2: At most one `info` and seven `things` series, the `version` label at most 64 bytes; no per-Thing series, no
+  label besides `status` and `version`.
 - N3: A scrape reads the stored status only; no request to openHAB.
 - N4: Existing families are unchanged and come first; each openHAB family has one `# HELP`/`# TYPE … gauge` pair.
 
@@ -59,8 +62,8 @@ Values are those of the stored status that `GET /api/v1/openhab` serves ([openHA
   the scrape itself polls nothing (S1–S4, E2, N3).
 - AC4: When the Things source answered (`things` present in the status, also with total 0), `pimonitor_openhab_things` has exactly seven series, one per counted status in
   the order of E3, each with its count from `by_status` or `0`; without `things` it has none (S1, S2, E3, N2).
-- AC5: When the status has a version, `pimonitor_openhab_info{version="<version>"} 1` is written with the label
-  escaped as in E4; without a version it is not written (S1, S3, E4, N2).
+- AC5: When the status has a version of at most 64 bytes, exactly one `pimonitor_openhab_info{version="<version>"} 1`
+  line is written with the label escaped as in E4; without a version, or with a longer one, it is not written (S1, S3, E4, N2).
 - AC6: Each openHAB family that has a series is preceded once by `# HELP` and `# TYPE <name> gauge`, after the
   existing families, and none is written twice in one scrape (N4).
 
@@ -80,15 +83,15 @@ Values are those of the stored status that `GET /api/v1/openhab` serves ([openHA
 - All seven statuses or only those present? Answered: all seven (E3). `by_status` counts only the fixed list
   `openHABThingStatuses` (`internal/collector/openhab.go`), so a `0` is a real reading; this refines the issue's
   "one series per status present". Only those seven names reach the `status` label.
-- Is `version` bounded? Answered: only by the 8 MiB limit of the root call, as in the JSON; decoded as valid UTF-8 and
-  escaped (E4).
+- Is `version` bounded? Answered: the label is, at 64 bytes before escaping (E4, Security review 1); the JSON keeps
+  the 8 MiB limit of the root call. JSON decoding makes it valid UTF-8.
 - Does `/metrics` widen who sees Thing data? Answered: no; same `api_key` chain (`internal/httpapi/routes.go`), and
   counts only.
 
 ## Area documents
 
 - `docs/areas/http-api.md`, *Prometheus endpoint*: labels `status` and `version`; the openHAB families among those
-  left out without a reading.
+  left out without a reading; the 64-byte cap on `version`.
 - `docs/areas/openhab.md`: the status is also exported on `GET /metrics`; a missing value has no series.
 - `docs/API.md`, *`GET /metrics`*: the new rows with source field and when each is omitted.
 - `docs/integrations/openhab.md`, *Prometheus alternative*: the examples of S6.
@@ -107,3 +110,9 @@ heap maximum) and raised four minor objections.
    none, with a test for `State: ""`.
 4. The S6 alert keeps firing for a disabled Thing (counted as `UNINITIALIZED`). Accepted: the integration guide adds
    a note under the example saying so and how to exclude that status.
+
+## Amendments
+
+| Criterion | Change | Reason | Step | Decided by |
+| --------- | ------ | ------ | ---- | ---------- |
+| AC5 | `info` written only for a version of at most 64 bytes, exactly one line | Security plan review, finding 1: an attacker-chosen version as an unbounded Prometheus label | 3 | Lead |
