@@ -132,10 +132,10 @@ under it by design.
 
 - Registered only when `prometheus_enabled` is true; it then behaves like every other route behind the API chain
   (key, gzip, no-store, the shared concurrency limit).
-- It answers `200` with `Content-Type: text/plain; version=0.0.4; charset=utf-8`: the current snapshot in the
-  Prometheus text exposition format, every metric a gauge named `pimonitor_...`, each family preceded once by its
+- It answers `200` with `Content-Type: text/plain; version=0.0.4; charset=utf-8`: the current snapshot followed by the
+  openHAB status in the Prometheus text exposition format, every metric a gauge named `pimonitor_...`, each family preceded once by its
   `# HELP` and `# TYPE` lines.
-- Per-device families carry one label (`core`, `zone`, `mount`, `iface` or `component`). In a label value, `\`, `"`
+- Per-device families carry one label (`core`, `zone`, `mount`, `iface`, `component`, `status` or `version`). In a label value, `\`, `"`
   and line feed are escaped as `\\`, `\"` and `\n`; everything else, non-ASCII text included, is passed through.
   Values are plain decimal numbers (never exponent notation), or `NaN`, `+Inf`, `-Inf`.
 - The overall CPU usage is its own unlabeled family, never a member of the per-core family.
@@ -144,7 +144,10 @@ under it by design.
   the CPU families (overall and per-core) while the latest fast tick has no CPU reading (the first tick after start,
   a failed `/proc/stat` read), the memory and swap families while the latest fast tick failed to read
   `/proc/meminfo`, per-core CPU without data, filesystem and network families when they hold no entry, and the Pi-hole family when Pi-hole is not
-  installed. Devices appear in the same order and with the same filtering as in `GET /api/v1/metrics`.
+  installed. The openHAB families are left out outside the states `ok`, `running_unreachable` and
+  `installed_not_running`, each value family when its field is absent, and `pimonitor_openhab_info` when the version
+  is empty or longer than 64 bytes; the Thing counts are the exception to "left out": all seven statuses are written,
+  `0` included, whenever the Things source answered. Devices appear in the same order and with the same filtering as in `GET /api/v1/metrics`.
 - The list of metric names and labels is in [`API.md`](../API.md#get-metrics-prometheus).
 
 ### Self-traffic counters: `/api/v1/serverstats`
@@ -201,6 +204,7 @@ under it by design.
 
 ## Related decisions
 
+- [0017: openHAB Thing counts are exported to Prometheus as the fixed set of seven statuses](../decisions/0017-openhab-thing-statuses-exported-as-fixed-set.md)
 - [0010: A missing CPU or memory reading is left out of Prometheus, the v1 snapshot keeps its 0](../decisions/0010-missing-reading-left-out-of-prometheus.md)
 
 ## Not here

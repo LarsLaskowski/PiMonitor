@@ -131,7 +131,7 @@ never run in parallel; a third loop, the optional openHAB poll, runs beside them
 first fast tick (so its first poll sees the memory total) and joins it on shutdown. It detects openHAB from its install
 paths and its `java` process in `/proc`, and calls openHAB's REST API one request at a time. Since an unreachable or
 hung openHAB can hold a poll for several seconds, the loop is separate from both ticks: it can never delay them or
-`/healthz`. `GET /api/v1/openhab` serves the last finished result, or `pending` before the first. Behavior:
+`/healthz`. `GET /api/v1/openhab` and `GET /metrics` serve the last finished result, or `pending` before the first. Behavior:
 [openHAB](areas/openhab.md). The one deviation from "no network access in the collector" (see the Pi-hole reasoning
 above) is loopback HTTP to openHAB, guarded in [decision 0013](decisions/0013-openhab-requests-only-to-loopback-http.md).
 

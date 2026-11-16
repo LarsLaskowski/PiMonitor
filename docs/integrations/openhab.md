@@ -196,7 +196,21 @@ PiMonitor exposes a native `GET /metrics` endpoint in the Prometheus text
 exposition format — set `prometheus_enabled: true` in the config file and
 point a `scrape_config` at it directly, no extra exporter required. See
 [`docs/API.md`](../API.md#get-metrics-prometheus) for the metric names,
-labels, and an example `prometheus.yml`.
+labels, and an example `prometheus.yml`. The openHAB status is part of it
+(`pimonitor_openhab_*`), so Prometheus can alert on openHAB itself:
+
+```promql
+# openHAB's resident memory as a share of the Pi's RAM
+pimonitor_openhab_process_resident_bytes / pimonitor_memory_total_bytes
+
+# Things that are not ONLINE
+pimonitor_openhab_things{status!="ONLINE"} > 0
+```
+
+A disabled Thing counts as `UNINITIALIZED`, so the second expression keeps
+firing for it. Exclude that status with
+`pimonitor_openhab_things{status!~"ONLINE|UNINITIALIZED"} > 0` if you do not
+want to be alerted about Things that are off or not yet initialized.
 
 The rest of this section describes an alternative for cases where the
 built-in metric names/labels don't fit (e.g. an existing dashboard already

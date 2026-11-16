@@ -42,11 +42,14 @@ Each source is collected on its own; a failing source leaves only its values abs
 | ------ | ------ | ----- |
 | Process | PID, resident memory in bytes, its percentage of the total RAM of the latest metrics snapshot | Reported whenever the process is found, whatever the REST calls do. The percentage is absent when the total RAM is 0. |
 | `GET /rest/` | `version` | Decides `ok`; when it fails the other REST calls are skipped. |
-| `GET /rest/systeminfo` | start level, JVM heap used (total minus free) and total | Heap used is absent when free exceeds total. openHAB reports no heap maximum. |
+| `GET /rest/systeminfo` | start level, JVM heap used (total minus free) and total | Heap used and total are absent when free exceeds total. openHAB reports no heap maximum. |
 | `GET /rest/things?summary=true` | Things total, the count per Thing status, the Things that are not ONLINE | Only the statuses `UNINITIALIZED`, `INITIALIZING`, `UNKNOWN`, `ONLINE`, `OFFLINE`, `REMOVING` and `REMOVED` are counted per status; the total counts every Thing. |
 | `GET /rest/items?fields=name` | number of Items | Entries are counted whatever they hold; no Item state is read, stored or served. |
 | `GET /rest/addons` | number of installed add-ons | Entries with `installed: true`. |
 
+- **Prometheus.** `GET /metrics` exports these values as `pimonitor_openhab_*` series (state, process memory, heap, uptime,
+  start level, Thing counts per status, Item and add-on counts, version); an absent value has no series, never a `0`.
+  Names and rules: [`API.md`](../API.md#get-metrics-prometheus).
 - **Uptime** is the time since the process started (`/proc/uptime` minus the start time), in whole seconds. openHAB's
   own `systemInfo.uptime`, also in seconds, is used only when no process was found.
 - **Not-ONLINE list.** Up to 10 Things whose status is not `ONLINE`, sorted by UID, each with UID, label, status,
@@ -109,7 +112,8 @@ Each source is collected on its own; a failing source leaves only its values abs
 - Unreachable, slow, hostile or malformed openHAB answers never fail PiMonitor's own collection; they leave values
   absent and are logged as above.
 - With an API token set, `GET /api/v1/openhab` serves Thing UIDs, labels and status descriptions that openHAB itself
-  serves only to authenticated users; the endpoint is open to everyone who can reach PiMonitor unless `api_key` is set.
+  serves only to authenticated users; the endpoint is open to everyone who can reach PiMonitor unless `api_key` is set; `GET /metrics` serves their counts per status under the same `api_key`.
+- Without an API token the REST values, and so their Prometheus series, come from whatever process answers on `base_url`.
 
 ## Related decisions
 
