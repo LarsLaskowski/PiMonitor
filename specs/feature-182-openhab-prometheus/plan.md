@@ -148,3 +148,65 @@ request path (0014).
 ## Out of scope / follow-ups
 
 Spec, *Out of scope*.
+
+## Challenge notes
+
+Devil's Advocate, mode `plan`, feature #182 (specs/feature-182-openhab-prometheus)
+
+The plan holds up. I checked its verified facts against the code and they are accurate:
+- `handlePrometheusMetrics` renders only the snapshot (`internal/httpapi/handlers.go:143-146`).
+- `Collector.OpenHAB` returns `not_installed` when the poll is off (`internal/collector/collector.go:745-750`).
+- `pending` carries only the base fields (`internal/collector/openhab.go:213-222`).
+- `OpenHABJVM` has no heap maximum (`openhab.go:92-95`).
+- `applySystemInfo` sets `JVM` only when free ≤ total (`openhab.go:492-502`).
+- `summarizeThings` counts only the seven fixed statuses and returns a non-nil, empty `ByStatus` for an empty list (`openhab.go:134`, `506-516`).
+- Uptime from `/proc` overrides the systeminfo value (`openhab.go:254-283`).
+- `version` is set only after the root call succeeds (`pollREST`, `openhab.go:438-451`).
+- `labelValueReplacer` escapes `\`, `"` and line feed (`internal/httpapi/prometheus.go`).
+- `/metrics` and `/api/v1/openhab` both go through the `api: true` chain (`internal/httpapi/routes.go:66-85`).
+
+Other checks:
+- **Need:** the change is not already in the code.
+- **Scope:** decision record 0017 exists. The documentation list covers every file that lists the Prometheus families: `docs/API.md`, `docs/areas/http-api.md`, `docs/integrations/openhab.md`, `README.md`, `SECURITY.md`, `docs/ARCHITECTURE.md`, and `.squad/project.md` via the orchestrator.
+- **Tier:** `standard` fits. The feature reuses the existing escaping and the existing `api_key` chain without changing either, and *Security areas touched* is filled in, so Security's plan review runs.
+- **Alternatives:** option 2 (a separate renderer joined by the handler) is the less invasive choice.
+- **Target host / sample:** not applicable; there is no installer and no new parser.
+
+Objections:
+
+1. minor — Tester: the AC5 hostile-version expectation in *Tests per criterion* is written half as a Go escaped string. Its inner backslashes are escaped but the quotes around the label value are not, so copying it into an interpreted string literal won't compile, and copying it into a raw string gives the wrong bytes. Write the expected line as a raw-string literal of the exact output: `` `pimonitor_openhab_info{version="5.2\\4\"} 1\nfake 1"} 1` ``. I checked this against `labelValueReplacer` (`internal/httpapi/prometheus.go`) for the input `"5.2\\4\"} 1\nfake 1"`. Also assert that the output has exactly one line starting with `pimonitor_openhab_info`. Why minor: the intent is clear and only the test literal changes.
+
+## Security notes
+
+Security plan review: specs/feature-182-openhab-prometheus (spec.md and plan.md), mode `plan`
+
+Files read: /home/user/PiMonitor/specs/feature-182-openhab-prometheus/spec.md, /home/user/PiMonitor/specs/feature-182-openhab-prometheus/plan.md, /home/user/PiMonitor/.squad/project.md (Security areas), /home/user/PiMonitor/.squad/routing.md (Tiers), /home/user/PiMonitor/SECURITY.md, /home/user/PiMonitor/docs/areas/openhab.md, /home/user/PiMonitor/internal/httpapi/prometheus.go, /home/user/PiMonitor/internal/httpapi/handlers.go, /home/user/PiMonitor/internal/httpapi/routes.go, /home/user/PiMonitor/internal/collector/openhab.go, /home/user/PiMonitor/internal/collector/collector.go, /home/user/PiMonitor/internal/config/config.go.
+
+**Tier and listed areas.** `standard` is correct. The change reuses the existing `api_key` chain: `/metrics` and `/api/v1/openhab` are both `api: true` in `routes.go:61-86`. It reuses the existing `labelValueReplacer` and adds no route, listener or credential handling. The Thing counts per status are a subset of what `GET /api/v1/openhab` already serves under the same key. *Security areas touched* lists both affected areas (HTTP surface, openHAB API token), and the plan's doc updates to SECURITY.md and `.squad/project.md` cover the new exposure. I found no unlisted area.
+
+**Checks that hold:**
+- **Escaping.** The `status` label comes only from the fixed list of seven, so the only free-text label is `version`. The existing replacer escapes `\`, `"` and LF, which are exactly the characters the 0.0.4 text format requires escaped. A raw CR or NUL passes through, which the format allows inside a quoted label value.
+- **UTF-8 measurement (fact 9).** Fact 9 says JSON decoding turns invalid UTF-8 in `version` into valid UTF-8, and the label's validity depends on that, so I measured it. I wrote a Go program at /tmp/claude-0/-home-user-PiMonitor/896d997e-3cf5-5d85-b755-590a08a9626a/scratchpad/m/main.go. It decodes `{"version":"5.2\xff\xfe\u0000\r\n\"x\\"}` with `encoding/json` and applies the same `strings.NewReplacer` as `prometheus.go:208`. Command: `go run .` in that folder. Output:
+  `err=<nil> valid=true decoded="5.2��\x00\r\n\"x\\" escaped="5.2��\x00\r\\n\\\"x\\\\"`
+  Fact 9 holds: invalid bytes become U+FFFD, and LF, quote and backslash are escaped.
+- **Concurrency (N3).** `OpenHABCollector.Status` (`openhab.go:213-222`) returns the stored status under RLock. Each poll builds a new status and a new `ByStatus` map, so reading it during a scrape is the same as the JSON handler does today.
+- **Missing readings.** Pending, unknown and empty states write nothing (E1, AC1), so no reading is fabricated.
+
+**Findings**
+
+1. [BLOCKING] The `version` label has no size bound that suits a series label, and its source is untrusted on a default install.
+   - **Plan passages.** *Security considerations* says "`version` is bounded by the existing 8 MiB limit". The spec's *Open questions* says "Is `version` bounded? Answered: only by the 8 MiB limit of the root call". N2 counts "at most one `info`" series.
+   - **What the code allows.** Without a token nothing checks who answers the REST call (`docs/areas/openhab.md:89`, "Without a token nothing is checked"). `poll` (`openhab.go:254-283`) sets state `ok` whenever the root call returns a non-empty `runtimeInfo.version` (`openhab.go:438-451`). So when openHAB is installed but down, any local user who binds its port chooses `version`: up to 8 MiB, and a new value on every poll (minimum interval 60 s, `config.go:197-200`).
+   - **What is new.** Today that string only reaches the JSON and the dashboard (`textContent`), neither of which keeps it. With this change it becomes a Prometheus label. Prometheus keeps every distinct label value as its own series in its head block and index, and sets no default `label_value_length_limit`. The attacker can therefore add a new series of up to 8 MiB (up to 16 MiB once escaped) every minute, roughly 1 GB per 2-hour head block. Each scrape also renders and sends that body from the Pi.
+   - **Why the plan misses it.** "At most one `info` series" holds per scrape, not over time. The 8 MiB limit bounds a parse step, not a stored label.
+   - **Smallest fix.** Add a length cap to `renderOpenHABMetrics`:
+     - Write `pimonitor_openhab_info` only when `len(status.Version)` is at most a fixed limit, e.g. 64 bytes; real versions such as `5.2.4` or `5.2.0-SNAPSHOT` are well below that.
+     - A longer version writes no `info` series, as if it were absent (E2 semantics, so no fabricated or truncated value).
+     - State the cap in E4/AC5/N2 and in the *Open questions* answer, and replace the plan's *Security considerations* bullet with it. Document it in `docs/API.md` and `docs/areas/http-api.md`.
+     - Add AC5 test cases at exactly the limit (written) and one byte over (not written).
+   - **Effect on tier.** A size bound is input handling, so the tier stays `standard`. Churn of short versions at one per poll remains possible, which matches any other version label and needs no further control.
+
+2. [NON-BLOCKING] Note in the documentation that the openHAB series can come from an impostor.
+   - **Problem.** Without a token, `up`, `items`, `addons_installed` and `things` can come from a process that is not openHAB, as the JSON already can. Operators who alert on these series in Prometheus should know.
+   - **Smallest fix.** Add one sentence to the *Limits and errors* bullet the plan already adds to `docs/areas/openhab.md`: "Without an API token the REST values, and so their Prometheus series, come from whatever process answers on `base_url`."
+   - **Recommendation:** fix now in this pull request; it is one sentence in a document the plan already edits.
