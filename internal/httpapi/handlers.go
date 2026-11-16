@@ -135,14 +135,16 @@ func (s *Server) handleConfig(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, s.log.Error, s.cfg.Client)
 }
 
-// handlePrometheusMetrics serves GET /metrics: the current snapshot
-// rendered in the Prometheus text exposition format, for a Prometheus
+// handlePrometheusMetrics serves GET /metrics: the current snapshot and the
+// openHAB status rendered in the Prometheus text exposition format, for a Prometheus
 // server to scrape directly instead of polling the JSON
 // GET /api/v1/metrics endpoint. Only registered when
 // s.cfg.PrometheusEnabled is true — see docs/API.md.
 func (s *Server) handlePrometheusMetrics(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set(contentTypeHeader, prometheusContentType)
-	_, _ = w.Write(renderPrometheusMetrics(s.metrics.Snapshot()))
+	body := renderPrometheusMetrics(s.metrics.Snapshot())
+	body = append(body, renderOpenHABMetrics(s.metrics.OpenHAB())...)
+	_, _ = w.Write(body)
 }
 
 // handleProcesses serves GET /api/v1/processes: the current top-N

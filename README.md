@@ -56,7 +56,7 @@ automation systems like openHAB). Runs as a systemd service.
   integrations that only poll a single value - see
   [`docs/API.md`](docs/API.md)
 - **Prometheus `/metrics` endpoint** (optional, off by default) - the
-  current snapshot in the Prometheus text exposition format, for scraping
+  current snapshot and the local openHAB status in the Prometheus text exposition format, for scraping
   straight into Prometheus/Grafana with no extra exporter - see
   [`docs/API.md`](docs/API.md#get-metrics-prometheus)
 

@@ -689,7 +689,8 @@ Notes:
 
 Returns the status of the openHAB installation on the same Pi, as of the last finished poll: process memory, JVM
 heap, Things, Items, add-ons, version and uptime. Detection, states and sources are described in
-[`docs/areas/openhab.md`](areas/openhab.md).
+[`docs/areas/openhab.md`](areas/openhab.md). The state, process memory, JVM heap, uptime, start level, Thing counts per status, Item and add-on counts and version
+are also exported on [`GET /metrics`](#get-metrics-prometheus) as `pimonitor_openhab_*` series.
 
 It is registered unless `openhab.enabled` is `false`; with `false` the route returns `404 Not Found` and no request
 to openHAB is ever made. Authentication, gzip, `Cache-Control: no-store` and the shared in-flight limit apply as for
@@ -815,7 +816,7 @@ Notes:
 
 ### `GET /metrics` (Prometheus)
 
-Returns the current snapshot rendered in the
+Returns the current snapshot and the openHAB status rendered in the
 [Prometheus text exposition format](https://prometheus.io/docs/instrumenting/exposition_formats/),
 for a Prometheus server to scrape directly instead of polling the JSON
 `GET /api/v1/metrics` endpoint. Unlike the rest of this document, this path
@@ -866,6 +867,18 @@ pimonitor_updates_pending 3
 pimonitor_pihole_update_available{component="core"} 1
 pimonitor_pihole_update_available{component="web"} 0
 pimonitor_pihole_update_available{component="ftl"} 0
+# HELP pimonitor_openhab_up Whether the openHAB REST API answered (1) or not (0).
+# TYPE pimonitor_openhab_up gauge
+pimonitor_openhab_up 1
+# HELP pimonitor_openhab_things Number of openHAB Things per status.
+# TYPE pimonitor_openhab_things gauge
+pimonitor_openhab_things{status="UNINITIALIZED"} 0
+pimonitor_openhab_things{status="INITIALIZING"} 0
+pimonitor_openhab_things{status="UNKNOWN"} 0
+pimonitor_openhab_things{status="ONLINE"} 41
+pimonitor_openhab_things{status="OFFLINE"} 1
+pimonitor_openhab_things{status="REMOVING"} 0
+pimonitor_openhab_things{status="REMOVED"} 0
 ```
 
 Metrics exposed (all gauges, prefixed `pimonitor_`):
@@ -883,6 +896,16 @@ Metrics exposed (all gauges, prefixed `pimonitor_`):
 | `network_receive_bytes_per_second`, `network_transmit_bytes_per_second` | `iface` | Omitted entirely when network monitoring is disabled (`network_enabled: false`), same as `network` in `GET /api/v1/metrics` |
 | `updates_pending` | — | Count of upgradable apt packages |
 | `pihole_update_available` | `component` (`core`, `web`, `ftl`) | `1` when that Pi-hole component has an update, else `0`; same rules as `pihole` in `GET /api/v1/metrics`. Omitted entirely when Pi-hole is not installed |
+| `openhab_up` | — | `1` when the REST root answered (state `ok`), else `0`. All `openhab_*` series are written only in the states `ok`, `running_unreachable` and `installed_not_running` of `GET /api/v1/openhab`; none in `pending`, `not_installed` or when `openhab.enabled` is `false` |
+| `openhab_process_running` | — | `1` when the openHAB Java process was found, else `0`; written together with `openhab_up` |
+| `openhab_process_resident_bytes` | — | `process.rss_bytes`; omitted when no process was found |
+| `openhab_jvm_heap_used_bytes`, `openhab_jvm_heap_total_bytes` | — | `jvm.heap_used_bytes` and `jvm.heap_total_bytes`; omitted together when `jvm` is absent. openHAB reports no heap maximum, so there is none |
+| `openhab_uptime_seconds` | — | `uptime_seconds`; omitted when absent |
+| `openhab_start_level` | — | `start_level`; omitted when absent |
+| `openhab_things` | `status` (`UNINITIALIZED`, `INITIALIZING`, `UNKNOWN`, `ONLINE`, `OFFLINE`, `REMOVING`, `REMOVED`) | Seven series in this order whenever `things` is present, `0` for a status no Thing has; omitted when `things` is absent. A disabled Thing counts as `UNINITIALIZED`. Thing UIDs and labels are never exported |
+| `openhab_items` | — | `items_count`; omitted when absent |
+| `openhab_addons_installed` | — | `addons_installed`; omitted when absent |
+| `openhab_info` | `version` | Value always `1`; omitted when `version` is empty or longer than 64 bytes (counted before escaping; never truncated) |
 
 Example `prometheus.yml` scrape config:
 

@@ -49,7 +49,7 @@ limits, patterns or sequences.
   `internal/collector/openhab.go`, `openhab_linux.go`): sent only as a bearer header to `base_url`, only over a
   connection whose server side runs as the owner of `/var/lib/openhab` (looked up in `/proc/net/tcp*`), never
   logged or served; `GET /api/v1/openhab` serves Thing data that openHAB shows only to authenticated users, so
-  `api_key` governs who reads it — [openHAB](../docs/areas/openhab.md)
+  `api_key` governs who reads it; `GET /metrics` serves the Thing counts per status under the same key — [openHAB](../docs/areas/openhab.md)
 - Logging: `slog` calls across `internal/` and `cmd/pimonitor`; no call logs the API key; the notifier names a
   webhook by its index in `alerts.webhooks` and by its URL's scheme and host, and redacts the URL in `*url.Error`
   texts, so it never logs the URL's userinfo, path, query or fragment itself — except where the endpoint echoes

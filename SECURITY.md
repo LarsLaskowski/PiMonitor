@@ -65,7 +65,7 @@ reporters and reviewers have context:
   the directory is missing, the lookup fails or the platform is not Linux, the token is not sent. It never appears in
   a log line, in `GET /api/v1/openhab`, in `GET /api/v1/config` or in any other response. With an
   `openhab.api_token` set, `GET /api/v1/openhab` serves Thing UIDs, labels and status descriptions that openHAB itself
-  serves only to authenticated users; set `api_key` if the LAN should not read them.
+  serves only to authenticated users (`GET /metrics` serves their counts per status); set `api_key` if the LAN should not read them.
 - **Webhook URLs are often the webhook's credential** (Slack, Discord, ntfy tokens in the path or query). The full
   URLs live only in the configuration file (mode `640 root:pimonitor`). The service log names a webhook by its index
   in `alerts.webhooks` and the URL's scheme and host; the notifier never logs userinfo, path, query or fragment

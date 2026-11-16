@@ -1317,3 +1317,22 @@ func TestOpenHABCollector_LoggerDefault_AC10(t *testing.T) {
 		t.Fatalf("logger() with a nil logger = %p, want slog.Default() %p", got, slog.Default())
 	}
 }
+
+func TestOpenHABThingStatuses(t *testing.T) {
+	want := []string{"UNINITIALIZED", "INITIALIZING", "UNKNOWN", "ONLINE", "OFFLINE", "REMOVING", "REMOVED"}
+	t.Run("AC4 fixed order", func(t *testing.T) {
+		if got := OpenHABThingStatuses(); !slices.Equal(got, want) {
+			t.Fatalf("OpenHABThingStatuses() = %v, want %v", got, want)
+		}
+	})
+	t.Run("AC4 returns a copy", func(t *testing.T) {
+		got := OpenHABThingStatuses()
+		if len(got) == 0 {
+			t.Fatal("OpenHABThingStatuses() is empty")
+		}
+		got[0] = "CHANGED"
+		if again := OpenHABThingStatuses(); !slices.Equal(again, want) {
+			t.Fatalf("after modifying the result, OpenHABThingStatuses() = %v, want %v", again, want)
+		}
+	})
+}

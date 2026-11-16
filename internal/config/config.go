@@ -117,7 +117,7 @@ type Config struct {
 	// as system.hostname.
 	HostnameEnabled bool `yaml:"hostname_enabled"`
 	// PrometheusEnabled toggles GET /metrics, a Prometheus text-exposition
-	// rendering of the current snapshot, served alongside the JSON
+	// rendering of the current snapshot and the openHAB status, served alongside the JSON
 	// /api/v1/... API. It defaults to false — a distinct opt-in rather than
 	// always-on avoids confusion between this path and /api/v1/metrics. When
 	// api_key is set, GET /metrics honours it exactly like every other

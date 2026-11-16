@@ -78,4 +78,5 @@ once in the [area document](../areas/README.md) of the record's area, and the re
 | [0014](0014-openhab-poll-runs-on-its-own-loop.md) | The openHAB poll runs on its own loop and serves its last finished result | Accepted | 2026-11-14 |
 | [0015](0015-openhab-values-from-real-5x-responses.md) | openHAB values are built from real openHAB 5.2.4 responses; uptime from the process | Accepted | 2026-11-14 |
 | [0016](0016-refused-openhab-call-without-token-logs-info.md) | A refused openHAB call without a configured token is logged at info | Accepted | 2026-11-14 |
+| [0017](0017-openhab-thing-statuses-exported-as-fixed-set.md) | openHAB Thing counts are exported to Prometheus as the fixed set of seven statuses | Accepted | 2026-11-16 |
 <!-- project:end index -->
