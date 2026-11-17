@@ -1418,3 +1418,48 @@ func TestWriteJSON_EncodeFailureCountedAs5xx_AC3(t *testing.T) {
 		t.Errorf("2xx = %d, want 0", got.ByStatusClass["2xx"])
 	}
 }
+
+func TestWriteJSON_EncodeFailureLogged_AC2(t *testing.T) {
+	var buf strings.Builder
+	log := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	s := nanMetricsServer(log)
+
+	serveGetEncoded(s, "/api/v1/metrics", "")
+
+	var line string
+	for _, l := range strings.Split(buf.String(), "\n") {
+		if strings.Contains(l, "failed to encode JSON response") {
+			line = l
+		}
+	}
+	if line == "" {
+		t.Fatalf("AC2 no log line with the message in %q", buf.String())
+	}
+	if !strings.Contains(line, "level=ERROR") {
+		t.Errorf("AC2 log line %q has no level=ERROR", line)
+	}
+	if !strings.Contains(line, "error=") {
+		t.Errorf("AC2 log line %q has no error attribute", line)
+	}
+}
+
+func TestWriteJSON_SuccessBodyUnchanged_AC4(t *testing.T) {
+	s, fm := newTestServer(Config{})
+
+	rec := serveGetEncoded(s, "/api/v1/metrics", "")
+
+	want, err := json.Marshal(fm.snapshot)
+	if err != nil {
+		t.Fatalf("marshal snapshot: %v", err)
+	}
+	want = append(want, '\n')
+	if rec.Code != http.StatusOK {
+		t.Errorf("AC4 status = %d, want %d", rec.Code, http.StatusOK)
+	}
+	if got, w := rec.Header().Get("Content-Type"), "application/json; charset=utf-8"; got != w {
+		t.Errorf("AC4 Content-Type = %q, want %q", got, w)
+	}
+	if got := rec.Body.String(); got != string(want) {
+		t.Errorf("AC4 body = %q, want %q", got, want)
+	}
+}
