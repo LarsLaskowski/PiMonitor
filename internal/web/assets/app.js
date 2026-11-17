@@ -1177,14 +1177,15 @@
   }
 
   function renderHistory(hist) {
-    const hadChart = openhabHasChart(latestHistory);
+    const hadSignature = openhabChartSignature(latestHistory);
     latestHistory = hist;
     const { newestPoint } = historyBounds(hist);
     historySince = newestPoint ? newestPoint.t : null;
-    // The memory chart block exists only while a series holds two points, so
-    // the card is rebuilt when that changes (a rendered state only; the
-    // pending and not_installed ones have no card body).
-    if (hadChart !== openhabHasChart(hist) && latestOpenHAB
+    // The card's chart block (label, legend) is built by renderOpenHAB, so the
+    // card is rebuilt when the chart's signature changes, not only when the
+    // chart appears or disappears (a rendered state only; the pending and
+    // not_installed ones have no card body).
+    if (hadSignature !== openhabChartSignature(hist) && latestOpenHAB
         && latestOpenHAB.state !== 'pending' && latestOpenHAB.state !== 'not_installed') {
       renderOpenHAB(latestOpenHAB);
     }
@@ -1311,8 +1312,13 @@
     return lines;
   }
 
-  function openhabHasChart(hist) {
-    return openhabChartLines(hist).length > 0;
+  // What the card's label and legend show of the chart: the line keys and the
+  // largest value. Empty without a chart.
+  function openhabChartSignature(hist) {
+    const lines = openhabChartLines(hist);
+    if (!lines.length) return '';
+    const largest = Math.max(...lines.flatMap(line => line.points.map(p => p.v)));
+    return lines.map(line => line.key).join(',') + ':' + largest;
   }
 
   // Draws the memory chart into the card's canvas, if the card has one: points

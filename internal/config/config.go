@@ -193,11 +193,6 @@ func (o OpenHAB) HistoryCapacity() int {
 	return int(min(max(capacity, 1), maxHistoryCapacity))
 }
 
-// HistoryWindow returns HistoryWindowHours as a duration.
-func (o OpenHAB) HistoryWindow() time.Duration {
-	return time.Duration(o.HistoryWindowHours) * time.Hour
-}
-
 // OpenHABTokenEnvVar is the environment variable that overrides
 // openhab.api_token. It is read and unset in load, like APIKeyEnvVar.
 const OpenHABTokenEnvVar = "PIMONITOR_OPENHAB_TOKEN"
