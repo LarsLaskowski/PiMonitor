@@ -18,6 +18,9 @@ it; the operator relies on the file rules.
   interface.
 - A point is a timestamp and a value, in the unit of the metric it is taken from ([Metrics](metrics.md)). Points in
   a series are ordered oldest first.
+- openHAB series, present only while `openhab.enabled` is not `false`, and in the history response only while they
+  have points: `openhab_rss_bytes` (the resident memory of the openHAB process, bytes), `openhab_heap_used_bytes`
+  (the JVM heap in use, bytes) and `openhab_restarts` (the PID of each new openHAB process, one point per restart).
 - Per-core CPU, CPU frequency, GPU and PMIC temperatures, hwmon sensors, wireless, throttling, updates, Pi-hole and
   processes have no history.
 
@@ -34,6 +37,20 @@ it; the operator relies on the file rules.
 - A per-device series gets a point only on ticks whose snapshot lists that device. Its series is created the first
   time the device appears. So there is no network history while `network_enabled` is off, and no disk I/O or
   network point on the first tick after start.
+- The openHAB series get one point per finished openHAB poll ([openHAB](openhab.md#cadence)), not per fast tick. A poll
+  that found the process adds an RSS point; a poll whose systeminfo answer gave the heap values adds a heap point; a poll
+  without a value adds none to that series (no process, no token, openHAB stopped), so the series show gaps, never
+  a 0. A poll that finds `not_installed` adds nothing.
+- A finished poll does not record at once: it hands its values to the collector, which stamps them with the time it reads
+  while holding its lock (that time is the poll's `collected_at`) and keeps them until the next fast tick, which records
+  them in the same locked update as its own points ([0020](../decisions/0020-openhab-points-recorded-by-next-fast-tick.md)).
+  A point therefore reaches the history up to one fast interval after its poll, and a client that passes the newest `t`
+  of all series back as `?since=` loses none. At most `openhab.history_window_hours` × 3600 /
+  `openhab.poll_interval_seconds` samples wait (the openHAB capacity below); beyond that the oldest is dropped.
+- A restart point is added when a poll finds a process whose PID or start time differs from the process found by the latest
+  earlier poll *of the same run that found one*; polls without a process are skipped, so openHAB stopped and started
+  later gives exactly one point, with the new PID, at the `collected_at` of the poll that found it. The first process
+  found after PiMonitor starts is no restart, and a restart while PiMonitor was not running is not marked.
 - All points of one tick are recorded together: a reader of the history never sees a partly recorded tick.
 
 ### Retention and capacity
@@ -42,6 +59,11 @@ it; the operator relies on the file rules.
   down, and at least 1. When a series is full, adding a point drops its oldest one.
 - Configuration validation rejects a combination whose capacity would exceed **1,000,000** points per series, so
   the service does not start with it ([Configuration](configuration.md)).
+- Each openHAB series has its own capacity: max(1, `openhab.history_window_hours` × 3600 /
+  `openhab.poll_interval_seconds`, rounded down), at most 10,080 (1,440 at the defaults), independent of
+  `history_window_minutes` and `poll_interval_seconds` ([0019](../decisions/0019-openhab-history-has-its-own-window.md)).
+  A full series drops its oldest point. A read serves no openHAB point older than `openhab.history_window_hours` before
+  the latest fast tick (no cut before the first tick).
 - Retention while running is by count, not by age: with ticks on time the series cover `history_window_minutes`;
   when ticks run late or are dropped ([Metrics](metrics.md)), the same number of points spans a longer time.
 - History lives in memory. Without persistence it starts empty at every start.
@@ -97,10 +119,10 @@ The format is `PIMH` version 1. All integers are little-endian.
 
 - Series kinds, fixed forever: 0 `cpu_percent`, 1 `load1`, 2 `load5`, 3 `load15`, 4 `temperature`,
   5 `memory_used_percent`, 6 `swap_used_percent`, 7 `disk_used_percent`, 8 `network_rx_bytes_per_sec`,
-  9 `network_tx_bytes_per_sec`, 10 `disk_io_read_bytes_per_sec`, 11 `disk_io_write_bytes_per_sec`. A new series gets
+  9 `network_tx_bytes_per_sec`, 10 `disk_io_read_bytes_per_sec`, 11 `disk_io_write_bytes_per_sec`, 12 `openhab_rss_bytes`, 13 `openhab_heap_used_bytes`, 14 `openhab_restarts`. A new series gets
   a new number; a number is never reused or renumbered.
 - Scalar series are written first, in kind order, then the per-device series of each kind with keys sorted, so the
-  same history always encodes to the same bytes. A device key longer than 4,096 bytes is not written.
+  same history always encodes to the same bytes. A device key longer than 4,096 bytes is not written. The openHAB series (kinds 12 to 14) follow the per-device series, each written only when it has points, so a file without them is byte-identical to one written before they existed.
 - Timestamps are stored to the millisecond; restored points carry millisecond precision.
 - A reader skips series of a kind it does not know, so adding a kind needs no version change. Any other change of
   the layout raises the version; there is no migration, an older file is simply discarded.
@@ -111,6 +133,10 @@ The format is `PIMH` version 1. All integers are little-endian.
 - Points older than `history_window_minutes` before the current time are dropped; then each series keeps at most
   its newest *capacity* points, by the current configuration. A per-device series left without points is not
   restored.
+- The openHAB series are restored only while `openhab.enabled` is not `false`, dropping points older than
+  `openhab.history_window_hours` before the current time and keeping at most the openHAB capacity. A file without
+  them (written by v1.2.0) loads as before; an older PiMonitor reading a file with them skips these kinds and loses
+  only these series.
 - A restored per-device series is subject to the vanished-device rule like any other; restored points continue to
   be served until they leave the window.
 
@@ -131,6 +157,8 @@ The format is `PIMH` version 1. All integers are little-endian.
 - [0003](../decisions/0003-failed-reading-leaves-history-gap.md): a failed reading leaves a gap in the history.
 - [0009](../decisions/0009-first-cpu-tick-is-no-reading.md): the first CPU tick is no reading and leaves no point.
 - [0004](../decisions/0004-final-history-write-waits.md): the final history write waits for a running write.
+- [0019](../decisions/0019-openhab-history-has-its-own-window.md): the openHAB history has its own window.
+- [0020](../decisions/0020-openhab-points-recorded-by-next-fast-tick.md): openHAB points are recorded by the next fast tick.
 
 ## Not here
 
@@ -139,5 +167,5 @@ The format is `PIMH` version 1. All integers are little-endian.
 - What each metric measures, its source and unit: [Metrics](metrics.md).
 - How the dashboard merges and re-syncs history: [Dashboard](dashboard.md).
 - Defaults and valid ranges of `history_window_minutes`, `poll_interval_seconds`, `updates_check_minutes`,
-  `history_persist_enabled` and `data_dir`: [Configuration](configuration.md).
+  `history_persist_enabled`, `data_dir` and `openhab.history_window_hours`: [Configuration](configuration.md).
 - The service's data directory, its creation and write permission under systemd: [Deployment](deployment.md).

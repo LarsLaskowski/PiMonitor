@@ -176,3 +176,42 @@ func TestAppJS_OpenHABThingsToggle_AC13(t *testing.T) {
 		{"renderOpenHAB", render, []string{"t.uid"}},
 	})
 }
+
+func TestAppJS_OpenHABChart_AC7(t *testing.T) {
+	js := readAsset(t, "app.js")
+	render := jsFunctionBody(js, "function renderOpenHAB(")
+	history := jsFunctionBody(js, "function renderHistory(")
+	redraw := jsFunctionBody(js, "function redrawSparklines(")
+	drawer := enclosingFunctionBody(js, "drawTimeChart(")
+
+	checkAssetParts(t, []assetCheck{
+		{"renderOpenHAB", render, []string{
+			"openhab-history", "openhab-chart", "openhab-legend", "legend-swatch", "legend-rss", "legend-heap",
+			"'RSS'", "'Heap used'", "'Memory history'", "fmtBytes(", "textContent", "openhabThingsToggle(",
+		}},
+		{"renderHistory", history, []string{"renderOpenHAB(latestOpenHAB)", "'pending'", "'not_installed'"}},
+		{"drawTimeChart caller", drawer, []string{
+			"openhab_rss_bytes", "openhab_heap_used_bytes", "openhab_restarts", "poll_interval_seconds", "1.5",
+			"getComputedStyle", "--accent", "--muted", "--warn",
+		}},
+	})
+	checkAssetPartsAbsent(t, []assetCheck{
+		{"renderOpenHAB", render, []string{"innerHTML"}},
+		{"drawTimeChart caller", drawer, []string{"innerHTML"}},
+	})
+	if !strings.Contains(strings.ToLower(redraw), "openhab") {
+		t.Error("redrawSparklines: expected the openHAB chart to be redrawn there (history poll, theme, layout reveal)")
+	}
+	if !regexp.MustCompile(`length >= 2`).MatchString(js[strings.Index(js, "---- openHAB card"):]) {
+		t.Error("app.js: expected the block to exist only with at least two points (length >= 2) in the openHAB section")
+	}
+	if !regexp.MustCompile(`legend-rss[\s\S]*legend-heap`).MatchString(render + drawer) {
+		t.Error("app.js: expected the RSS legend entry before the Heap used entry")
+	}
+	// The label and the legend are built by renderOpenHAB only, so the card
+	// is rebuilt when the chart's signature (line keys and largest value)
+	// changes, not only when the chart appears or disappears.
+	if !strings.Contains(strings.ToLower(history), "signature") {
+		t.Error("renderHistory: expected a comparison of the chart signature (line keys and largest value) before and after the new history, so the label and legend never disagree with the drawn chart")
+	}
+}

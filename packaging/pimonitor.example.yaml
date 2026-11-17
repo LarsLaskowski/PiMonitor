@@ -108,6 +108,10 @@ openhab:
   api_token: ""
   # Seconds between openHAB polls, 60 to 86400.
   poll_interval_seconds: 60
+  # Hours of openHAB memory history (RSS, JVM heap, restarts) kept for the
+  # dashboard chart and GET /api/v1/metrics/history, 1 to 168. Independent of
+  # history_window_minutes.
+  history_window_hours: 24
 
 # If set, all /api/v1/... requests must include this value as either
 # "Authorization: Bearer <api_key>" or "X-Api-Key: <api_key>". Leave empty

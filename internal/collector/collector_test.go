@@ -2071,3 +2071,298 @@ func TestCollector_OpenHABDisabled_AC9(t *testing.T) {
 		t.Fatalf("OpenHAB() = %s, want %s", mustJSON(t, got), mustJSON(t, want))
 	}
 }
+
+// newestHistoryTime returns the newest timestamp of any series of h, the
+// value a dashboard passes back as ?since=.
+func newestHistoryTime(h History) time.Time {
+	var newest time.Time
+	for _, series := range [][]HistoryPoint{h.CPUPercent, h.Load1, h.Load5, h.Load15, h.Temperature,
+		h.MemoryUsedPercent, h.SwapUsedPercent, h.OpenHABRSSBytes, h.OpenHABHeapUsedBytes, h.OpenHABRestarts} {
+		if n := len(series); n > 0 && series[n-1].Timestamp.After(newest) {
+			newest = series[n-1].Timestamp
+		}
+	}
+	return newest
+}
+
+// newOHDeltaCollector builds a Collector with an openHAB process and the
+// default REST answers.
+func newOHDeltaCollector(t *testing.T, now func() time.Time, opts ...func(*Config)) *Collector {
+	t.Helper()
+	root := newOHRoot(t, "etc/openhab")
+	writeOHJava(t, root)
+	return newOHHistoryCollector(t, newOHServer(t), root, now, opts...)
+}
+
+func TestCollector_FastTick_OpenHABSamples(t *testing.T) {
+	t.Run("AC1 tick without a waiting sample adds no openHAB point", func(t *testing.T) {
+		c := newOHDeltaCollector(t, nil)
+		c.openhab.Poll(context.Background())
+
+		for range 3 {
+			c.fastTick(context.Background())
+		}
+
+		h := c.History()
+		if len(h.OpenHABRSSBytes) != 1 || len(h.OpenHABHeapUsedBytes) != 1 {
+			t.Fatalf("points after one poll and three ticks: rss %d, heap %d, want 1 each (a tick adds none)",
+				len(h.OpenHABRSSBytes), len(h.OpenHABHeapUsedBytes))
+		}
+	})
+	t.Run("AC1 waiting sample recorded once with its collected_at", func(t *testing.T) {
+		at := time.Now().Add(-2 * time.Minute)
+		clock := &ohClock{at: at}
+		c := newOHDeltaCollector(t, clock.now)
+
+		c.openhab.Poll(context.Background())
+		c.fastTick(context.Background())
+		c.fastTick(context.Background())
+
+		h := c.History()
+		pointsEqual(t, "OpenHABRSSBytes", h.OpenHABRSSBytes, []HistoryPoint{ohHistoryPoint(at, ohJavaRSSBytes)})
+		pointsEqual(t, "OpenHABHeapUsedBytes", h.OpenHABHeapUsedBytes, []HistoryPoint{ohHistoryPoint(at, ohHeapUsedBytes)})
+	})
+}
+
+func TestCollector_OpenHABHistory_DeltaSafe(t *testing.T) {
+	t.Run("AC5 waiting sample invisible before the next tick and recorded by it", checkWaitingSampleInvisible)
+	t.Run("AC5 Since of the newest point after one tick returns every point of the next", checkSinceAfterOneTick)
+	t.Run("AC5 sample whose poll ended before tick k started but handed over after tick k's drain reaches a client passing tick k's newest t", checkLateHandOver)
+	t.Run("AC5 waiting samples capped at the openHAB capacity without a tick", checkWaitingSamplesCapped)
+}
+
+func checkWaitingSampleInvisible(t *testing.T) {
+	ctx := context.Background()
+	c := newOHDeltaCollector(t, nil)
+	c.fastTick(ctx)
+	genBefore := c.HistoryGeneration()
+
+	c.openhab.Poll(ctx)
+
+	h := c.History()
+	if len(h.OpenHABRSSBytes) != 0 || len(h.OpenHABHeapUsedBytes) != 0 || c.HistoryGeneration() != genBefore {
+		t.Fatalf("after the poll: rss %d, heap %d, generation %d (before %d), want the sample waiting and invisible",
+			len(h.OpenHABRSSBytes), len(h.OpenHABHeapUsedBytes), c.HistoryGeneration(), genBefore)
+	}
+
+	c.fastTick(ctx)
+
+	h = c.History()
+	if len(h.OpenHABRSSBytes) != 1 || len(h.OpenHABHeapUsedBytes) != 1 {
+		t.Fatalf("after the next tick: rss %d, heap %d, want 1 each", len(h.OpenHABRSSBytes), len(h.OpenHABHeapUsedBytes))
+	}
+	if got := c.HistoryGeneration(); got != genBefore+1 {
+		t.Fatalf("generation after the tick = %d, want %d", got, genBefore+1)
+	}
+}
+
+func checkSinceAfterOneTick(t *testing.T) {
+	ctx := context.Background()
+	c := newOHDeltaCollector(t, nil)
+	c.openhab.Poll(ctx)
+	c.fastTick(ctx)
+	newest := newestHistoryTime(c.History())
+	time.Sleep(5 * time.Millisecond)
+	c.openhab.Poll(ctx)
+	c.fastTick(ctx)
+
+	got := c.History().Since(newest)
+
+	if len(got.OpenHABRSSBytes) != 1 || len(got.OpenHABHeapUsedBytes) != 1 || len(got.MemoryUsedPercent) != 1 {
+		t.Fatalf("points newer than %v: rss %d, heap %d, memory %d, want 1 of each series",
+			newest, len(got.OpenHABRSSBytes), len(got.OpenHABHeapUsedBytes), len(got.MemoryUsedPercent))
+	}
+}
+
+func checkLateHandOver(t *testing.T) {
+	ctx := context.Background()
+	clock := &ohCallClock{}
+	c := newOHDeltaCollector(t, clock.now)
+	c.fastTick(ctx)
+	newest := newestHistoryTime(c.History())
+	clock.early = newest.Add(-time.Second) // the poll ended before tick k started
+	clock.late = newest.Add(time.Second)   // the hand-over came after tick k's drain
+
+	c.openhab.Poll(ctx)
+	c.fastTick(ctx)
+
+	got := c.History().Since(newest)
+	if len(got.OpenHABRSSBytes) != 1 || len(got.OpenHABHeapUsedBytes) != 1 {
+		t.Fatalf("points newer than tick k's newest %v: rss %d, heap %d, want 1 each (the sample must not be stamped with the poll's earlier end)",
+			newest, len(got.OpenHABRSSBytes), len(got.OpenHABHeapUsedBytes))
+	}
+}
+
+func checkWaitingSamplesCapped(t *testing.T) {
+	const capacity = 3
+	clock := &ohClock{}
+	c := newOHDeltaCollector(t, clock.now, withOHHistory(24, capacity))
+	base := time.Now().Add(-time.Hour)
+	var want []HistoryPoint
+	for i := range capacity + 2 {
+		at := base.Add(time.Duration(i) * time.Minute)
+		clock.set(at)
+		c.openhab.Poll(context.Background())
+		if i >= 2 {
+			want = append(want, ohHistoryPoint(at, ohJavaRSSBytes))
+		}
+	}
+
+	c.fastTick(context.Background())
+
+	h := c.History()
+	pointsEqual(t, "OpenHABRSSBytes", h.OpenHABRSSBytes, want)
+	if len(h.OpenHABHeapUsedBytes) != capacity {
+		t.Fatalf("heap points = %d, want the capacity %d, the two oldest dropped", len(h.OpenHABHeapUsedBytes), capacity)
+	}
+}
+
+// TestCollector_OpenHABWaiting_CappedWithoutTick_AC5 pins the waiting slice
+// itself (not only what a tick later records): it never holds more than the
+// openHAB capacity, the oldest sample is dropped first, and a tick empties it.
+func TestCollector_OpenHABWaiting_CappedWithoutTick_AC5(t *testing.T) {
+	const capacity = 3
+	c := newOHDeltaCollector(t, nil, withOHHistory(24, capacity))
+
+	for i := range 10 * capacity {
+		c.queueOpenHABSample(openHABSample{rssBytes: uint64(i + 1), rssOK: true})
+		c.mu.Lock()
+		held := len(c.ohWaiting)
+		c.mu.Unlock()
+		if held > capacity {
+			t.Fatalf("waiting samples after %d queued = %d, want at most the capacity %d", i+1, held, capacity)
+		}
+	}
+
+	c.mu.Lock()
+	var got []uint64
+	for _, s := range c.ohWaiting {
+		got = append(got, s.rssBytes)
+	}
+	c.mu.Unlock()
+	want := []uint64{10*capacity - 2, 10*capacity - 1, 10 * capacity}
+	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] || got[2] != want[2] {
+		t.Fatalf("waiting samples = %v, want the newest %d: %v", got, capacity, want)
+	}
+
+	c.fastTick(context.Background())
+
+	c.mu.Lock()
+	left := len(c.ohWaiting)
+	c.mu.Unlock()
+	if left != 0 {
+		t.Fatalf("waiting samples after a tick = %d, want 0", left)
+	}
+}
+
+func TestCollector_History_OpenHABDisabled_AC4(t *testing.T) {
+	c := newTestCollector()
+	c.fastTick(context.Background())
+
+	h := c.History()
+
+	if h.OpenHABRSSBytes != nil || h.OpenHABHeapUsedBytes != nil || h.OpenHABRestarts != nil {
+		t.Fatalf("openHAB series with openHAB disabled = %v, %v, %v, want none",
+			h.OpenHABRSSBytes, h.OpenHABHeapUsedBytes, h.OpenHABRestarts)
+	}
+	body, err := json.Marshal(h)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if strings.Contains(string(body), "openhab") {
+		t.Fatalf("history JSON = %s, want no openhab key with openHAB disabled", body)
+	}
+	since := h.Since(time.Time{}.Add(time.Second))
+	if since.OpenHABRSSBytes != nil || since.OpenHABHeapUsedBytes != nil || since.OpenHABRestarts != nil {
+		t.Fatalf("Since() carries openHAB series with openHAB disabled: %+v", since)
+	}
+}
+
+func TestCollector_OpenHABHistory_Retention(t *testing.T) {
+	ctx := context.Background()
+	t.Run("AC3 full series drops its oldest point", func(t *testing.T) {
+		const capacity = 3
+		clock := &ohClock{}
+		c := newOHDeltaCollector(t, clock.now, withOHHistory(24, capacity))
+		base := time.Now().Add(-time.Hour)
+		var wantRSS, wantHeap []HistoryPoint
+		for i := range capacity + 2 {
+			at := base.Add(time.Duration(i) * time.Minute)
+			clock.set(at)
+			c.openhab.Poll(ctx)
+			c.fastTick(ctx)
+			if i >= 2 {
+				wantRSS = append(wantRSS, ohHistoryPoint(at, ohJavaRSSBytes))
+				wantHeap = append(wantHeap, ohHistoryPoint(at, ohHeapUsedBytes))
+			}
+		}
+
+		h := c.History()
+
+		pointsEqual(t, "OpenHABRSSBytes", h.OpenHABRSSBytes, wantRSS)
+		pointsEqual(t, "OpenHABHeapUsedBytes", h.OpenHABHeapUsedBytes, wantHeap)
+	})
+	t.Run("AC3 History omits points older than the window before the latest tick", func(t *testing.T) {
+		srv := newOHServer(t)
+		root := newOHRoot(t, "etc/openhab")
+		clock := &ohClock{}
+		c := newOHHistoryCollector(t, srv, root, clock.now, withOHHistory(2, 1440))
+		now := time.Now()
+		polls := []struct {
+			ago  time.Duration
+			proc ohProc
+		}{
+			{3 * time.Hour, ohProc{938, ohStartTicks}},
+			{150 * time.Minute, ohProc{ohOtherPID, ohOtherStartTicks}},
+			{time.Hour, ohProc{ohOtherPID, ohOtherStartTicks}},
+			{10 * time.Minute, ohProc{ohThirdPID, ohOtherStartTicks}},
+		}
+		for _, p := range polls {
+			setOHProcess(t, root, p.proc)
+			clock.set(now.Add(-p.ago))
+			c.openhab.Poll(ctx)
+		}
+
+		c.fastTick(ctx)
+
+		h := c.History()
+		pointsEqual(t, "OpenHABRSSBytes", h.OpenHABRSSBytes, []HistoryPoint{
+			ohHistoryPoint(now.Add(-time.Hour), ohJavaRSSBytes), ohHistoryPoint(now.Add(-10*time.Minute), ohJavaRSSBytes)})
+		pointsEqual(t, "OpenHABHeapUsedBytes", h.OpenHABHeapUsedBytes, []HistoryPoint{
+			ohHistoryPoint(now.Add(-time.Hour), ohHeapUsedBytes), ohHistoryPoint(now.Add(-10*time.Minute), ohHeapUsedBytes)})
+		pointsEqual(t, "OpenHABRestarts", h.OpenHABRestarts, []HistoryPoint{ohHistoryPoint(now.Add(-10*time.Minute), ohThirdPID)})
+	})
+}
+
+func TestHistorySince_FiltersOpenHABSeries_AC4(t *testing.T) {
+	base := time.Date(2026, 11, 14, 12, 0, 0, 0, time.UTC)
+	pts := func(offsets ...time.Duration) []HistoryPoint {
+		out := make([]HistoryPoint, len(offsets))
+		for i, off := range offsets {
+			out[i] = HistoryPoint{Timestamp: base.Add(off), Value: float64(i)}
+		}
+		return out
+	}
+	h := History{
+		OpenHABRSSBytes:      pts(0, time.Minute, 2*time.Minute),
+		OpenHABHeapUsedBytes: pts(0, time.Minute),
+		OpenHABRestarts:      pts(0),
+	}
+	t.Run("AC4 keeps only points newer than since and omits a series with none", func(t *testing.T) {
+		got := h.Since(base.Add(30 * time.Second))
+
+		pointsEqual(t, "OpenHABRSSBytes", got.OpenHABRSSBytes, h.OpenHABRSSBytes[1:])
+		pointsEqual(t, "OpenHABHeapUsedBytes", got.OpenHABHeapUsedBytes, h.OpenHABHeapUsedBytes[1:])
+		if len(got.OpenHABRestarts) != 0 {
+			t.Fatalf("OpenHABRestarts = %v, want none newer than since", got.OpenHABRestarts)
+		}
+	})
+	t.Run("AC4 excludes the exact boundary", func(t *testing.T) {
+		got := h.Since(base.Add(time.Minute))
+
+		pointsEqual(t, "OpenHABRSSBytes", got.OpenHABRSSBytes, h.OpenHABRSSBytes[2:])
+		if len(got.OpenHABHeapUsedBytes) != 0 {
+			t.Fatalf("OpenHABHeapUsedBytes = %v, want none strictly newer than since", got.OpenHABHeapUsedBytes)
+		}
+	})
+}

@@ -33,7 +33,8 @@ automation systems like openHAB). Runs as a systemd service.
 - **openHAB status** - when openHAB runs on the same Pi, a card with its
   process memory, JVM heap, Things by status (the names of those not
   ONLINE on request), Items, add-ons, version and uptime, read from its REST API on
-  loopback; hidden when openHAB is not installed
+  loopback, and a chart of its memory (RSS, JVM heap, restarts) over the last 24 hours
+  (`openhab.history_window_hours`); hidden when openHAB is not installed
 - Short metric history (default: last 60 minutes) for sparklines,
   periodically snapshotted to a compact binary file so it survives
   restarts and reboots - no database
@@ -438,8 +439,8 @@ copy over any new keys you want to use. All settings have sensible defaults,
 so a config from an older version keeps working unchanged.
 
 **REST API compatibility:** the `/api/v1/...` contract is stable across
-updates — a breaking change to an endpoint's JSON shape ships as
-`/api/v2/...` instead, so existing integrations (e.g. openHAB) keep working
+updates — a breaking change to an existing key of a response ships as
+`/api/v2/...` instead (new keys are added to `v1` and clients ignore keys they do not know), so existing integrations (e.g. openHAB) keep working
 after an upgrade. See [`docs/API.md`](docs/API.md).
 
 ## REST API

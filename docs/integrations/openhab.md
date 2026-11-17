@@ -164,7 +164,9 @@ String               PiMonitor_Kernel      "Kernel [%s]"                  <netwo
 PiMonitor can also show the status of an openHAB that runs on the **same** Pi: the dashboard gets an "openHAB" card,
 and [`GET /api/v1/openhab`](../API.md#get-apiv1openhab) serves the same values to other systems. PiMonitor finds
 openHAB itself (its install directories and its Java process) and polls openHAB's REST API on loopback; nothing has
-to be configured for a default install (`openhab.enabled: auto`, `base_url: http://127.0.0.1:8080`). The card is
+to be configured for a default install (`openhab.enabled: auto`, `base_url: http://127.0.0.1:8080`). The card also
+charts openHAB's memory (resident memory and JVM heap, with restart markers) over the last
+`openhab.history_window_hours` (24 by default); the heap line needs an `api_token`. The card is
 hidden while openHAB is not installed. See the `openhab` block of
 [`packaging/pimonitor.example.yaml`](../../packaging/pimonitor.example.yaml) and
 [`docs/areas/openhab.md`](../areas/openhab.md).

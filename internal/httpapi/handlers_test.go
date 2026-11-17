@@ -390,6 +390,129 @@ func TestHandleHistory_SinceReturnsOnlyNewerPoints(t *testing.T) {
 	}
 }
 
+// openHABHistoryPoints builds points at base plus each offset.
+func openHABHistoryPoints(base time.Time, offsets ...time.Duration) []collector.HistoryPoint {
+	out := make([]collector.HistoryPoint, len(offsets))
+	for i, off := range offsets {
+		out[i] = collector.HistoryPoint{Timestamp: base.Add(off), Value: float64(100 + i)}
+	}
+	return out
+}
+
+var openHABHistoryBase = time.Date(2026, 11, 14, 12, 0, 0, 0, time.UTC)
+
+func TestHandleHistory_OpenHABKeys(t *testing.T) {
+	t.Run("AC4 keys absent while series empty", checkOpenHABKeysAbsent)
+	t.Run("AC4 keys present as point arrays", checkOpenHABKeysPresent)
+	t.Run("AC4 other keys unchanged", checkOpenHABKeysLeaveOthers)
+	t.Run("AC4 401 without key when api_key is set", checkOpenHABKeysNeedAPIKey)
+	t.Run("AC4 since keeps the newer points of each key and omits a key without any", checkOpenHABKeysSince)
+}
+
+func checkOpenHABKeysAbsent(t *testing.T) {
+	s, fm := newTestServer(Config{})
+	fm.history = historyFixture(openHABHistoryBase)
+
+	rec := getHistory(s, "")
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if strings.Contains(rec.Body.String(), "openhab") {
+		t.Fatalf("body = %s, want no openhab key while the series are empty", rec.Body.String())
+	}
+}
+
+func checkOpenHABKeysPresent(t *testing.T) {
+	s, fm := newTestServer(Config{})
+	fm.history = collector.History{
+		OpenHABRSSBytes:      openHABHistoryPoints(openHABHistoryBase, 0, time.Minute),
+		OpenHABHeapUsedBytes: openHABHistoryPoints(openHABHistoryBase, 0),
+		OpenHABRestarts:      openHABHistoryPoints(openHABHistoryBase, time.Minute),
+	}
+
+	rec := getHistory(s, "")
+
+	var raw map[string][]map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &raw); err != nil {
+		t.Fatalf("unmarshal %q: %v", rec.Body.String(), err)
+	}
+	for key, wantLen := range map[string]int{"openhab_rss_bytes": 2, "openhab_heap_used_bytes": 1, "openhab_restarts": 1} {
+		points := raw[key]
+		if len(points) != wantLen {
+			t.Fatalf("%s = %v, want an array of %d points in %s", key, points, wantLen, rec.Body.String())
+		}
+		if _, hasT := points[0]["t"]; !hasT {
+			t.Fatalf("%s[0] = %v, want the point shape of the other series (t, v)", key, points[0])
+		}
+	}
+}
+
+// checkOpenHABKeysLeaveOthers serves the same history twice, without and
+// with openHAB series (on two servers: the handler caches per generation),
+// and compares every key but the openHAB ones.
+func checkOpenHABKeysLeaveOthers(t *testing.T) {
+	plain, fmPlain := newTestServer(Config{})
+	fmPlain.history = historyFixture(openHABHistoryBase)
+	with, fmWith := newTestServer(Config{})
+	fmWith.history = historyFixture(openHABHistoryBase)
+	fmWith.history.OpenHABRSSBytes = openHABHistoryPoints(openHABHistoryBase, 0, time.Minute)
+	fmWith.history.OpenHABRestarts = openHABHistoryPoints(openHABHistoryBase, 0)
+
+	want := getHistoryBody(t, plain)
+	got := getHistoryBody(t, with)
+
+	for _, key := range []string{"openhab_rss_bytes", "openhab_restarts"} {
+		if _, ok := got[key]; !ok {
+			t.Fatalf("body lacks %s", key)
+		}
+		delete(got, key)
+	}
+	if gotJSON, wantJSON := mustMarshal(t, got), mustMarshal(t, want); gotJSON != wantJSON {
+		t.Fatalf("other keys with openHAB series = %s, want unchanged %s", gotJSON, wantJSON)
+	}
+}
+
+func checkOpenHABKeysNeedAPIKey(t *testing.T) {
+	s, fm := newTestServer(Config{APIKey: "secret123"})
+	fm.history = collector.History{OpenHABRSSBytes: openHABHistoryPoints(openHABHistoryBase, 0)}
+
+	rec := getHistory(s, "")
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401", rec.Code)
+	}
+	if strings.Contains(rec.Body.String(), "openhab") {
+		t.Fatalf("body = %s, want no openHAB data without the key", rec.Body.String())
+	}
+}
+
+func checkOpenHABKeysSince(t *testing.T) {
+	base := openHABHistoryBase
+	s, fm := newTestServer(Config{})
+	fm.history = collector.History{
+		OpenHABRSSBytes:      openHABHistoryPoints(base, 0, time.Minute, 2*time.Minute),
+		OpenHABHeapUsedBytes: openHABHistoryPoints(base, 0, time.Minute, 2*time.Minute),
+		OpenHABRestarts:      openHABHistoryPoints(base, 0),
+	}
+
+	rec := getHistory(s, "since="+base.Add(30*time.Second).Format(time.RFC3339))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	got := decodeHistory(t, rec)
+	if len(got.OpenHABRSSBytes) != 2 || len(got.OpenHABHeapUsedBytes) != 2 {
+		t.Fatalf("rss, heap points = %d, %d, want 2 each", len(got.OpenHABRSSBytes), len(got.OpenHABHeapUsedBytes))
+	}
+	if !got.OpenHABRSSBytes[0].Timestamp.Equal(base.Add(time.Minute)) {
+		t.Fatalf("oldest returned RSS point = %v, want %v", got.OpenHABRSSBytes[0].Timestamp, base.Add(time.Minute))
+	}
+	if strings.Contains(rec.Body.String(), "openhab_restarts") {
+		t.Fatalf("body = %s, want no openhab_restarts without a newer point", rec.Body.String())
+	}
+}
+
 // TestHandleHistory_SinceExcludesExactBoundary pins the strictly-newer
 // rule at the HTTP layer: a client passing back the timestamp of the
 // newest point it holds must not receive that point a second time.
@@ -987,6 +1110,7 @@ func openHABOKStatus() collector.OpenHABStatus {
 	return collector.OpenHABStatus{
 		State:               collector.OpenHABStateOK,
 		PollIntervalSeconds: 60,
+		HistoryWindowHours:  24,
 		APITokenConfigured:  true,
 		CollectedAt:         &at,
 		Version:             "5.2.4",
@@ -1024,11 +1148,11 @@ func TestHandleOpenHAB_AC9(t *testing.T) {
 		{"AC9 S7 serves the collector status", Config{OpenHABEnabled: true}, openHABOKStatus(), "",
 			http.StatusOK, mustMarshal(t, openHABOKStatus())},
 		{"AC9 S5 not_installed", Config{OpenHABEnabled: true},
-			collector.OpenHABStatus{State: collector.OpenHABStateNotInstalled, PollIntervalSeconds: 60}, "",
-			http.StatusOK, `{"state":"not_installed","poll_interval_seconds":60,"api_token_configured":false}`},
+			collector.OpenHABStatus{State: collector.OpenHABStateNotInstalled, PollIntervalSeconds: 60, HistoryWindowHours: 24}, "",
+			http.StatusOK, `{"state":"not_installed","poll_interval_seconds":60,"history_window_hours":24,"api_token_configured":false}`},
 		{"AC9 S9 pending", Config{OpenHABEnabled: true},
-			collector.OpenHABStatus{State: collector.OpenHABStatePending, PollIntervalSeconds: 120, APITokenConfigured: true}, "",
-			http.StatusOK, `{"state":"pending","poll_interval_seconds":120,"api_token_configured":true}`},
+			collector.OpenHABStatus{State: collector.OpenHABStatePending, PollIntervalSeconds: 120, HistoryWindowHours: 24, APITokenConfigured: true}, "",
+			http.StatusOK, `{"state":"pending","poll_interval_seconds":120,"history_window_hours":24,"api_token_configured":true}`},
 		{"AC9 API key required", Config{OpenHABEnabled: true, APIKey: key}, openHABOKStatus(), "",
 			http.StatusUnauthorized, ""},
 		{"AC9 API key accepted", Config{OpenHABEnabled: true, APIKey: key}, openHABOKStatus(), key,
@@ -1062,6 +1186,44 @@ func checkOpenHABResponse(t *testing.T, rec *httptest.ResponseRecorder, wantCode
 	}
 	if got := rec.Header().Get("Content-Type"); !strings.HasPrefix(got, "application/json") {
 		t.Fatalf("Content-Type = %q, want application/json", got)
+	}
+}
+
+// getHistoryBody returns the history response as a generic JSON object.
+func getHistoryBody(t *testing.T, s *Server) map[string]json.RawMessage {
+	t.Helper()
+	var out map[string]json.RawMessage
+	rec := getHistory(s, "")
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatalf("unmarshal %q: %v", rec.Body.String(), err)
+	}
+	return out
+}
+
+func TestHandleOpenHAB_HistoryWindowHours_AC9(t *testing.T) {
+	tests := []struct {
+		name  string
+		state string
+		hours int
+	}{
+		{"AC9 ok carries the configured window", collector.OpenHABStateOK, 168},
+		{"AC9 pending carries the configured window", collector.OpenHABStatePending, 1},
+		{"AC9 not_installed carries the configured window", collector.OpenHABStateNotInstalled, 72},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			status := collector.OpenHABStatus{State: tc.state, PollIntervalSeconds: 60, HistoryWindowHours: tc.hours}
+
+			rec := getOpenHAB(Config{OpenHABEnabled: true}, status, "")
+
+			var got map[string]any
+			if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+				t.Fatalf("unmarshal %q: %v", rec.Body.String(), err)
+			}
+			if v, ok := got["history_window_hours"].(float64); !ok || int(v) != tc.hours {
+				t.Fatalf("history_window_hours = %v, want %d in %s", got["history_window_hours"], tc.hours, rec.Body.String())
+			}
+		})
 	}
 }
 

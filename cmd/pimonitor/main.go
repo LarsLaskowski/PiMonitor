@@ -184,11 +184,13 @@ func collectorConfig(cfg config.Config, notifier *alert.Notifier) collector.Conf
 		ProcessesEnabled:      cfg.ProcessesEnabled,
 		ProcessesTopN:         cfg.ProcessesTopN,
 		OpenHAB: collector.OpenHABConfig{
-			Enabled:  cfg.OpenHAB.Mode() != "false",
-			Always:   cfg.OpenHAB.Mode() == "true",
-			BaseURL:  cfg.OpenHAB.BaseURL,
-			Token:    cfg.OpenHAB.APIToken,
-			Interval: cfg.OpenHAB.PollInterval(),
+			Enabled:            cfg.OpenHAB.Mode() != "false",
+			Always:             cfg.OpenHAB.Mode() == "true",
+			BaseURL:            cfg.OpenHAB.BaseURL,
+			Token:              cfg.OpenHAB.APIToken,
+			Interval:           cfg.OpenHAB.PollInterval(),
+			HistoryWindowHours: cfg.OpenHAB.HistoryWindowHours,
+			HistoryCapacity:    cfg.OpenHAB.HistoryCapacity(),
 		},
 	}
 	if cfg.HistoryPersistEnabled {

@@ -79,4 +79,7 @@ once in the [area document](../areas/README.md) of the record's area, and the re
 | [0015](0015-openhab-values-from-real-5x-responses.md) | openHAB values are built from real openHAB 5.2.4 responses; uptime from the process | Accepted | 2026-11-14 |
 | [0016](0016-refused-openhab-call-without-token-logs-info.md) | A refused openHAB call without a configured token is logged at info | Accepted | 2026-11-14 |
 | [0017](0017-openhab-thing-statuses-exported-as-fixed-set.md) | openHAB Thing counts are exported to Prometheus as the fixed set of seven statuses | Accepted | 2026-11-16 |
+| [0018](0018-new-key-in-v1-response-is-no-shape-change.md) | Adding a key to a v1 response is no shape change | Accepted | 2026-11-17 |
+| [0019](0019-openhab-history-has-its-own-window.md) | openHAB memory history has its own window and capacity | Accepted | 2026-11-17 |
+| [0020](0020-openhab-points-recorded-by-next-fast-tick.md) | openHAB history points are recorded by the next fast tick | Accepted | 2026-11-17 |
 <!-- project:end index -->
