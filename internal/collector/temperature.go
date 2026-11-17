@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -229,7 +230,7 @@ func (c *TemperatureCollector) readVcgencmdTemp(ctx context.Context, args ...str
 // errVcgencmdUnsupportedOutput indicates vcgencmd executed successfully but
 // answered with something other than a "temp=NN.N'C" line — its
 // "error=1 error_msg=..." response, or any other output parseVcgencmdTemp
-// doesn't recognize. For a sensor-specific subcommand (measure_temp pmic)
+// doesn't recognize, a non-finite value (nan, inf) included. For a sensor-specific subcommand (measure_temp pmic)
 // this means the requested sensor does not exist on this board: a
 // permanent condition for the life of the process, unlike a failed exec or
 // a timeout, which are transient and worth retrying. Callers that want to
@@ -239,7 +240,9 @@ var errVcgencmdUnsupportedOutput = errors.New("vcgencmd: output is not a tempera
 
 // parseVcgencmdTemp decodes vcgencmd's "temp=NN.N'C" output into degrees
 // Celsius. The form is identical for every measure_temp variant, so the
-// GPU/SoC and PMIC readings share this parser.
+// GPU/SoC and PMIC readings share this parser. A value ParseFloat decodes as
+// NaN or ±Inf is rejected as unsupported output: it would make the JSON
+// encoding of the snapshot fail.
 func parseVcgencmdTemp(output string) (float64, error) {
 	output = strings.TrimSpace(output)
 	const prefix = "temp="
@@ -251,6 +254,9 @@ func parseVcgencmdTemp(output string) (float64, error) {
 	celsius, err := strconv.ParseFloat(rest, 64)
 	if err != nil {
 		return 0, fmt.Errorf("%w: parse vcgencmd temp %q: %w", errVcgencmdUnsupportedOutput, sanitizeVcgencmdDetail([]byte(output)), numParseCause(err))
+	}
+	if math.IsNaN(celsius) || math.IsInf(celsius, 0) {
+		return 0, fmt.Errorf("%w: non-finite vcgencmd temp %q", errVcgencmdUnsupportedOutput, sanitizeVcgencmdDetail([]byte(output)))
 	}
 	return celsius, nil
 }
