@@ -1,6 +1,7 @@
 package collector
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -38,5 +39,23 @@ func TestUptimeCollector_Collect(t *testing.T) {
 	}
 	if diffFloat(got, 100.5) > 0.001 {
 		t.Fatalf("Collect = %v, want 100.5", got)
+	}
+}
+
+func TestParseUptime_NonFinite_AC2(t *testing.T) {
+	for _, form := range []string{"nan", "NaN", "inf", "+Inf", "-Infinity"} {
+		t.Run("AC2 "+form, func(t *testing.T) {
+			content := form + " 100.00\n"
+
+			got, err := parseUptime(content)
+
+			if got != 0 {
+				t.Errorf("parseUptime(%q) = %v, want 0", content, got)
+			}
+			want := fmt.Sprintf("parse uptime: non-finite value %q", form)
+			if err == nil || err.Error() != want {
+				t.Errorf("parseUptime(%q) error = %v, want %q", content, err, want)
+			}
+		})
 	}
 }

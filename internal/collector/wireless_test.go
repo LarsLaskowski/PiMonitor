@@ -171,3 +171,33 @@ func TestWirelessCollector_Collect_NoWirelessFile_AC2(t *testing.T) {
 		t.Fatalf("expected no interfaces, got %d: %+v", len(got), got)
 	}
 }
+
+func TestParseWireless_NonFinite_AC3(t *testing.T) {
+	const header = "Inter-| sta-|   Quality        |   Discarded packets               | Missed | WE\n" +
+		" face | tus | link level noise |  nwid  crypt   frag  retry   misc | beacon | 22\n"
+	tests := []struct {
+		name  string
+		lines string
+		want  string
+	}{
+		{"AC3 nan in link", " wlan0: 0000   nan  -40.  -256        0      0      0      0      0        0\n",
+			`parse link quality for "wlan0": non-finite value "nan"`},
+		{"AC3 -Infinity in level", " wlan0: 0000   70.  -Infinity  -256        0      0      0      0      0        0\n",
+			`parse signal level for "wlan0": non-finite value "-Infinity"`},
+		{"AC3 Inf in link of second interface", " wlan0: 0000   70.  -40.  -256        0      0      0      0      0        0\n" +
+			" wlan1: 0000   Inf  -40.  -256        0      0      0      0      0        0\n",
+			`parse link quality for "wlan1": non-finite value "Inf"`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := parseWireless(header + tt.lines)
+
+			if got != nil {
+				t.Errorf("parseWireless result = %+v, want nil", got)
+			}
+			if err == nil || err.Error() != tt.want {
+				t.Errorf("parseWireless error = %v, want %q", err, tt.want)
+			}
+		})
+	}
+}
