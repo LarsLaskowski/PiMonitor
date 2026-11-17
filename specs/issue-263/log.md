@@ -15,3 +15,4 @@ are quoted in full.
 | 2026-11-17 19:33 | 6 Implement | Dev | Fix in decodeHistoryPoints + history.md; tests green, coverage gate 100% new lines, analyzer clean (sonnet/medium · 79,830 tokens · 4 tool uses · 48 s · 8 in · 1,626 out · 276,201 cache read · 27,325 cache write · 69,914 weighted) |
 | 2026-11-17 19:33 | 6 Coverage skipped | Orchestrator | skipped — gate passes (100% new lines), no deferred tests, no open test docs |
 | 2026-11-17 19:33 | 6 Documentation | Orchestrator | written in 6 Implement |
+| 2026-11-17 19:33 | 7 Gate stamp | Orchestrator | PASS on 630bf02da5a6c21db28c81c8b69fc14d5768e7c3 (tier standard): Format check pass; Analyzer gate pass; Test with coverage pass; Coverage gate pass; decision-check.py pass; scope-check.py pass · figure-check.py 0 hit(s) |
