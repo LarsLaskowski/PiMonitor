@@ -31,6 +31,8 @@ openHAB value over time ([History](../../docs/areas/history.md#series)).
   heap point. A process hidden while REST answers yields heap points without RSS points.
 - E3: The first process found after PiMonitor starts is no restart, and a restart while PiMonitor was down is not
   marked; the restored series shows the downtime as a gap.
+- E9: openHAB stopped and started later: process A, then one or more polls without a process, then process B give
+  exactly one restart point, with B's PID, at the timestamp of the poll that found B.
 - E4: openHAB not installed, never seen in the window, or `openhab.enabled: false`: the three keys are absent and the
   card stays hidden as today. After openHAB is removed, its points stay served until they leave the window.
 - E5: `openhab.history_window_hours` outside 1 to 168, or not an integer: startup fails.
@@ -48,8 +50,9 @@ openHAB value over time ([History](../../docs/areas/history.md#series)).
 - N2: Each openHAB series holds at most max(1, ⌊`openhab.history_window_hours` × 3600 /
   `openhab.poll_interval_seconds`⌋) points (1,440 at the defaults, 10,080 at most), independent of
   `history_window_minutes` and `poll_interval_seconds`.
-- N3: Compatibility: `history.bin` stays `PIMH` version 1, the new series take new kind numbers; the v1 history
-  response only gains keys that are omitted when empty, every existing key is unchanged.
+- N3: Compatibility: `history.bin` stays `PIMH` version 1, the new series take new kind numbers; v1 responses only
+  gain keys (three history keys omitted when empty, one field of `GET /api/v1/openhab`), every existing key keeps its
+  name, type and meaning.
 - N4: No extra request to openHAB and no change to the poll cadence; the series are served under `api_key` like the
   rest of the history. The PID in `openhab_restarts` is already served by `GET /api/v1/openhab`.
 
@@ -57,11 +60,13 @@ openHAB value over time ([History](../../docs/areas/history.md#series)).
 
 - AC1: Each finished openHAB poll whose result has a process adds one point (the process's RSS in bytes) to
   `openhab_rss_bytes`, and one whose result has heap values adds one point (heap used in bytes) to
-  `openhab_heap_used_bytes`, both with the same timestamp; a poll without the value, and every fast tick, adds none to
+  `openhab_heap_used_bytes`, both timestamped with the poll's `collected_at` (the value `GET /api/v1/openhab`
+  reports for that poll); a poll without the value, and every fast tick, adds none to
   that series; the poll sends no request beyond those of today (S2, E1, E2, N4).
 - AC2: A poll that finds a process whose PID or start time differs from those of the process found by the latest
-  earlier poll of the same PiMonitor run adds a point to `openhab_restarts` with the poll's timestamp and the new PID
-  as value; the first process found after start adds none (S3, E3).
+  earlier poll of the same PiMonitor run that found a process (polls without a process are skipped) adds a point to
+  `openhab_restarts` with the poll's `collected_at` and the new PID as value; the first process found after start
+  adds none (S3, E3, E9).
 - AC3: `openhab.history_window_hours` defaults to 24 and accepts the integers 1 to 168; another number fails
   startup with `openhab.history_window_hours must be between 1 and 168 (got <value>)`, a fractional one as the other
   integer options do ([Configuration](../../docs/areas/configuration.md)); each openHAB series holds at most the
@@ -80,11 +85,15 @@ openHAB value over time ([History](../../docs/areas/history.md#series)).
   primary line and heap used as a second line in another color, a legend naming only the lines drawn (`RSS`,
   `Heap used`), points placed by time from the oldest to the newest point, a y scale from 0 to the largest value shown
   with that value labelled in the card's byte format (`812 MB`, `1.2 GB`), the line broken where two neighboring
-  points lie more than 1.5 × `openhab.poll_interval_seconds` apart, and a vertical marker at each restart in that
-  range (S1, S3, E1, E2, E7).
-- AC8: The dashboard keeps the openHAB series to `openhab.history_window_hours` rather than `history_window_minutes`,
-  and its incremental history merge and periodic full re-sync apply to the three keys like to the existing ones (S1,
-  S4).
+  points lie more than 1.5 × `openhab.poll_interval_seconds` apart — so points spaced by the interval plus up to 25 s
+  of poll duration (85 s at 60 s) stay joined and a skipped poll (about 120 s) breaks it — and a vertical marker at
+  each restart in that range (S1, S3, E1, E2, E7).
+- AC8: The dashboard keeps the openHAB series to the `history_window_hours` of AC9 rather than
+  `history_window_minutes`, and its incremental history merge and periodic full re-sync apply to the three keys like
+  to the existing ones (S1, S4).
+- AC9: Every `200` answer of `GET /api/v1/openhab`, `pending` included, carries `history_window_hours`, the
+  configured `openhab.history_window_hours` as an integer, beside `poll_interval_seconds`; no other key of the
+  response changes (S1, N1, N3).
 
 ## Out of scope
 
@@ -109,8 +118,9 @@ openHAB value over time ([History](../../docs/areas/history.md#series)).
   response is additive and needs no v2; earlier keys omitted when empty (`wireless`, `pihole`,
   [0006](../../docs/decisions/0006-publish-host-name-by-default.md)) were added to v1 the same way.
 - Heap as a second line or a toggle? Answered: a second line (AC7); one look shows both, and a toggle adds state.
-- How does the dashboard learn `openhab.history_window_hours`? Answered: the plan chooses the existing endpoint
-  that reports it; the spec fixes only the behavior (AC8).
+- How does the dashboard learn `openhab.history_window_hours`? Answered: from the new field `history_window_hours`
+  of `GET /api/v1/openhab` (AC9), which the dashboard already polls and whose `poll_interval_seconds` the gap rule of
+  AC7 needs as well; `GET /api/v1/config` would carry an openHAB value while the feature is off.
 - Do the issue's claims about today's code hold? Answered: the capacity is `history_window_minutes × 60 / poll_interval_seconds`
   (`internal/config/config.go:364`; the issue omits the × 60) capped by `maxHistoryCapacity` (line 378) — confirmed;
   the openHAB default of 60 s (line 293) — confirmed; restore trims to the window — confirmed; "PIMH v1 supports
@@ -129,5 +139,25 @@ openHAB value over time ([History](../../docs/areas/history.md#series)).
 - [Dashboard](../../docs/areas/dashboard.md): the chart in the openHAB card (AC7) and the openHAB window in the
   browser's history handling.
 - [Configuration](../../docs/areas/configuration.md): the row of `openhab.history_window_hours`.
-- [HTTP API](../../docs/areas/http-api.md): the answer to its open question for keys omitted when empty; `API.md`
-  documents the keys, their sampling interval and the restart points.
+- [HTTP API](../../docs/areas/http-api.md): *Versioning and stability* states that adding a key to a v1 response is
+  no shape change, answering its open question; `API.md` documents the three keys, their sampling interval and the
+  restart points, and `history_window_hours` of `GET /api/v1/openhab`.
+
+## Challenge
+
+- 1 (major, AC2 skips the comparison after a poll without a process). Accepted: AC2 now compares with the latest
+  earlier poll *that found a process*, and E9 adds the case A, no process, B → exactly one restart point with B's PID
+  at the `collected_at` of the poll that found B.
+- 2 (major, additive v1 keys contradict the binding stability rule; the window field is a second shape change).
+  Accepted. The window travels as `history_window_hours` on `GET /api/v1/openhab` (AC9). The plan creates a decision
+  record "Adding a key to a v1 response is no shape change" (removing, renaming or retyping a key or changing its
+  meaning still is), based on the Product Manager's statement in #183 and the earlier additions (`wireless`, `pihole`,
+  `system.hostname`, `pmic_temperature`), and orders these updates, owned by the Dev: the *stability* block of
+  `docs/CONTRIBUTING.md`; *Versioning and stability* in `docs/areas/http-api.md`, whose open question it answers;
+  the *code-style* project block of `AGENTS.md`, identically in `.github/copilot-instructions.md` — a project block,
+  which a product PR may change (`.squad/routing.md`, *Scope of a product PR*), so no squad lesson is needed; and the
+  v1 guarantee line of `.squad/project.md`, text reported by the Dev and written by the orchestrator. Settled by the
+  Lead without an escalation: the repository owner, who is the Product Manager, wrote in the issue that adding keys
+  needs no v2, and v1 has been extended this way before; the orchestrator names this guarantee wording in the PR.
+- 3 (minor, timestamp and the gap rule's cases). Accepted: AC1 and AC2 name `collected_at` as the timestamp, and AC7
+  names the spacing that stays joined (interval plus up to 25 s) and the skipped poll that breaks the line.
