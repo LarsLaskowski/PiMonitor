@@ -18,7 +18,7 @@ writes nothing, and the client gets a 200 with an empty body while the error is 
 | # | Claim | Evidence | Status |
 | - | ----- | -------- | ------ |
 | 1 | `parseVcgencmdTemp` uses `strconv.ParseFloat` with no finiteness check (issue) | `temperature.go:251-255` | confirmed |
-| 2 | `ParseFloat` accepts `NaN`, `Inf`, `Infinity`, optionally signed, case-insensitively, as special values without error | Go 1.27 source `src/strconv/number.go:90`, `src/internal/strconv/atof.go:48` (`special`) | confirmed |
+| 2 | `ParseFloat` accepts `NaN` (unsigned) and `Inf`/`Infinity` (optionally signed), case-insensitively, as special values without error | Go 1.27 source `src/strconv/number.go:90`, `src/internal/strconv/atof.go:48` (`special`) | confirmed |
 | 3 | An overflowing literal (`1e999`) already fails with `strconv.ErrRange` and is classed `errVcgencmdUnsupportedOutput` | `temperature.go:252-253`; test case "AC2 out-of-range number", `temperature_test.go:561-565` | confirmed |
 | 4 | A NaN reading would reach `gpu_temperature`/`pmic_temperature` of the snapshot (issue) | `collector.go:619-621`, `670-671`; `types.go:241-242` | confirmed |
 | 5 | NaN/±Inf make `GET /api/v1/metrics` fail to encode (issue: "make `json.Marshal` fail") | `handlers.go:15` uses `json.NewEncoder(w).Encode`; Go `encoding/json/encode.go:572-573` raises `UnsupportedValueError`, `stream.go:224-227` returns before writing; the call is `Encoder.Encode`, not `json.Marshal`, with the same failure: empty 200 body plus an error log | confirmed |
@@ -151,3 +151,57 @@ The plan holds up. I checked it against the code and found nothing to object to.
 - **No other vcgencmd parser has the same defect:** `throttled.go:77` uses `ParseUint`, which cannot return NaN or Inf. The `/proc` parsers that use `ParseFloat` (`loadavg.go`, `uptime.go`, `wireless.go`) are already listed as follow-ups.
 - **AC3 is buildable and catches the defect:** `newOptionalSourceEnv` (`collector_test.go:1050`) and the fake vcgencmd pattern of `installVcgencmd` support it. Without the fix, `json.Marshal` of the snapshot would fail.
 - **The fix is the simplest one:** it reuses the existing error class, and the alternatives the plan rejected were rightly rejected.
+
+## Security notes
+
+Security plan review: specs/issue-265/plan.md (issue #265, non-finite vcgencmd temperatures). Mode `plan`, round 1.
+
+Files read: /home/user/PiMonitor/specs/issue-265/plan.md, /home/user/PiMonitor/internal/collector/temperature.go (CollectGPU/CollectPMIC/readVcgencmdTemp/parseVcgencmdTemp, lines 173-256), /home/user/PiMonitor/internal/collector/vcgencmd.go (sanitizeVcgencmdDetail, numParseCause), /home/user/PiMonitor/.squad/project.md (*Security areas*), /home/user/PiMonitor/.squad/routing.md (*Tiers*).
+
+Tier and areas
+- `standard` is correct. The new check stops malformed input from breaking the program; it does not decide what an attacker can reach. *Tiers* (`security` row) calls a parser's validation input handling. It is not a security control.
+- *Security areas touched* lists "Parsing of local input" (vcgencmd command output in internal/collector), which is complete:
+  - Subprocesses: the exec call and its arguments are unchanged, so that area is not touched.
+  - HTTP surface: no route, middleware or status change.
+  - The Prometheus writer (`prometheus.go`) is only read, not changed.
+- Consumers: I grepped for GPUTemperature/PMICTemperature outside temperature.go. They are used only in collector.go:580-581 and 670-671, types.go:241-242 and prometheus.go:129-130 and 190-208. They are not used in history, persistence or alerts, which matches fact 6.
+
+Bypass enumeration (parser consumed: strconv.ParseFloat after TrimSpace, the "temp=" prefix and the "'C" suffix are removed)
+The guard checks the decoded value with `math.IsNaN || math.IsInf(_, 0)`, not the token. So every spelling ParseFloat turns into a non-finite value is covered, whatever its case, sign or long form. Overflowing decimal and hex literals already fail with ErrRange, and the existing `errVcgencmdUnsupportedOutput` path handles them. Leading and trailing whitespace inside the value is rejected by ParseFloat itself. Hex floats and underscores decode to finite values, which encode fine. Very large finite values (1e308) and -0 are finite and encode fine. I found no form the guard misses.
+
+Measurement (fact 2 and fact 5 rest on library behavior)
+I wrote /tmp/claude-0/-home-user-PiMonitor/4b999c80-2228-5d88-9118-f46318233af4/scratchpad/m265/main.go and ran `go run main.go` in that directory (go1.27.4 linux/amd64). Output, quoted:
+```
+"nan"        -> NaN err=<nil> nonfinite=true
+"NaN"        -> NaN err=<nil> nonfinite=true
+"-nan"       -> 0 err=strconv.ParseFloat: parsing "-nan": invalid syntax nonfinite=false
+"+NAN"       -> 0 err=strconv.ParseFloat: parsing "+NAN": invalid syntax nonfinite=false
+"inf"        -> +Inf err=<nil> nonfinite=true
+"+Inf"       -> +Inf err=<nil> nonfinite=true
+"-Infinity"  -> -Inf err=<nil> nonfinite=true
+"INFINITY"   -> +Inf err=<nil> nonfinite=true
+"infin"      -> 0 err=strconv.ParseFloat: parsing "infin": invalid syntax nonfinite=false
+"1e999"      -> +Inf err=strconv.ParseFloat: parsing "1e999": value out of range nonfinite=true
+"0x1p99999"  -> +Inf err=strconv.ParseFloat: parsing "0x1p99999": value out of range nonfinite=true
+"0x1p-2"     -> 0.25 err=<nil> nonfinite=false
+"1_0"        -> 10 err=<nil> nonfinite=false
+"0x1_0p0"    -> 16 err=<nil> nonfinite=false
+" nan"       -> 0 err=strconv.ParseFloat: parsing " nan": invalid syntax nonfinite=false
+"nan "       -> 0 err=strconv.ParseFloat: parsing "nan ": invalid syntax nonfinite=false
+"1e308"      -> 1e+308 err=<nil> nonfinite=false
+"-0"         -> -0 err=<nil> nonfinite=false
+encode err=json: unsupported value: NaN written=0
+```
+This confirms fact 5: Encoder.Encode returns an error and writes 0 bytes. It confirms fact 2 except for one detail, covered in the finding below.
+
+Error text and logging
+- The error quotes `sanitizeVcgencmdDetail([]byte(output))`: whitespace collapsed, 200-byte bound, cut on a rune boundary (vcgencmd.go:137-147). This follows decision 0002.
+- The success path returns no wrapped NumError, so the input is not quoted a second time without its bound.
+- The error reaches only the existing failure logs, so it adds no user-visible output.
+- The PMIC latch on a NaN answer comes from local, trusted firmware output, and the same latch already exists for error lines. It opens no new denial-of-service path.
+
+Findings
+
+[NON-BLOCKING] plan.md, *Verified facts* row 2: "optionally signed" is wrong for NaN. The run above shows ParseFloat rejects `-nan` and `+NAN` with ErrSyntax; only Inf/Infinity take a sign. The guard and the AC1 inputs (`temp=nan'C`, `temp=NaN'C`, `temp=inf'C`, `temp=+Inf'C`, `temp=-Infinity'C`) are unaffected. The fact is just imprecise. Smallest fix, verbatim: replace the claim cell of row 2 with "`ParseFloat` accepts `NaN` (unsigned) and `Inf`/`Infinity` (optionally signed), case-insensitively, as special values without error". Recommendation: fix now, in the Lead's revision or with the next plan edit.
+
+No blocking findings. The two follow-up issues the plan proposes are reasonable hardening and belong in issues, as the plan says: /proc load average, uptime and wireless parsers, and writeJSON answering 200 with an empty body.
