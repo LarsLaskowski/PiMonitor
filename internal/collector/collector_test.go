@@ -2217,6 +2217,67 @@ func checkWaitingSamplesCapped(t *testing.T) {
 	}
 }
 
+// TestCollector_OpenHABWaiting_CappedWithoutTick_AC5 pins the waiting slice
+// itself (not only what a tick later records): it never holds more than the
+// openHAB capacity, the oldest sample is dropped first, and a tick empties it.
+func TestCollector_OpenHABWaiting_CappedWithoutTick_AC5(t *testing.T) {
+	const capacity = 3
+	c := newOHDeltaCollector(t, nil, withOHHistory(24, capacity))
+
+	for i := range 10 * capacity {
+		c.queueOpenHABSample(openHABSample{rssBytes: uint64(i + 1), rssOK: true})
+		c.mu.Lock()
+		held := len(c.ohWaiting)
+		c.mu.Unlock()
+		if held > capacity {
+			t.Fatalf("waiting samples after %d queued = %d, want at most the capacity %d", i+1, held, capacity)
+		}
+	}
+
+	c.mu.Lock()
+	var got []uint64
+	for _, s := range c.ohWaiting {
+		got = append(got, s.rssBytes)
+	}
+	c.mu.Unlock()
+	want := []uint64{10*capacity - 2, 10*capacity - 1, 10 * capacity}
+	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] || got[2] != want[2] {
+		t.Fatalf("waiting samples = %v, want the newest %d: %v", got, capacity, want)
+	}
+
+	c.fastTick(context.Background())
+
+	c.mu.Lock()
+	left := len(c.ohWaiting)
+	c.mu.Unlock()
+	if left != 0 {
+		t.Fatalf("waiting samples after a tick = %d, want 0", left)
+	}
+}
+
+func TestCollector_History_OpenHABDisabled_AC4(t *testing.T) {
+	c := newTestCollector()
+	c.fastTick(context.Background())
+
+	h := c.History()
+
+	if h.OpenHABRSSBytes != nil || h.OpenHABHeapUsedBytes != nil || h.OpenHABRestarts != nil {
+		t.Fatalf("openHAB series with openHAB disabled = %v, %v, %v, want none",
+			h.OpenHABRSSBytes, h.OpenHABHeapUsedBytes, h.OpenHABRestarts)
+	}
+	body, err := json.Marshal(h)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if strings.Contains(string(body), "openhab") {
+		t.Fatalf("history JSON = %s, want no openhab key with openHAB disabled", body)
+	}
+	since := h.Since(time.Time{}.Add(time.Second))
+	if since.OpenHABRSSBytes != nil || since.OpenHABHeapUsedBytes != nil || since.OpenHABRestarts != nil {
+		t.Fatalf("Since() carries openHAB series with openHAB disabled: %+v", since)
+	}
+}
+
 func TestCollector_OpenHABHistory_Retention(t *testing.T) {
 	ctx := context.Background()
 	t.Run("AC3 full series drops its oldest point", func(t *testing.T) {

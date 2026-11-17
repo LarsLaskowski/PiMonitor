@@ -734,6 +734,23 @@ func countKind(kinds []uint8, kind uint8) int {
 	return n
 }
 
+func TestEncodeHistory_NoOpenHABSeriesWritesNoRecord_AC6(t *testing.T) {
+	h := fixtureHistory(time.Now().UTC())
+	h.OpenHABRSSBytes = []HistoryPoint{}
+	h.OpenHABHeapUsedBytes = nil
+
+	kinds := recordKinds(t, encodeHistory(h))
+
+	for _, kind := range []uint8{kindOpenHABRSS, kindOpenHABHeapUsed, kindOpenHABRestarts} {
+		if n := countKind(kinds, kind); n != 0 {
+			t.Fatalf("records of kind %d = %d in %v, want none while the openHAB series are empty", kind, n, kinds)
+		}
+	}
+	if len(kinds) == 0 {
+		t.Fatal("no records written at all, want the other series")
+	}
+}
+
 func TestEncodeHistory_OnlyNonEmptyOpenHABSeriesWritten_AC6(t *testing.T) {
 	h := fixtureHistory(time.Now().UTC())
 	h.OpenHABRSSBytes = openHABHistoryFixture(time.Now().UTC()).OpenHABRSSBytes
@@ -795,6 +812,45 @@ func TestCollector_PersistAndLoadHistory_OpenHAB_AC6(t *testing.T) {
 
 func TestCollector_LoadHistory_OpenHAB(t *testing.T) {
 	now := time.Now().Truncate(time.Millisecond)
+	t.Run("AC6 file without openHAB series restores the others", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "history.bin")
+		recent := HistoryPoint{Timestamp: now.Add(-time.Minute), Value: 2}
+		writeHistoryFile(t, path, History{CPUPercent: []HistoryPoint{recent}, Load1: []HistoryPoint{recent}})
+		c := newOHPersistCollector(path, time.Hour, 24, 1440)
+
+		c.loadHistory()
+
+		h := c.History()
+		pointsEqual(t, "CPUPercent", h.CPUPercent, []HistoryPoint{recent})
+		pointsEqual(t, "Load1", h.Load1, []HistoryPoint{recent})
+		if len(h.OpenHABRSSBytes)+len(h.OpenHABHeapUsedBytes)+len(h.OpenHABRestarts) != 0 {
+			t.Fatalf("openHAB series = %v, %v, %v, want none from a file without them",
+				h.OpenHABRSSBytes, h.OpenHABHeapUsedBytes, h.OpenHABRestarts)
+		}
+	})
+	t.Run("AC6 disabled restores none", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "history.bin")
+		recent := HistoryPoint{Timestamp: now.Add(-time.Minute), Value: 2}
+		writeHistoryFile(t, path, History{
+			CPUPercent: []HistoryPoint{recent}, OpenHABRSSBytes: []HistoryPoint{recent},
+			OpenHABHeapUsedBytes: []HistoryPoint{recent}, OpenHABRestarts: []HistoryPoint{recent}})
+		c := newOHPersistCollector(path, time.Hour, 0, 0)
+
+		c.loadHistory()
+
+		h := c.History()
+		pointsEqual(t, "CPUPercent", h.CPUPercent, []HistoryPoint{recent})
+		if h.OpenHABRSSBytes != nil || h.OpenHABHeapUsedBytes != nil || h.OpenHABRestarts != nil {
+			t.Fatalf("openHAB series = %v, %v, %v, want none restored with openHAB disabled",
+				h.OpenHABRSSBytes, h.OpenHABHeapUsedBytes, h.OpenHABRestarts)
+		}
+		c.mu.Lock()
+		held := c.ohRSSHist != nil || c.ohHeapHist != nil || c.ohRestartHist != nil
+		c.mu.Unlock()
+		if held {
+			t.Fatal("openHAB buffers exist with openHAB disabled")
+		}
+	})
 	t.Run("AC6 drops points older than the openHAB window", func(t *testing.T) {
 		path := filepath.Join(t.TempDir(), "history.bin")
 		old := HistoryPoint{Timestamp: now.Add(-3 * time.Hour), Value: 1}
