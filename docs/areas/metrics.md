@@ -69,8 +69,10 @@ such as openHAB that poll single values.
   tick, whether or not a thermal zone was read. Each is present only when its call succeeded in that tick; a failure
   affects neither the other reading nor `temperature` and is logged as stated under
   [Limits and errors](#limits-and-errors).
+- Each reading is present only when the answer is a finite temperature: a non-finite one (`temp=nan'C`,
+  `temp=inf'C`) is output other than a temperature and fails that tick's reading.
 - Once `vcgencmd` answers `measure_temp pmic` with anything other than a temperature (a board without a PMIC
-  sensor), the PMIC reading is not attempted again for the life of the process and the same error is reported
+  sensor, or a non-finite value), the PMIC reading is not attempted again for the life of the process and the same error is reported
   from then on. A failed or timed-out call is
   retried on the next tick.
 - `throttled` decodes `vcgencmd get_throttled` (`throttled=0x…`): bits 0–3 are `under_voltage_now`,
