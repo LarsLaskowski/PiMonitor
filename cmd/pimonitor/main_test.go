@@ -263,7 +263,7 @@ func TestCollectorConfig_MapsFields(t *testing.T) {
 		cfg.ProcessesTopN = 9
 		cfg.Alerts.ForSeconds = 12
 		cfg.Thresholds.CPUWarnPercent = 77
-		cfg.OpenHAB = config.OpenHAB{Enabled: "auto", BaseURL: "http://127.0.0.1:8081", APIToken: "tok", PollIntervalSeconds: 90}
+		cfg.OpenHAB = config.OpenHAB{Enabled: "auto", BaseURL: "http://127.0.0.1:8081", APIToken: "tok", PollIntervalSeconds: 90, HistoryWindowHours: 36}
 		notifier := newTestNotifier(t)
 
 		got := collectorConfig(cfg, notifier)
@@ -291,6 +291,8 @@ func TestCollectorConfig_MapsFields(t *testing.T) {
 			{"OpenHAB.BaseURL", got.OpenHAB.BaseURL, "http://127.0.0.1:8081"},
 			{"OpenHAB.Token", got.OpenHAB.Token, "tok"},
 			{"OpenHAB.Interval", got.OpenHAB.Interval, 90 * time.Second},
+			{"OpenHAB.HistoryWindowHours", got.OpenHAB.HistoryWindowHours, 36},
+			{"OpenHAB.HistoryCapacity", got.OpenHAB.HistoryCapacity, 1440}, // 36 h at 90 s
 		})
 	})
 	t.Run("AC3 hostname_enabled false reaches the collector", func(t *testing.T) {

@@ -390,6 +390,41 @@ func TestHandleHistory_SinceReturnsOnlyNewerPoints(t *testing.T) {
 	}
 }
 
+func TestHandleHistory_OpenHABKeys(t *testing.T) {
+	base := time.Date(2026, 11, 14, 12, 0, 0, 0, time.UTC)
+	pts := func(offsets ...time.Duration) []collector.HistoryPoint {
+		out := make([]collector.HistoryPoint, len(offsets))
+		for i, off := range offsets {
+			out[i] = collector.HistoryPoint{Timestamp: base.Add(off), Value: float64(100 + i)}
+		}
+		return out
+	}
+	t.Run("AC4 since keeps the newer points of each key and omits a key without any", func(t *testing.T) {
+		s, fm := newTestServer(Config{})
+		fm.history = collector.History{
+			OpenHABRSSBytes:      pts(0, time.Minute, 2*time.Minute),
+			OpenHABHeapUsedBytes: pts(0, time.Minute, 2*time.Minute),
+			OpenHABRestarts:      pts(0),
+		}
+
+		rec := getHistory(s, "since="+base.Add(30*time.Second).Format(time.RFC3339))
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", rec.Code)
+		}
+		got := decodeHistory(t, rec)
+		if len(got.OpenHABRSSBytes) != 2 || len(got.OpenHABHeapUsedBytes) != 2 {
+			t.Fatalf("rss, heap points = %d, %d, want 2 each", len(got.OpenHABRSSBytes), len(got.OpenHABHeapUsedBytes))
+		}
+		if !got.OpenHABRSSBytes[0].Timestamp.Equal(base.Add(time.Minute)) {
+			t.Fatalf("oldest returned RSS point = %v, want %v", got.OpenHABRSSBytes[0].Timestamp, base.Add(time.Minute))
+		}
+		if strings.Contains(rec.Body.String(), "openhab_restarts") {
+			t.Fatalf("body = %s, want no openhab_restarts without a newer point", rec.Body.String())
+		}
+	})
+}
+
 // TestHandleHistory_SinceExcludesExactBoundary pins the strictly-newer
 // rule at the HTTP layer: a client passing back the timestamp of the
 // newest point it holds must not receive that point a second time.
@@ -987,6 +1022,7 @@ func openHABOKStatus() collector.OpenHABStatus {
 	return collector.OpenHABStatus{
 		State:               collector.OpenHABStateOK,
 		PollIntervalSeconds: 60,
+		HistoryWindowHours:  24,
 		APITokenConfigured:  true,
 		CollectedAt:         &at,
 		Version:             "5.2.4",
@@ -1024,11 +1060,11 @@ func TestHandleOpenHAB_AC9(t *testing.T) {
 		{"AC9 S7 serves the collector status", Config{OpenHABEnabled: true}, openHABOKStatus(), "",
 			http.StatusOK, mustMarshal(t, openHABOKStatus())},
 		{"AC9 S5 not_installed", Config{OpenHABEnabled: true},
-			collector.OpenHABStatus{State: collector.OpenHABStateNotInstalled, PollIntervalSeconds: 60}, "",
-			http.StatusOK, `{"state":"not_installed","poll_interval_seconds":60,"api_token_configured":false}`},
+			collector.OpenHABStatus{State: collector.OpenHABStateNotInstalled, PollIntervalSeconds: 60, HistoryWindowHours: 24}, "",
+			http.StatusOK, `{"state":"not_installed","poll_interval_seconds":60,"history_window_hours":24,"api_token_configured":false}`},
 		{"AC9 S9 pending", Config{OpenHABEnabled: true},
-			collector.OpenHABStatus{State: collector.OpenHABStatePending, PollIntervalSeconds: 120, APITokenConfigured: true}, "",
-			http.StatusOK, `{"state":"pending","poll_interval_seconds":120,"api_token_configured":true}`},
+			collector.OpenHABStatus{State: collector.OpenHABStatePending, PollIntervalSeconds: 120, HistoryWindowHours: 24, APITokenConfigured: true}, "",
+			http.StatusOK, `{"state":"pending","poll_interval_seconds":120,"history_window_hours":24,"api_token_configured":true}`},
 		{"AC9 API key required", Config{OpenHABEnabled: true, APIKey: key}, openHABOKStatus(), "",
 			http.StatusUnauthorized, ""},
 		{"AC9 API key accepted", Config{OpenHABEnabled: true, APIKey: key}, openHABOKStatus(), key,

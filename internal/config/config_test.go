@@ -908,7 +908,7 @@ func TestCheckIntegerOptions_CoversEveryIntField_AC4(t *testing.T) {
 }
 
 func TestDefault_OpenHAB_AC7(t *testing.T) {
-	want := OpenHAB{Enabled: "auto", BaseURL: "http://127.0.0.1:8080", APIToken: "", PollIntervalSeconds: 60}
+	want := OpenHAB{Enabled: "auto", BaseURL: "http://127.0.0.1:8080", APIToken: "", PollIntervalSeconds: 60, HistoryWindowHours: 24}
 
 	got := Default().OpenHAB
 
@@ -923,6 +923,120 @@ func TestDefault_OpenHAB_AC7(t *testing.T) {
 	}
 	if err := Default().Validate(); err != nil {
 		t.Fatalf("Default().Validate() = %v, want nil", err)
+	}
+}
+
+func TestDefault_OpenHABHistoryWindowHours_AC3(t *testing.T) {
+	if got := Default().OpenHAB.HistoryWindowHours; got != 24 {
+		t.Fatalf("Default().OpenHAB.HistoryWindowHours = %d, want 24", got)
+	}
+}
+
+func TestValidate_OpenHABHistoryWindowHours_AC3(t *testing.T) {
+	hours := func(v int) func(*OpenHAB) { return func(o *OpenHAB) { o.HistoryWindowHours = v } }
+	disabled := func(v int) func(*OpenHAB) {
+		return func(o *OpenHAB) {
+			o.Enabled = "false"
+			o.HistoryWindowHours = v
+		}
+	}
+	tests := []struct {
+		name string
+		set  func(*OpenHAB)
+		want string
+	}{
+		{"AC3 hours 1", hours(1), ""},
+		{"AC3 hours 24", hours(24), ""},
+		{"AC3 hours 168", hours(168), ""},
+		{"AC3 hours 0", hours(0), "openhab.history_window_hours must be between 1 and 168 (got 0)"},
+		{"AC3 hours 169", hours(169), "openhab.history_window_hours must be between 1 and 168 (got 169)"},
+		{"AC3 hours -1", hours(-1), "openhab.history_window_hours must be between 1 and 168 (got -1)"},
+		{"AC3 hours 0 while openhab.enabled is false", disabled(0), "openhab.history_window_hours must be between 1 and 168 (got 0)"},
+		{"AC3 hours 169 while openhab.enabled is false", disabled(169), "openhab.history_window_hours must be between 1 and 168 (got 169)"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			checkErrText(t, validateOpenHAB(tt.set), tt.want)
+		})
+	}
+}
+
+func TestLoad_OpenHABHistoryWindowHours_AC3(t *testing.T) {
+	tests := []struct {
+		name      string
+		yaml      string
+		wantHours int
+		wantErr   string
+	}{
+		{"AC3 absent keeps 24", "openhab:\n  enabled: auto\n", 24, ""},
+		{"AC3 168", "openhab:\n  history_window_hours: 168\n", 168, ""},
+		{"AC3 whole number written as decimal", "openhab:\n  history_window_hours: 12.0\n", 12, ""},
+		{"AC3 fraction", "openhab:\n  history_window_hours: 1.5\n", 0,
+			"openhab.history_window_hours must be a whole number (got 1.5)"},
+		{"AC3 fraction through alias", "hours: &n 2.5\nopenhab: {history_window_hours: *n}\n", 0,
+			"openhab.history_window_hours must be a whole number (got 2.5)"},
+		{"AC3 not finite", "openhab:\n  history_window_hours: .nan\n", 0,
+			"openhab.history_window_hours must be a finite number"},
+		{"AC3 below range from file", "openhab:\n  history_window_hours: 0\n", 0,
+			"openhab.history_window_hours must be between 1 and 168 (got 0)"},
+		{"AC3 above range from file", "openhab:\n  history_window_hours: 169\n", 0,
+			"openhab.history_window_hours must be between 1 and 168 (got 169)"},
+		{"AC3 above range while openhab.enabled is false", "openhab:\n  enabled: false\n  history_window_hours: 500\n", 0,
+			"openhab.history_window_hours must be between 1 and 168 (got 500)"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := loadYAMLText(t, tt.yaml)
+
+			checkErrText(t, err, tt.wantErr)
+			if got := result.Config.OpenHAB.HistoryWindowHours; got != tt.wantHours {
+				t.Fatalf("HistoryWindowHours = %d, want %d", got, tt.wantHours)
+			}
+		})
+	}
+}
+
+func TestOpenHAB_HistoryCapacity_AC3(t *testing.T) {
+	tests := []struct {
+		name         string
+		hours, every int
+		want         int
+	}{
+		{"AC3 24 h at 60 s", 24, 60, 1440},
+		{"AC3 168 h at 60 s", 168, 60, 10080},
+		{"AC3 1 h at 86400 s keeps one point", 1, 86400, 1},
+		{"AC3 fraction is floored", 1, 7000, 1},
+		{"AC3 2 h at 90 s", 2, 90, 80},
+		{"AC3 non-positive interval gives 1", 24, 0, 1},
+		{"AC3 negative interval gives 1", 24, -5, 1},
+		{"AC3 capped at the history maximum", 1000, 1, maxHistoryCapacity},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			o := OpenHAB{HistoryWindowHours: tt.hours, PollIntervalSeconds: tt.every}
+
+			if got := o.HistoryCapacity(); got != tt.want {
+				t.Fatalf("HistoryCapacity() = %d, want %d", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestOpenHAB_HistoryWindow_AC3(t *testing.T) {
+	tests := []struct {
+		hours int
+		want  time.Duration
+	}{
+		{1, time.Hour},
+		{24, 24 * time.Hour},
+		{168, 168 * time.Hour},
+	}
+	for _, tt := range tests {
+		t.Run(fmt.Sprintf("AC3 %d hours", tt.hours), func(t *testing.T) {
+			if got := (OpenHAB{HistoryWindowHours: tt.hours}).HistoryWindow(); got != tt.want {
+				t.Fatalf("HistoryWindow() = %v, want %v", got, tt.want)
+			}
+		})
 	}
 }
 

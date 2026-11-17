@@ -2,6 +2,7 @@ package collector
 
 import (
 	"context"
+	"encoding/binary"
 	"errors"
 	"os"
 	"path/filepath"
@@ -661,4 +662,181 @@ func TestCollector_FlushHistory_WriteFailureIsLoggedAndLockReleased(t *testing.T
 	default:
 		t.Error("persisting slot still held after a failed flush, want it released")
 	}
+}
+
+// On-disk kinds of the openHAB series (docs/areas/history.md, File format);
+// the values are part of the format and never change.
+const (
+	kindOpenHABRSS      uint8 = 12
+	kindOpenHABHeapUsed uint8 = 13
+	kindOpenHABRestarts uint8 = 14
+)
+
+// recordKinds returns the kind byte of each series record of an encoded
+// history file, in file order.
+func recordKinds(t *testing.T, data []byte) []uint8 {
+	t.Helper()
+	pos := len(historyMagic) + 2
+	count := int(binary.LittleEndian.Uint32(data[pos:]))
+	pos += 4
+	kinds := make([]uint8, 0, count)
+	for range count {
+		kinds = append(kinds, data[pos])
+		keyLen := int(binary.LittleEndian.Uint16(data[pos+1:]))
+		points := int(binary.LittleEndian.Uint32(data[pos+3+keyLen:]))
+		pos += 1 + 2 + keyLen + 4 + points*pointSize
+	}
+	if pos != len(data) {
+		t.Fatalf("records end at byte %d, file has %d bytes", pos, len(data))
+	}
+	return kinds
+}
+
+// openHABHistoryFixture holds the three openHAB series, oldest point first.
+func openHABHistoryFixture(base time.Time) History {
+	base = base.Truncate(time.Millisecond)
+	return History{
+		OpenHABRSSBytes: []HistoryPoint{
+			{Timestamp: base, Value: 812e6}, {Timestamp: base.Add(time.Minute), Value: 815e6}, {Timestamp: base.Add(2 * time.Minute), Value: 820e6}},
+		OpenHABHeapUsedBytes: []HistoryPoint{
+			{Timestamp: base, Value: 400e6}, {Timestamp: base.Add(time.Minute), Value: 410e6}},
+		OpenHABRestarts: []HistoryPoint{{Timestamp: base.Add(time.Minute), Value: 2000}},
+	}
+}
+
+func TestHistory_EncodeDecodeRoundTrip_OpenHAB_AC6(t *testing.T) {
+	want := openHABHistoryFixture(time.Now().UTC())
+
+	data := encodeHistory(want)
+	got, err := decodeHistory(data)
+
+	if err != nil {
+		t.Fatalf("decodeHistory: %v", err)
+	}
+	pointsEqual(t, "OpenHABRSSBytes", got.OpenHABRSSBytes, want.OpenHABRSSBytes)
+	pointsEqual(t, "OpenHABHeapUsedBytes", got.OpenHABHeapUsedBytes, want.OpenHABHeapUsedBytes)
+	pointsEqual(t, "OpenHABRestarts", got.OpenHABRestarts, want.OpenHABRestarts)
+	kinds := recordKinds(t, data)
+	for _, kind := range []uint8{kindOpenHABRSS, kindOpenHABHeapUsed, kindOpenHABRestarts} {
+		if n := countKind(kinds, kind); n != 1 {
+			t.Fatalf("records of kind %d = %d in %v, want exactly 1 (version stays %d)", kind, n, kinds, historyVersion)
+		}
+	}
+}
+
+func countKind(kinds []uint8, kind uint8) int {
+	n := 0
+	for _, k := range kinds {
+		if k == kind {
+			n++
+		}
+	}
+	return n
+}
+
+func TestEncodeHistory_OnlyNonEmptyOpenHABSeriesWritten_AC6(t *testing.T) {
+	h := fixtureHistory(time.Now().UTC())
+	h.OpenHABRSSBytes = openHABHistoryFixture(time.Now().UTC()).OpenHABRSSBytes
+
+	kinds := recordKinds(t, encodeHistory(h))
+
+	if countKind(kinds, kindOpenHABRSS) != 1 {
+		t.Fatalf("record kinds = %v, want the RSS series (kind %d) written", kinds, kindOpenHABRSS)
+	}
+	if countKind(kinds, kindOpenHABHeapUsed) != 0 || countKind(kinds, kindOpenHABRestarts) != 0 {
+		t.Fatalf("record kinds = %v, want no record for an empty heap or restart series", kinds)
+	}
+}
+
+// newOHPersistCollector builds a Collector with persistence at path, the
+// other series' window, and the openHAB poll enabled with its own window
+// and capacity (hours of 0 leaves it disabled).
+func newOHPersistCollector(path string, window time.Duration, hours, capacity int) *Collector {
+	return New(Config{
+		FastInterval:    time.Second,
+		SlowInterval:    time.Minute,
+		HistoryCapacity: 10,
+		PersistPath:     path,
+		HistoryWindow:   window,
+		OpenHAB: OpenHABConfig{
+			Enabled:            hours > 0,
+			Interval:           time.Minute,
+			HistoryWindowHours: hours,
+			HistoryCapacity:    capacity,
+		},
+	}, nil)
+}
+
+// writeHistoryFile writes h as a history file at path.
+func writeHistoryFile(t *testing.T, path string, h History) {
+	t.Helper()
+	if err := writeFileAtomic(path, encodeHistory(h)); err != nil {
+		t.Fatalf("writeFileAtomic: %v", err)
+	}
+}
+
+func TestCollector_PersistAndLoadHistory_OpenHAB_AC6(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "history.bin")
+	now := time.Now().Truncate(time.Millisecond)
+	want := openHABHistoryFixture(now.Add(-10 * time.Minute))
+
+	c1 := newOHPersistCollector(path, time.Hour, 24, 1440)
+	c1.importHistory(want, now)
+	c1.persistHistory()
+	c1.persistWG.Wait()
+	c2 := newOHPersistCollector(path, time.Hour, 24, 1440)
+	c2.loadHistory()
+
+	got := c2.History()
+	pointsEqual(t, "OpenHABRSSBytes", got.OpenHABRSSBytes, want.OpenHABRSSBytes)
+	pointsEqual(t, "OpenHABHeapUsedBytes", got.OpenHABHeapUsedBytes, want.OpenHABHeapUsedBytes)
+	pointsEqual(t, "OpenHABRestarts", got.OpenHABRestarts, want.OpenHABRestarts)
+}
+
+func TestCollector_LoadHistory_OpenHAB(t *testing.T) {
+	now := time.Now().Truncate(time.Millisecond)
+	t.Run("AC6 drops points older than the openHAB window", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "history.bin")
+		old := HistoryPoint{Timestamp: now.Add(-3 * time.Hour), Value: 1}
+		recent := HistoryPoint{Timestamp: now.Add(-time.Minute), Value: 2}
+		writeHistoryFile(t, path, History{
+			OpenHABRSSBytes: []HistoryPoint{old, recent}, OpenHABHeapUsedBytes: []HistoryPoint{old}, OpenHABRestarts: []HistoryPoint{old, recent}})
+		c := newOHPersistCollector(path, time.Hour, 2, 1440)
+
+		c.loadHistory()
+
+		h := c.History()
+		pointsEqual(t, "OpenHABRSSBytes", h.OpenHABRSSBytes, []HistoryPoint{recent})
+		pointsEqual(t, "OpenHABRestarts", h.OpenHABRestarts, []HistoryPoint{recent})
+		if len(h.OpenHABHeapUsedBytes) != 0 {
+			t.Fatalf("OpenHABHeapUsedBytes = %v, want the fully stale series dropped", h.OpenHABHeapUsedBytes)
+		}
+	})
+	t.Run("AC6 uses the openHAB window, not history_window_minutes", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "history.bin")
+		inOpenHABWindow := HistoryPoint{Timestamp: now.Add(-90 * time.Minute), Value: 5}
+		writeHistoryFile(t, path, History{OpenHABRSSBytes: []HistoryPoint{inOpenHABWindow}, CPUPercent: []HistoryPoint{inOpenHABWindow}})
+		c := newOHPersistCollector(path, time.Hour, 2, 1440)
+
+		c.loadHistory()
+
+		h := c.History()
+		pointsEqual(t, "OpenHABRSSBytes", h.OpenHABRSSBytes, []HistoryPoint{inOpenHABWindow})
+		if len(h.CPUPercent) != 0 {
+			t.Fatalf("CPUPercent = %v, want the 1 h window to still drop the 90 min old point", h.CPUPercent)
+		}
+	})
+	t.Run("AC6 caps to the openHAB capacity", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "history.bin")
+		points := make([]HistoryPoint, 8)
+		for i := range points {
+			points[i] = HistoryPoint{Timestamp: now.Add(time.Duration(i-10) * time.Minute), Value: float64(i)}
+		}
+		writeHistoryFile(t, path, History{OpenHABRSSBytes: points})
+		c := newOHPersistCollector(path, time.Hour, 24, 5)
+
+		c.loadHistory()
+
+		pointsEqual(t, "OpenHABRSSBytes", c.History().OpenHABRSSBytes, points[3:])
+	})
 }

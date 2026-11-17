@@ -206,12 +206,14 @@ func withBaseURL(u string) func(*OpenHABConfig) {
 func newOHCollector(t *testing.T, srv *ohServer, root string, memTotal uint64, opts ...func(*OpenHABConfig)) (*OpenHABCollector, *bytes.Buffer) {
 	t.Helper()
 	cfg := OpenHABConfig{
-		Enabled:  true,
-		BaseURL:  srv.URL,
-		Interval: time.Minute,
-		Root:     root,
-		Timeout:  2 * time.Second,
-		Now:      func() time.Time { return ohNow },
+		Enabled:            true,
+		BaseURL:            srv.URL,
+		Interval:           time.Minute,
+		HistoryWindowHours: 24,
+		HistoryCapacity:    1440,
+		Root:               root,
+		Timeout:            2 * time.Second,
+		Now:                func() time.Time { return ohNow },
 	}
 	for _, o := range opts {
 		o(&cfg)
@@ -243,7 +245,7 @@ func TestOpenHABCollector_Poll_NotInstalled_AC1(t *testing.T) {
 	c.Poll(context.Background())
 	c.Poll(context.Background())
 
-	want := `{"state":"not_installed","poll_interval_seconds":60,"api_token_configured":false}`
+	want := `{"state":"not_installed","poll_interval_seconds":60,"history_window_hours":24,"api_token_configured":false}`
 	if got := mustJSON(t, c.Status()); got != want {
 		t.Fatalf("status = %s, want %s", got, want)
 	}
@@ -262,7 +264,7 @@ func TestOpenHABCollector_Status_PendingBeforeFirstPoll_AC2(t *testing.T) {
 
 	got := mustJSON(t, c.Status())
 
-	want := `{"state":"pending","poll_interval_seconds":120,"api_token_configured":true}`
+	want := `{"state":"pending","poll_interval_seconds":120,"history_window_hours":24,"api_token_configured":true}`
 	if got != want {
 		t.Fatalf("status before the first poll = %s, want %s", got, want)
 	}
@@ -409,7 +411,7 @@ func TestOpenHABCollector_Poll_ReevaluatesDetection_AC2(t *testing.T) {
 			t.Fatalf("%s: state = %q, want %q", step.name, got.State, step.want)
 		}
 	}
-	notInstalled := `{"state":"not_installed","poll_interval_seconds":60,"api_token_configured":false}`
+	notInstalled := `{"state":"not_installed","poll_interval_seconds":60,"history_window_hours":24,"api_token_configured":false}`
 	srv.route("/rest/", ohJSON(http.StatusOK, ohRootBody))
 	mustRemoveAll(t, filepath.Join(root, "var"))
 	mustRemoveAll(t, filepath.Join(root, "proc", "938"))
@@ -533,6 +535,7 @@ func ohFullStatus() OpenHABStatus {
 	return OpenHABStatus{
 		State:               OpenHABStateOK,
 		PollIntervalSeconds: 60,
+		HistoryWindowHours:  24,
 		CollectedAt:         ptr(ohNow),
 		Version:             "5.2.4",
 		StartLevel:          ptr(100),
@@ -694,7 +697,7 @@ func TestOpenHABCollector_Poll_Refused_AC4(t *testing.T) {
 			map[string]http.HandlerFunc{"/rest/": unauthorized},
 			OpenHABStateNotRunning, []string{"root"},
 			func(s *OpenHABStatus) {
-				*s = OpenHABStatus{State: OpenHABStateNotRunning, PollIntervalSeconds: 60, CollectedAt: ptr(ohNow), Refused: []string{"root"}}
+				*s = OpenHABStatus{State: OpenHABStateNotRunning, PollIntervalSeconds: 60, HistoryWindowHours: 24, CollectedAt: ptr(ohNow), Refused: []string{"root"}}
 			}},
 		{"AC4 nothing refused", nil, OpenHABStateOK, nil, func(*OpenHABStatus) {}},
 	}
@@ -1335,4 +1338,289 @@ func TestOpenHABThingStatuses(t *testing.T) {
 			t.Fatalf("after modifying the result, OpenHABThingStatuses() = %v, want %v", again, want)
 		}
 	})
+}
+
+// Values of the fixture openHAB JVM (writeOHJava) and of the default
+// systeminfo answer, as the history series hold them.
+const (
+	ohJavaRSSBytes     = 1383952 * 1024
+	ohHeapUsedBytes    = 729808896 - 65401520
+	ohOtherPID         = 2000
+	ohThirdPID         = 3000
+	ohStartTicks       = 100000
+	ohOtherStartTicks  = 200000
+	ohChangedStartTick = 300000
+)
+
+// ohClock is an OpenHABConfig.Now whose time a test sets.
+type ohClock struct {
+	mu sync.Mutex
+	at time.Time
+}
+
+func (c *ohClock) set(at time.Time) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.at = at
+}
+
+func (c *ohClock) now() time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.at
+}
+
+// ohCallClock is an OpenHABConfig.Now that returns early on its first call
+// (the end of the poll) and late on every later one (the hand-over of the
+// sample to the history).
+type ohCallClock struct {
+	mu          sync.Mutex
+	calls       int
+	early, late time.Time
+}
+
+func (c *ohCallClock) now() time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.calls++
+	if c.calls == 1 {
+		return c.early
+	}
+	return c.late
+}
+
+// ohProc is the openHAB process of one poll; the zero value is no process.
+type ohProc struct {
+	pid        int
+	startTicks uint64
+}
+
+// setOHProcess makes root hold exactly the process p (none for the zero value).
+func setOHProcess(t *testing.T, root string, p ohProc) {
+	t.Helper()
+	for _, pid := range []int{938, ohOtherPID, ohThirdPID} {
+		mustRemoveAll(t, filepath.Join(root, "proc", strconv.Itoa(pid)))
+	}
+	if p.pid != 0 {
+		writeOHProcess(t, root, p.pid, ohJavaArgv, 1383952, p.startTicks)
+	}
+}
+
+// withOHHistory sets the openHAB history window and capacity of a Config.
+func withOHHistory(hours, capacity int) func(*Config) {
+	return func(cfg *Config) {
+		cfg.OpenHAB.HistoryWindowHours = hours
+		cfg.OpenHAB.HistoryCapacity = capacity
+	}
+}
+
+// newOHHistoryCollector builds a Collector whose openHAB poll runs against
+// srv and root with the clock now (nil: the real one), the fixture meminfo
+// and a 24 h window of 1,440 points, changed by opts.
+func newOHHistoryCollector(t *testing.T, srv *ohServer, root string, now func() time.Time, opts ...func(*Config)) *Collector {
+	t.Helper()
+	cfg := Config{
+		FastInterval:    time.Second,
+		SlowInterval:    time.Hour,
+		HistoryCapacity: 10,
+		OpenHAB: OpenHABConfig{
+			Enabled:            true,
+			BaseURL:            srv.URL,
+			Interval:           time.Minute,
+			HistoryWindowHours: 24,
+			HistoryCapacity:    1440,
+			Root:               root,
+			Timeout:            2 * time.Second,
+			Now:                now,
+		},
+	}
+	for _, o := range opts {
+		o(&cfg)
+	}
+	c := New(cfg, nil)
+	c.memory = &MemoryCollector{path: writeTempFile(t, t.TempDir(), "meminfo", meminfoFixture)}
+	return c
+}
+
+// ohHistoryPoint is the point a series is expected to hold.
+func ohHistoryPoint(at time.Time, v float64) HistoryPoint {
+	return HistoryPoint{Timestamp: at, Value: v}
+}
+
+func TestOpenHABCollector_Poll_HistorySample(t *testing.T) {
+	at := time.Now().Add(-time.Minute)
+	tests := []struct {
+		name        string
+		install     bool
+		proc        ohProc
+		systemInfo  http.HandlerFunc
+		wantRSS     []HistoryPoint
+		wantHeap    []HistoryPoint
+		wantRestart []HistoryPoint
+	}{
+		{"AC1 process and heap give both values at collected_at", true, ohProc{938, ohStartTicks}, nil,
+			[]HistoryPoint{ohHistoryPoint(at, ohJavaRSSBytes)}, []HistoryPoint{ohHistoryPoint(at, ohHeapUsedBytes)}, nil},
+		{"AC1 no process gives no RSS value", true, ohProc{}, nil,
+			nil, []HistoryPoint{ohHistoryPoint(at, ohHeapUsedBytes)}, nil},
+		{"AC1 refused systeminfo gives no heap value", true, ohProc{938, ohStartTicks},
+			ohJSON(http.StatusUnauthorized, ohUnauthorizedBody),
+			[]HistoryPoint{ohHistoryPoint(at, ohJavaRSSBytes)}, nil, nil},
+		{"AC1 not_installed gives no sample", false, ohProc{}, nil, nil, nil, nil},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := newOHServer(t)
+			if tc.systemInfo != nil {
+				srv.route("/rest/systeminfo", tc.systemInfo)
+			}
+			root := newOHRoot(t)
+			if tc.install {
+				mustMkdirAll(t, filepath.Join(root, "etc", "openhab"))
+			}
+			setOHProcess(t, root, tc.proc)
+			clock := &ohClock{at: at}
+			c := newOHHistoryCollector(t, srv, root, clock.now)
+
+			c.openhab.Poll(context.Background())
+			c.fastTick(context.Background())
+
+			h := c.History()
+			pointsEqual(t, "OpenHABRSSBytes", h.OpenHABRSSBytes, tc.wantRSS)
+			pointsEqual(t, "OpenHABHeapUsedBytes", h.OpenHABHeapUsedBytes, tc.wantHeap)
+			pointsEqual(t, "OpenHABRestarts", h.OpenHABRestarts, tc.wantRestart)
+		})
+	}
+	t.Run("AC1 requests unchanged", func(t *testing.T) {
+		srv := newOHServer(t)
+		root := newOHRoot(t, "etc/openhab")
+		writeOHJava(t, root)
+		c := newOHHistoryCollector(t, srv, root, nil)
+
+		c.openhab.Poll(context.Background())
+		c.fastTick(context.Background())
+
+		if got := srv.requests(); !slices.Equal(got, ohRESTPaths) {
+			t.Fatalf("requests of a poll feeding the history = %v, want today's %v", got, ohRESTPaths)
+		}
+		if got := len(c.History().OpenHABRSSBytes); got != 1 {
+			t.Fatalf("RSS points after the poll = %d, want 1 (the poll feeds the history)", got)
+		}
+	})
+}
+
+func TestOpenHABCollector_Poll_RestartSample(t *testing.T) {
+	a := ohProc{938, ohStartTicks}
+	b := ohProc{ohOtherPID, ohOtherStartTicks}
+	c3 := ohProc{ohThirdPID, ohOtherStartTicks}
+	aNew := ohProc{938, ohChangedStartTick}
+	none := ohProc{}
+	tests := []struct {
+		name  string
+		polls []ohProc
+		want  []int // indexes of the polls that give a restart point
+		pids  []int // the PID of each restart point
+	}{
+		{"AC2 first process gives no restart", []ohProc{a}, nil, nil},
+		{"AC2 same PID and start time give none", []ohProc{a, a, a}, nil, nil},
+		{"AC2 new PID gives the new PID", []ohProc{a, b}, []int{1}, []int{ohOtherPID}},
+		{"AC2 same PID with new start time gives a restart", []ohProc{a, aNew}, []int{1}, []int{938}},
+		{"AC2 A then no process then B gives one restart at B's poll", []ohProc{a, none, none, b}, []int{3}, []int{ohOtherPID}},
+		{"AC2 A then no process then A gives none", []ohProc{a, none, a}, nil, nil},
+		{"AC2 no process first then A gives none", []ohProc{none, none, a}, nil, nil},
+		{"AC2 two restarts give two points", []ohProc{a, b, b, c3}, []int{1, 3}, []int{ohOtherPID, ohThirdPID}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := newOHServer(t)
+			root := newOHRoot(t, "etc/openhab")
+			clock := &ohClock{}
+			c := newOHHistoryCollector(t, srv, root, clock.now)
+			base := time.Now().Add(-time.Hour)
+			var wantRSS, wantRestarts []HistoryPoint
+			for i, p := range tc.polls {
+				at := base.Add(time.Duration(i) * time.Minute)
+				setOHProcess(t, root, p)
+				clock.set(at)
+
+				c.openhab.Poll(context.Background())
+
+				if p.pid != 0 {
+					wantRSS = append(wantRSS, ohHistoryPoint(at, ohJavaRSSBytes))
+				}
+				if k := slices.Index(tc.want, i); k >= 0 {
+					wantRestarts = append(wantRestarts, ohHistoryPoint(at, float64(tc.pids[k])))
+				}
+			}
+			c.fastTick(context.Background())
+
+			h := c.History()
+			pointsEqual(t, "OpenHABRSSBytes", h.OpenHABRSSBytes, wantRSS)
+			pointsEqual(t, "OpenHABRestarts", h.OpenHABRestarts, wantRestarts)
+		})
+	}
+}
+
+func TestOpenHABCollector_Poll_CollectedAtFromHook_AC5(t *testing.T) {
+	srv := newOHServer(t)
+	root := newOHRoot(t, "etc/openhab")
+	writeOHJava(t, root)
+	now := time.Now()
+	clock := &ohCallClock{early: now.Add(-time.Hour), late: now.Add(-30 * time.Minute)}
+	c := newOHHistoryCollector(t, srv, root, clock.now)
+
+	c.openhab.Poll(context.Background())
+	c.fastTick(context.Background())
+
+	got := c.OpenHAB().CollectedAt
+	if got == nil || !got.Equal(clock.late) {
+		t.Fatalf("collected_at = %v, want %v (the time the sample was handed to the history)", got, clock.late)
+	}
+	pointsEqual(t, "OpenHABRSSBytes", c.History().OpenHABRSSBytes, []HistoryPoint{ohHistoryPoint(clock.late, ohJavaRSSBytes)})
+}
+
+// newOHWindowCollector builds an OpenHABCollector with a 48 h window against a
+// root with an install path and, with proc, the openHAB process.
+func newOHWindowCollector(t *testing.T, install, proc bool) *OpenHABCollector {
+	t.Helper()
+	var paths []string
+	if install {
+		paths = append(paths, "etc/openhab")
+	}
+	root := newOHRoot(t, paths...)
+	if proc {
+		writeOHJava(t, root)
+	}
+	c, _ := newOHCollector(t, newOHServer(t), root, 1<<30, func(cfg *OpenHABConfig) { cfg.HistoryWindowHours = 48 })
+	return c
+}
+
+func TestOpenHABCollector_Status_HistoryWindowHours_AC9(t *testing.T) {
+	const want = `"poll_interval_seconds":60,"history_window_hours":48,`
+	tests := []struct {
+		name          string
+		install, proc bool
+		polled        bool
+		wantState     string
+	}{
+		{"AC9 pending", true, false, false, OpenHABStatePending},
+		{"AC9 not_installed", false, false, true, OpenHABStateNotInstalled},
+		{"AC9 ok without process", true, false, true, OpenHABStateOK},
+		{"AC9 ok with process", true, true, true, OpenHABStateOK},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			c := newOHWindowCollector(t, tc.install, tc.proc)
+			if tc.polled {
+				c.Poll(context.Background())
+			}
+
+			got := c.Status()
+
+			body := mustJSON(t, got)
+			if got.State != tc.wantState || got.HistoryWindowHours != 48 || !strings.Contains(body, want) {
+				t.Fatalf("state, window = %q, %d in %s, want %q, 48 and %s directly after the poll interval",
+					got.State, got.HistoryWindowHours, body, tc.wantState, want)
+			}
+		})
+	}
 }
