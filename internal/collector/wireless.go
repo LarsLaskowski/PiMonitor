@@ -52,19 +52,13 @@ func parseWireless(data string) ([]Wireless, error) {
 		if len(fields) < 3 {
 			continue
 		}
-		link, err := strconv.ParseFloat(fields[1], 64)
+		link, err := parseWirelessValue(name, fields[1], "link quality")
 		if err != nil {
-			return nil, fmt.Errorf("parse link quality for %q: %w", name, err)
+			return nil, err
 		}
-		if math.IsNaN(link) || math.IsInf(link, 0) {
-			return nil, fmt.Errorf("parse link quality for %q: non-finite value %q", name, fields[1])
-		}
-		level, err := strconv.ParseFloat(fields[2], 64)
+		level, err := parseWirelessValue(name, fields[2], "signal level")
 		if err != nil {
-			return nil, fmt.Errorf("parse signal level for %q: %w", name, err)
-		}
-		if math.IsNaN(level) || math.IsInf(level, 0) {
-			return nil, fmt.Errorf("parse signal level for %q: non-finite value %q", name, fields[2])
+			return nil, err
 		}
 		if isNullWirelessStats(fields[1], fields[2], link, level) {
 			continue
@@ -80,6 +74,20 @@ func parseWireless(data string) ([]Wireless, error) {
 	}
 	sort.Slice(result, func(i, j int) bool { return result[i].Interface < result[j].Interface })
 	return result, nil
+}
+
+// parseWirelessValue parses one link or level field of a /proc/net/wireless
+// line. what names the value in error messages. A value that ParseFloat
+// decodes as NaN or ±Inf is rejected, as documented on parseWireless.
+func parseWirelessValue(name, field, what string) (float64, error) {
+	v, err := strconv.ParseFloat(field, 64)
+	if err != nil {
+		return 0, fmt.Errorf("parse %s for %q: %w", what, name, err)
+	}
+	if math.IsNaN(v) || math.IsInf(v, 0) {
+		return 0, fmt.Errorf("parse %s for %q: non-finite value %q", what, name, field)
+	}
+	return v, nil
 }
 
 // isNullWirelessStats reports whether a parsed link/level pair is the

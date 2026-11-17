@@ -16,3 +16,4 @@ are quoted in full.
 | 2026-11-17 20:00 | 6 Coverage skipped | Orchestrator | skipped — gate passes (18/18 new lines, 92.9% overall), no deferred tests, no bound without test |
 | 2026-11-17 20:00 | 6 Documentation | Orchestrator | written in 6 Implement |
 | 2026-11-17 20:00 | 7 Gate stamp | Orchestrator | FAIL on 29580023ab58c044e9aeece3a8f44f842cff0777 (tier standard): Format check pass; Analyzer gate FAIL; Test with coverage pass; Coverage gate pass; decision-check.py pass; scope-check.py pass · figure-check.py 0 hit(s) |
+| 2026-11-17 20:01 | 7 Analyzer fix | Code Officer | gocognit finding in parseWireless cleared via helper parseWirelessValue; analyzer gate pass (haiku/medium · 76,474 tokens · 6 tool uses · 27 s · 8 in · 2,941 out · 217,959 cache read · 75,856 cache write · 6,566 weighted) |
