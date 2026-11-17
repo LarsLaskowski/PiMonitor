@@ -1,6 +1,7 @@
 package collector
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -40,5 +41,29 @@ func TestLoadAvgCollector_Collect(t *testing.T) {
 	want := LoadAverage{Load1: 1.00, Load5: 2.00, Load15: 3.00}
 	if got != want {
 		t.Fatalf("Collect = %+v, want %+v", got, want)
+	}
+}
+
+func TestParseLoadAvg_NonFinite_AC1(t *testing.T) {
+	forms := []string{"nan", "NaN", "inf", "+Inf", "-Infinity"}
+	names := []string{"load1", "load5", "load15"}
+	for pos, name := range names {
+		for _, form := range forms {
+			t.Run(fmt.Sprintf("AC1 %s %s", name, form), func(t *testing.T) {
+				fields := []string{"0.50", "0.60", "0.70"}
+				fields[pos] = form
+				content := fields[0] + " " + fields[1] + " " + fields[2] + " 1/523 12345\n"
+
+				got, err := parseLoadAvg(content)
+
+				if got != (LoadAverage{}) {
+					t.Errorf("parseLoadAvg(%q) = %+v, want the zero LoadAverage", content, got)
+				}
+				want := fmt.Sprintf("parse %s: non-finite value %q", name, form)
+				if err == nil || err.Error() != want {
+					t.Errorf("parseLoadAvg(%q) error = %v, want %q", content, err, want)
+				}
+			})
+		}
 	}
 }

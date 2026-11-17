@@ -55,7 +55,8 @@ such as openHAB that poll single values.
 - `cpu_frequency` has one entry per core with a cpufreq directory under `/sys/devices/system/cpu/cpuN/cpufreq`:
   `mhz` is `scaling_cur_freq` (kHz) / 1000, `governor` is `scaling_governor`. Entries are sorted by `core`. A core
   missing either file is left out; the field is omitted when no core has both.
-- `load_average` is the first three fields of `/proc/loadavg` (1, 5 and 15 minutes), unchanged.
+- `load_average` is the first three fields of `/proc/loadavg` (1, 5 and 15 minutes), unchanged. A value that is not a finite number (`nan`, `inf`) fails
+  that tick's reading.
 
 ### Temperature, sensors and throttling
 
@@ -138,12 +139,14 @@ such as openHAB that poll single values.
 - `wireless` is per interface from `/proc/net/wireless`: `link_quality` is the raw `link` column (not normalized),
   `signal_dbm` the `level` column. An interface whose line is the kernel's placeholder for "no reading" (both values
   0 and neither marked as updated by a trailing `.`) is left out. Entries are sorted by interface name. The field
-  is omitted when no interface has a reading, including when the file does not exist. It does not depend on
+  is omitted when no interface has a reading, including when the file does not exist. A `link` or `level` value that
+  is not a finite number (`nan`, `inf`) fails the whole reading. It does not depend on
   `network_enabled`.
 
 ### System identity and uptime
 
-- `uptime_seconds` is the first field of `/proc/uptime`, refreshed every fast tick.
+- `uptime_seconds` is the first field of `/proc/uptime`, refreshed every fast tick. A value that is not a finite
+  number (`nan`, `inf`) fails that tick's reading.
 - `system.hostname` is `/proc/sys/kernel/hostname` trimmed of surrounding whitespace, read once at startup (a later
   rename shows after a restart). The key is **omitted** (not empty, unlike the other `system` keys) when the file is
   unreadable, empty, only whitespace or the kernel's `(none)`, and when `hostname_enabled` is off, in which case the
@@ -210,7 +213,7 @@ such as openHAB that poll single values.
 - Failures of the optional hardware sources are logged once: a warning on the first failure and whenever the error
   text changes, debug while the same error repeats, and an info line `<message>: recovered` when the source
   recovers. These are `temperature` (including "no CPU thermal zone detected"), `gpu_temperature`,
-  `pmic_temperature`, `throttled`, `wireless` (a missing, unreadable or malformed `/proc/net/wireless`), `sensors`
+  `pmic_temperature`, `throttled`, `wireless` (a missing, unreadable or malformed `/proc/net/wireless`, a non-finite value included), `sensors`
   (no hwmon chip directory; only with `hwmon_enabled`, nothing is logged when it is off), `cpu_frequency` (no cpufreq
   directory) and `pihole`. A missing `vcgencmd` is reported once by each of the three readings that need it
   (`gpu_temperature`, `pmic_temperature`, `throttled`). A board without a PMIC sensor logs one warning for
