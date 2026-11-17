@@ -95,3 +95,21 @@ func TestAppJS_HistoryTrimmedToServerWindow(t *testing.T) {
 		t.Error("app.js: expected mergeHistory to trim the merged window, or it would grow without bound")
 	}
 }
+
+// TestAppJS_HistoryOpenHABKeys_AC8 guards the dashboard's handling of the
+// three openHAB series: merged, re-synced and trimmed like the other keys,
+// but to the openHAB window rather than history_window_minutes.
+func TestAppJS_HistoryOpenHABKeys_AC8(t *testing.T) {
+	js := readAsset(t, "app.js")
+
+	checkAssetParts(t, []assetCheck{
+		{"app.js", js, []string{
+			"const HISTORY_OPENHAB_KEYS = [", "'openhab_rss_bytes'", "'openhab_heap_used_bytes'", "'openhab_restarts'",
+		}},
+		{"forEachHistorySeries", jsFunctionBody(js, "function forEachHistorySeries("), []string{"HISTORY_OPENHAB_KEYS"}},
+		{"mergeHistory", jsFunctionBody(js, "function mergeHistory("), []string{"HISTORY_OPENHAB_KEYS"}},
+		{"trimHistoryWindow", jsFunctionBody(js, "function trimHistoryWindow("), []string{
+			"HISTORY_OPENHAB_KEYS", "history_window_hours", "latestOpenHAB", "3600000",
+		}},
+	})
+}
