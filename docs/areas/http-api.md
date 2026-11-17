@@ -16,6 +16,12 @@ here.
 - Every JSON endpoint lives under `/api/v1/...`. The JSON shape of an existing `/api/v1/...` response is not changed
   in place: a change that would break it is published under a new `/api/v2/...` path, and `v1` keeps answering as
   before.
+- Adding a key to an object of an existing `/api/v1/...` response, with its own documented presence rule, is no shape
+  change and stays in `v1` (`GET /api/v1/metrics/history` gained `openhab_*` keys, present only while their series
+  have points; `GET /api/v1/openhab` gained `history_window_hours`;
+  [0018](../decisions/0018-new-key-in-v1-response-is-no-shape-change.md)). Removing, renaming or retyping a key,
+  changing its meaning or when it is present, or changing a status code is a shape change and needs `/api/v2/...`.
+  Clients must ignore keys they do not know.
 - Optional query parameters and new endpoints are added to `v1` only when they are additive: a request that does
   not use them gets exactly the response it got before (`?since=` on the history endpoint, the per-metric
   sub-resources).
@@ -223,10 +229,6 @@ under it by design.
 
 ## Open questions
 
-- Does adding a new field to an existing `/api/v1/...` response count as a shape change that needs `/api/v2/...`?
-  `AGENTS.md` and `CONTRIBUTING.md` call any change to the JSON shape breaking, while fields such as
-  `pmic_temperature` have evidently been added to `v1`. This document states only that additive query parameters
-  and endpoints stay in `v1`.
 - A request with a method other than `GET`/`HEAD` to an API path gets `404` from the dashboard asset handler (which
   accepts every method) rather than `405 Method Not Allowed`; without the asset handler it would be `405`. Is the
   `404` intended?

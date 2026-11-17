@@ -59,7 +59,10 @@ client of the [HTTP API](http-api.md) like any third-party integration and has n
   that the server replaced rather than extended (a restart restoring a persisted window, a clock step) is picked up
   within eleven history polls.
 - The local window is trimmed to `history_window_minutes`, measured back from the newest point held (the Pi's
-  clock); a device left with no points is dropped.
+  clock); a device left with no points is dropped. The three openHAB series (`openhab_rss_bytes`,
+  `openhab_heap_used_bytes`, `openhab_restarts`) are merged, re-synced and counted for the newest point like the
+  scalar ones, but trimmed to `history_window_hours` of the latest `GET /api/v1/openhab` answer instead, and not at
+  all while that is unknown.
 
 ### API key
 
@@ -124,6 +127,15 @@ client of the [HTTP API](http-api.md) like any third-party integration and has n
   `Things offline: <n>`, that is closed by default and holds only their labels (the UID when a Thing has no
   label); no status, status detail or description is shown. The toggle's state is kept per browser and survives
   the card's refreshes. Values of [openHAB](openhab.md).
+- While the RSS or the heap series of the history holds at least two points, the openHAB card also shows a
+  `Memory history` row, labelled with the largest value shown in the card's byte format (`812 MB`, `1.2 GB`), and a
+  64 px chart: RSS as the primary line (accent color) and heap used as a second line (muted color), placed by time from
+  the oldest to the newest point, with a y scale from 0 to the largest value. The line is broken where two
+  neighboring points are more than 1.5 × `poll_interval_seconds` of the openHAB answer apart (so a skipped poll breaks
+  it and a poll that only ran a few seconds late does not), and a dashed vertical marker in the warning color stands at
+  each restart point in range. A legend names only the lines drawn (`RSS`, `Heap used`): without an `api_token` openHAB
+  refuses systeminfo, so only RSS is drawn. With fewer than two points in both series no chart is drawn. The history
+  poll redraws the chart, and rebuilds the card when the chart appears or disappears.
 - The network card is shown only when its layout preference is visible, `network_enabled` is true in
   `/api/v1/config` and the snapshot holds at least one interface; all three must hold.
 - The Pi-hole section of the Updates card is shown only when the snapshot reports Pi-hole as installed. A Pi-hole
@@ -203,7 +215,8 @@ client of the [HTTP API](http-api.md) like any third-party integration and has n
 ## Limits and errors
 
 - The dashboard needs JavaScript; without it the page shows only its static placeholders and no data.
-- The dashboard shows at most `history_window_minutes` of history and at most 1 h in the detail view.
+- The dashboard shows at most `history_window_minutes` of history and at most 1 h in the detail view; the openHAB
+  memory chart shows up to `openhab.history_window_hours`.
 - After a server restart or configuration change, values from `/api/v1/config` (interval, thresholds,
   `network_enabled`, window) in an open page stay those of the page load until it is reloaded or a key is accepted.
 - A stored API key is readable by anyone with access to the browser profile, and without TLS it travels in clear

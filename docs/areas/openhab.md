@@ -68,6 +68,10 @@ Each source is collected on its own; a failing source leaves only its values abs
   (default 60, 60 to 86400). It runs on a loop of its own and never delays the fast or the slow tick or `/healthz`;
   the endpoint serves the result of the last finished poll
   ([0014](../decisions/0014-openhab-poll-runs-on-its-own-loop.md)).
+- Every finished poll except `not_installed` feeds the memory history ([History](history.md#recording)): its RSS, its
+  heap and a restart, if any. `collected_at` is taken when the finished poll hands these values to the history, a moment
+  after its last request ([0020](../decisions/0020-openhab-points-recorded-by-next-fast-tick.md)). The poll sends no
+  request beyond the ones below.
 - One poll makes its requests one after the other. A poll that is still running at shutdown is cancelled.
 
 ### Requests and the loopback guard

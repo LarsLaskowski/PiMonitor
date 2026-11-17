@@ -131,7 +131,9 @@ never run in parallel; a third loop, the optional openHAB poll, runs beside them
 first fast tick (so its first poll sees the memory total) and joins it on shutdown. It detects openHAB from its install
 paths and its `java` process in `/proc`, and calls openHAB's REST API one request at a time. Since an unreachable or
 hung openHAB can hold a poll for several seconds, the loop is separate from both ticks: it can never delay them or
-`/healthz`. `GET /api/v1/openhab` and `GET /metrics` serve the last finished result, or `pending` before the first. Behavior:
+`/healthz`. `GET /api/v1/openhab` and `GET /metrics` serve the last finished result, or `pending` before the first. Each finished poll also hands a sample
+(RSS, heap, a restart PID) to the collector, which stamps it under its lock and lets the next fast tick record it
+([decision 0020](decisions/0020-openhab-points-recorded-by-next-fast-tick.md)). Behavior:
 [openHAB](areas/openhab.md). The one deviation from "no network access in the collector" (see the Pi-hole reasoning
 above) is loopback HTTP to openHAB, guarded in [decision 0013](decisions/0013-openhab-requests-only-to-loopback-http.md).
 
@@ -142,7 +144,10 @@ every buffer's contents). Per-device metrics (disk, disk I/O, network) use a
 `map[string]*RingBuffer[HistoryPoint]` keyed by mountpoint/device/interface name, created
 lazily the first time a given device is seen. `RingBuffer[T]` (`ringbuffer.go`) is a fixed-
 capacity circular buffer with its own internal lock — safe to read concurrently with the
-collector's own tick, independent of the collector's outer `sync.RWMutex`.
+collector's own tick, independent of the collector's outer `sync.RWMutex`. When openHAB is enabled, three more buffers (RSS, heap, restarts)
+are sized by `OpenHAB.HistoryCapacity()`, not by `HistoryCapacity()`
+([decision 0019](decisions/0019-openhab-history-has-its-own-window.md)); samples wait in a capped slice until the next
+fast tick drains them, and `History()` cuts them to `openhab.history_window_hours`.
 
 Per-device series are also removed again (`evictStaleSeries`, called from `fastTick`): without that, a churning
 `veth*` interface from container start/stop or a USB drive that gets unplugged would keep its full ring buffer (and

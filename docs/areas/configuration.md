@@ -33,7 +33,7 @@ here instead of restating them.
 - A key given twice in the same mapping is an error.
 - A value of the wrong YAML type is an error, for example a quoted string (`"5"`) for a number option or a list for a
   string option. An unquoted scalar is accepted for a string option and taken as its text.
-- A fractional or non-finite value for an integer option (`processes_top_n`, `alerts.notify_max_retries`, `openhab.poll_interval_seconds`) is an error
+- A fractional or non-finite value for an integer option (`processes_top_n`, `alerts.notify_max_retries`, `openhab.poll_interval_seconds`, `openhab.history_window_hours`) is an error
   while the file is read, also when it arrives through an alias, a merge key or an explicit `!!float` tag; the
   decoder would otherwise truncate it.
 - Only the first YAML document of the file is read; further documents after a `---` separator are ignored.
@@ -132,6 +132,7 @@ The values of this section are validated even while `openhab.enabled` is `false`
 | `openhab.base_url` | string | `"http://127.0.0.1:8080"` | an `http` URL (the scheme in any letter case) whose host is an IP literal in `127.0.0.0/8`, `::1` or `::ffff:127.x.y.z`, or `localhost`; a port of 1 to 65535 or none; no user info, no path other than `/`, no query, no fragment; short or numeric address forms (`127.1`, `2130706433`, `0x7f.0.0.1`, `0127.0.0.1`), a zone, a trailing dot and `https` are rejected | Root URL of openHAB's REST API. |
 | `openhab.api_token` | string | `""` | no whitespace or control character; empty means no token | openHAB API token, sent as a bearer token; `PIMONITOR_OPENHAB_TOKEN` overrides it. Never part of any response or log line. |
 | `openhab.poll_interval_seconds` | integer | `60` | 60 to 86400 | Time between openHAB polls. |
+| `openhab.history_window_hours` | integer | `24` | 1 to 168; checked even while `openhab.enabled` is `false`; the error reads `openhab.history_window_hours must be between 1 and 168 (got <value>)` | How long the openHAB memory history is kept, independently of `history_window_minutes`; each of its series holds at most `history_window_hours` × 3600 / `poll_interval_seconds` points, at least 1 (1,440 at the defaults, 10,080 at most) ([History](history.md)). Also reported by `GET /api/v1/openhab`. |
 
 #### `alerts`
 

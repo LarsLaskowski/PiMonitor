@@ -64,8 +64,11 @@ a link to its decision record where it was a real choice, and a link to the area
 
 - The main service never needs root; only the apt-cache timer runs privileged —
   [Deployment](../docs/areas/deployment.md)
-- `/api/v1/...` response shapes are stable; a shape change adds `/api/v2/...` — [API.md](../docs/API.md),
-  [Versioning](../docs/areas/http-api.md#versioning-and-stability)
+- `/api/v1/...` response shapes are stable: a change to an existing key (its name, type, meaning or when it is
+  present) or to a status code adds `/api/v2/...`; a new key in a response object, with its presence rule documented
+  in API.md, stays in v1 — [API.md](../docs/API.md),
+  [Versioning](../docs/areas/http-api.md#versioning-and-stability),
+  [0018](../docs/decisions/0018-new-key-in-v1-response-is-no-shape-change.md)
 - A missing hardware source yields an empty/zero value and a logged warning, never a crash or a fabricated
   reading — [Metrics](../docs/areas/metrics.md#limits-and-errors)
 - `gopkg.in/yaml.v3` is the only runtime dependency; `/proc`/`/sys` parsing stays hand-rolled —
@@ -102,7 +105,7 @@ change with it. For anything else the diff adds, grep the whole repository — `
 - an `httptest` test through `s.Handler().ServeHTTP` for its status, headers and auth gating
 
 **A new or changed collector field** touches:
-- `Snapshot` in `internal/collector/types.go` and the JSON shape in `docs/API.md` (a v1 shape change is a new API
+- `Snapshot` in `internal/collector/types.go` and the JSON shape in `docs/API.md` (a change to an existing v1 key is a new API
   version), and its source, unit and failure behavior in `docs/areas/metrics.md`
 - `internal/collector/persist.go` if the series is persisted (a layout change bumps `historyVersion`)
 - `internal/alert` if a threshold applies to it

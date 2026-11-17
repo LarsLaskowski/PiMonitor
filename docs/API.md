@@ -435,7 +435,7 @@ only and starts empty after every restart.
 A scalar series has no point for a tick whose reading failed, so the series
 may differ in length or be empty (`temperature` on a host without a thermal
 zone). `cpu_percent` also has no point for the first fast tick after start,
-because no previous sample exists yet; the shape is unchanged and every scalar key is always present.
+because no previous sample exists yet; the shape is unchanged and each of the seven scalar keys above is always present.
 
 ```json
 {
@@ -460,7 +460,10 @@ because no previous sample exists yet; the shape is unchanged and every scalar k
   },
   "network_tx_bytes_per_sec": {
     "eth0": [{ "t": "2026-07-12T18:00:00Z", "v": 302.1 }]
-  }
+  },
+  "openhab_rss_bytes": [{ "t": "2026-07-12T18:00:00Z", "v": 1417166848 }],
+  "openhab_heap_used_bytes": [{ "t": "2026-07-12T18:00:00Z", "v": 664407376 }],
+  "openhab_restarts": [{ "t": "2026-07-12T09:14:00Z", "v": 938 }]
 }
 ```
 
@@ -469,6 +472,18 @@ because no previous sample exists yet; the shape is unchanged and every scalar k
 `network_tx_bytes_per_sec` are keyed by mountpoint/device/interface name and
 are omitted entirely if empty (e.g. network history when monitoring is
 disabled).
+
+`openhab_rss_bytes` (resident memory of the openHAB process, bytes), `openhab_heap_used_bytes` (JVM heap in use,
+bytes) and `openhab_restarts` (the PID of each new openHAB process, one point per restart) are present only while
+their series has a point, and never while `openhab.enabled` is `false`; a client must not assume them. They get one
+point per openHAB poll (every `openhab.poll_interval_seconds`, 60 s by default), not per fast tick, and hold up to
+`openhab.history_window_hours` (24 by default, at most 168) of points, so up to 10,080 per key, independently of
+`history_window_minutes`. A poll that finds no process adds no RSS point and a poll without heap values (no
+`api_token`: openHAB refuses systeminfo) adds no heap point, so these series show gaps, never a `0`. A restart point
+is added when a poll finds a process whose PID or start time differs from the one found by the latest earlier poll
+since PiMonitor started; the first process found after start, and a restart while PiMonitor was down, add none. A
+point appears in the response up to one fast interval after its poll. Clients must ignore keys they do not
+know; adding keys to a `v1` response is not a breaking change.
 
 #### Incremental polling: `?since=`
 
@@ -494,7 +509,9 @@ GET /api/v1/metrics/history?since=2026-07-12T18:31:00Z
   `disk_io_read_bytes_per_sec`, `disk_io_write_bytes_per_sec`,
   `network_rx_bytes_per_sec` and `network_tx_bytes_per_sec` are filtered per
   device, and a device with no newer points is omitted entirely — as is the
-  whole map once every device is omitted.
+  whole map once every device is omitted. The three `openhab_*` keys are
+  omitted when they have no newer point. Take the newest `t` over every
+  series you hold as `since`; every point of every series is then newer than it.
 - A `since` **newer than every retained point** returns empty series and no
   device maps — not an error.
 - A `since` **older than the retained window** returns the full window: the
@@ -700,6 +717,7 @@ every other `/api/v1/...` endpoint.
 {
   "state": "ok",
   "poll_interval_seconds": 60,
+  "history_window_hours": 24,
   "api_token_configured": true,
   "collected_at": "2026-11-14T12:00:00Z",
   "version": "5.2.4",
@@ -729,8 +747,9 @@ every other `/api/v1/...` endpoint.
 | ----- | ---- | ------- |
 | `state` | string | Always present. `pending` (no poll has finished since startup; no other value follows), `not_installed` (`openhab.enabled` is `auto` and nothing was found), `ok` (the REST root answered as openHAB), `running_unreachable` (the process runs, the root call fails) or `installed_not_running` (no process, the root call fails). |
 | `poll_interval_seconds` | number | Always present. The `openhab.poll_interval_seconds` in use. |
+| `history_window_hours` | number | Always present. The `openhab.history_window_hours` in use, an integer: how long `openhab_*` history is kept ([history](#get-apiv1metricshistory)). |
 | `api_token_configured` | bool | Always present. Whether an API token is set; the token itself is never served. |
-| `collected_at` | string | Time the poll finished (RFC 3339, UTC). Absent in `pending` and `not_installed`. |
+| `collected_at` | string | Time the poll handed its values to the history, a moment after its last request (RFC 3339, UTC); the timestamp of its history points. Absent in `pending` and `not_installed`. |
 | `version` | string | openHAB's version (`runtimeInfo.version`). |
 | `start_level` | number | openHAB's start level; below 100 it is still starting. |
 | `uptime_seconds` | number | Seconds since the openHAB process started; openHAB's own value only when no process was found. |
@@ -743,9 +762,9 @@ every other `/api/v1/...` endpoint.
 
 Notes:
 
-- Every value except the three always-present fields is **omitted** when it is not available (its source failed, was
+- Every value except the four always-present fields is **omitted** when it is not available (its source failed, was
   refused or openHAB does not report it), never `null` or `0`.
-- Before the first poll finishes the answer is `{"state":"pending","poll_interval_seconds":60,"api_token_configured":false}`.
+- Before the first poll finishes the answer is `{"state":"pending","poll_interval_seconds":60,"history_window_hours":24,"api_token_configured":false}`.
 - On a default openHAB 5.2.4 install without an API token, `/rest/systeminfo`, `/rest/things` and `/rest/addons` are
   refused: `start_level`, `jvm`, `things` and `addons_installed` are then absent and `refused` lists `systeminfo`,
   `things` and `addons`; `uptime_seconds` still comes from the process.
