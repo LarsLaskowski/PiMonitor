@@ -88,6 +88,11 @@ a JSON client, Prometheus doesn't retry mid-scrape-interval. This is normally a 
 `/metrics` is scraped from multiple Prometheus instances, or alongside heavy dashboard
 polling of `GET /api/v1/metrics/history`, against the same PiMonitor instance.
 
+## Errors
+
+Any `/api/v1/...` JSON endpoint answers `500 Internal Server Error` with the plain-text body `internal error` when its
+response cannot be encoded. Clients treat it as a server error.
+
 ## Endpoints
 
 ### `GET /healthz`

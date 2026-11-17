@@ -181,10 +181,12 @@ and described in [`ARCHITECTURE.md`](ARCHITECTURE.md) unless a change explicitly
 ### REST API stability
 
 Changes to an existing key of an `/api/v1/...` response (its name, type, meaning or when it is present) or to a
-status code are breaking changes: bump to `/api/v2/...` instead of changing `v1` in place, and update
+status code of a documented response are breaking changes: bump to `/api/v2/...` instead of changing `v1` in place, and update
 [`API.md`](API.md). A new key in an object of a `v1` response, with its presence rule documented in
 [`API.md`](API.md), is not a breaking change
-([decision 0018](decisions/0018-new-key-in-v1-response-is-no-shape-change.md)). See [`ARCHITECTURE.md`](ARCHITECTURE.md) for the reasoning
+([decision 0018](decisions/0018-new-key-in-v1-response-is-no-shape-change.md)). Neither is a
+`500` for a response that cannot be encoded
+([decision 0022](decisions/0022-unencodable-v1-response-answers-500.md)). See [`ARCHITECTURE.md`](ARCHITECTURE.md) for the reasoning
 and [`API.md`](API.md) for the full current contract.
 <!-- project:end stability -->
 

@@ -20,7 +20,9 @@ here.
   change and stays in `v1` (`GET /api/v1/metrics/history` gained `openhab_*` keys, present only while their series
   have points; `GET /api/v1/openhab` gained `history_window_hours`;
   [0018](../decisions/0018-new-key-in-v1-response-is-no-shape-change.md)). Removing, renaming or retyping a key,
-  changing its meaning or when it is present, or changing a status code is a shape change and needs `/api/v2/...`.
+  changing its meaning or when it is present, or changing the status code of a documented response is a shape change
+  and needs `/api/v2/...`; a `500` for a response that cannot be encoded is none
+  ([0022](../decisions/0022-unencodable-v1-response-answers-500.md)).
   Clients must ignore keys they do not know.
 - Optional query parameters and new endpoints are added to `v1` only when they are additive: a request that does
   not use them gets exactly the response it got before (`?since=` on the history endpoint, the per-metric
@@ -195,12 +197,10 @@ under it by design.
 | Missing or wrong API key on an API-chain route | `401` | `unauthorized` |
 | More than 16 API-chain requests in progress | `503` | `server busy`, `Retry-After: 1` |
 | `since` that is not an RFC 3339 timestamp | `400` | fixed message naming the format; never a full window |
-| History response could not be encoded | `500` | `internal error`; the failure is logged at error level |
+| A JSON response could not be encoded (any `/api/v1/...` JSON endpoint) | `500` | `internal error`; the failure is logged at error level |
 | No snapshot yet, or one older than the bound | `503` on `/healthz` | fixed message naming the option |
 | Unknown path, or a route switched off by its option | `404` | from the dashboard asset handler |
 
-- The other JSON endpoints write their body as they encode it; an encoding failure is logged at error level and can
-  leave a `200` response with a truncated body.
 - If the listen address cannot be bound, or the TLS certificate or key cannot be loaded, the process exits with a
   non-zero status and the error on standard error.
 - If requests in progress have not finished within the 10 s shutdown grace period, the process exits with a
@@ -210,6 +210,7 @@ under it by design.
 
 ## Related decisions
 
+- [0022: A v1 response that cannot be encoded answers 500 in v1](../decisions/0022-unencodable-v1-response-answers-500.md)
 - [0017: openHAB Thing counts are exported to Prometheus as the fixed set of seven statuses](../decisions/0017-openhab-thing-statuses-exported-as-fixed-set.md)
 - [0010: A missing CPU or memory reading is left out of Prometheus, the v1 snapshot keeps its 0](../decisions/0010-missing-reading-left-out-of-prometheus.md)
 

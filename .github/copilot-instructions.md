@@ -137,9 +137,10 @@ the identifier's name; errors returned and wrapped with `%w`, never ignored; no 
 - `internal/web/assets/app.js` never assigns non-empty content to `.innerHTML` (enforced by
   `internal/web/xss_test.go`); DOM nodes are built with `document.createElement` + `textContent`.
 - A change to an existing key of an `/api/v1/...` response (its name, type, meaning or when it is present) or to a
-  status code is a breaking change: add `/api/v2/...` instead of changing `v1` in place, and update
+  status code of a documented response is a breaking change: add `/api/v2/...` instead of changing `v1` in place, and update
   [`docs/API.md`](/docs/API.md). A new key in an object of a `v1` response, with its presence rule documented there,
-  is not breaking ([decision 0018](/docs/decisions/0018-new-key-in-v1-response-is-no-shape-change.md)).
+  is not breaking ([decision 0018](/docs/decisions/0018-new-key-in-v1-response-is-no-shape-change.md)), nor is a `500` for a response
+  that cannot be encoded ([decision 0022](/docs/decisions/0022-unencodable-v1-response-answers-500.md)).
 <!-- project:end code-style -->
 
 ## Testing

@@ -65,10 +65,12 @@ a link to its decision record where it was a real choice, and a link to the area
 - The main service never needs root; only the apt-cache timer runs privileged —
   [Deployment](../docs/areas/deployment.md)
 - `/api/v1/...` response shapes are stable: a change to an existing key (its name, type, meaning or when it is
-  present) or to a status code adds `/api/v2/...`; a new key in a response object, with its presence rule documented
-  in API.md, stays in v1 — [API.md](../docs/API.md),
+  present) or to the status code of a documented response adds `/api/v2/...`; a new key in a response object, with its
+  presence rule documented in API.md, stays in v1, and so does a `500` for a response that cannot be encoded —
+  [API.md](../docs/API.md),
   [Versioning](../docs/areas/http-api.md#versioning-and-stability),
-  [0018](../docs/decisions/0018-new-key-in-v1-response-is-no-shape-change.md)
+  [0018](../docs/decisions/0018-new-key-in-v1-response-is-no-shape-change.md),
+  [0022](../docs/decisions/0022-unencodable-v1-response-answers-500.md)
 - A missing hardware source yields an empty/zero value and a logged warning, never a crash or a fabricated
   reading — [Metrics](../docs/areas/metrics.md#limits-and-errors)
 - `gopkg.in/yaml.v3` is the only runtime dependency; `/proc`/`/sys` parsing stays hand-rolled —

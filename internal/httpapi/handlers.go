@@ -11,10 +11,14 @@ import (
 const contentTypeHeader = "Content-Type"
 
 func writeJSON(w http.ResponseWriter, log func(msg string, args ...any), v any) {
-	w.Header().Set(contentTypeHeader, "application/json; charset=utf-8")
-	if err := json.NewEncoder(w).Encode(v); err != nil {
+	body, err := json.Marshal(v)
+	if err != nil {
 		log("failed to encode JSON response", "error", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
 	}
+	w.Header().Set(contentTypeHeader, "application/json; charset=utf-8")
+	_, _ = w.Write(append(body, '\n'))
 }
 
 // handleHealthz serves GET /healthz. It reports unhealthy (503) when
