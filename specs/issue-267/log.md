@@ -14,3 +14,4 @@ are quoted in full.
 | 2026-11-17 19:59 | 5 Tests first | Tester | Tests written for AC1-AC5; confirmed compile and fail on current code. Deferred: none (sonnet/medium · 91,654 tokens · 6 tool uses · 29 s · 12 in · 4,140 out · 452,937 cache read · 38,678 cache write · 114,353 weighted) |
 | 2026-11-17 20:00 | 6 Implement | Dev | Three parsers reject non-finite values, docs updated; tests green, coverage gate PASS (new lines 18/18) (sonnet/medium · 89,165 tokens · 8 tool uses · 61 s · 14 in · 4,340 out · 543,946 cache read · 35,993 cache write · 121,100 weighted) |
 | 2026-11-17 20:00 | 6 Coverage skipped | Orchestrator | skipped — gate passes (18/18 new lines, 92.9% overall), no deferred tests, no bound without test |
+| 2026-11-17 20:00 | 6 Documentation | Orchestrator | written in 6 Implement |
