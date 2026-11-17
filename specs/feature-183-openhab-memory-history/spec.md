@@ -1,7 +1,7 @@
 # Spec: openHAB memory history in the dashboard
 
 Source: Issue #183
-Status: Draft
+Status: Approved by Lead
 
 ## Problem
 
@@ -70,12 +70,13 @@ openHAB value over time ([History](../../docs/areas/history.md#series)).
 - AC3: `openhab.history_window_hours` defaults to 24 and accepts the integers 1 to 168; another number fails
   startup with `openhab.history_window_hours must be between 1 and 168 (got <value>)`, a fractional one as the other
   integer options do ([Configuration](../../docs/areas/configuration.md)); each openHAB series holds at most the
-  capacity of N2 and drops its oldest point when full (N1, N2, E5, E7).
+  capacity of N2, drops its oldest point when full, and serves no point older than `openhab.history_window_hours`
+  before the latest fast tick (N1, N2, E4, E5, E7).
 - AC4: `GET /api/v1/metrics/history` holds each of the three keys, as an array of `{ "t", "v" }` points oldest
   first, exactly when its series has a point (with `?since=`: a point newer than `since`), never while
   `openhab.enabled` is `false`, and every other key exactly as before; the route keeps its `api_key` gating (S2,
   E4, N3, N4).
-- AC5: A history request after a poll recorded openHAB points returns them, and every point of every series is
+- AC5: A history request from the first fast tick after an openHAB poll on returns that poll's points, and every point of every series is
   served to a client that passes the newest `t` back as `?since=`, also when the openHAB poll and a fast tick overlap
   (E6).
 - AC6: The three series are written to `history.bin` as new kinds under version 1 and restored at startup, dropping
