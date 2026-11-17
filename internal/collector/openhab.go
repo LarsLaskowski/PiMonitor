@@ -174,12 +174,40 @@ type openHABSources struct {
 	process, root, systemInfo, things, items, addons failureLog
 }
 
+// openHABSample is what one finished poll contributes to the history: the
+// process's RSS and the JVM heap in use (each with a flag for "present"), and
+// the PID of a restarted process (0 for none). at is stamped by the hook that
+// takes the sample.
+type openHABSample struct {
+	at        time.Time
+	rssBytes  uint64
+	rssOK     bool
+	heapBytes uint64
+	heapOK    bool
+	restart   int
+}
+
+// openHABLastProcess identifies the process the latest poll that found one saw.
+type openHABLastProcess struct {
+	pid        int
+	startTicks uint64
+}
+
 // OpenHABCollector polls a local openHAB installation for its status.
 type OpenHABCollector struct {
 	cfg      OpenHABConfig
 	memTotal func() uint64
 	log      *slog.Logger
 	sources  openHABSources
+
+	// onSample receives the sample of every finished poll except not_installed
+	// and returns the time it stamped it with, which becomes collected_at. Nil
+	// means no history; set once before the first poll. Poll calls it holding
+	// no lock of this collector.
+	onSample func(openHABSample) time.Time
+	// last is the process the latest poll that found one saw; touched only by
+	// the poll goroutine.
+	last *openHABLastProcess
 
 	mu     sync.RWMutex
 	polled bool
@@ -213,7 +241,11 @@ func (c *OpenHABCollector) Run(ctx context.Context) {
 
 // Poll performs one detection and REST round and stores the result.
 func (c *OpenHABCollector) Poll(ctx context.Context) {
-	status := c.poll(ctx)
+	status, sample, sampled := c.poll(ctx)
+	if sampled && c.onSample != nil {
+		at := c.onSample(sample)
+		status.CollectedAt = &at
+	}
 	c.mu.Lock()
 	c.status = status
 	c.polled = true
@@ -236,6 +268,7 @@ func (c *OpenHABCollector) Status() OpenHABStatus {
 func (c *OpenHABCollector) baseStatus() OpenHABStatus {
 	return OpenHABStatus{
 		PollIntervalSeconds: int(c.cfg.Interval / time.Second),
+		HistoryWindowHours:  c.cfg.HistoryWindowHours,
 		APITokenConfigured:  c.cfg.Token != "",
 	}
 }
@@ -261,13 +294,14 @@ func (c *OpenHABCollector) root() string {
 	return c.cfg.Root
 }
 
-// poll runs one detection and REST round and returns the resulting status.
-func (c *OpenHABCollector) poll(ctx context.Context) OpenHABStatus {
-	status := c.baseStatus()
+// poll runs one detection and REST round and returns the resulting status and
+// the sample for the history; sampled is false for not_installed.
+func (c *OpenHABCollector) poll(ctx context.Context) (status OpenHABStatus, sample openHABSample, sampled bool) {
+	status = c.baseStatus()
 	proc, procErr := c.findProcess()
 	if procErr != nil && !c.cfg.Always && !c.installed() {
 		status.State = OpenHABStateNotInstalled
-		return status
+		return status, sample, false
 	}
 	c.sources.process.observeAt(c.logger(), "openhab process", procErr, slog.LevelWarn)
 
@@ -290,7 +324,26 @@ func (c *OpenHABCollector) poll(ctx context.Context) OpenHABStatus {
 	}
 	collectedAt := c.now()
 	status.CollectedAt = &collectedAt
-	return status
+	return status, c.buildSample(status, proc, procErr == nil), true
+}
+
+// buildSample derives the history sample of a finished poll and updates the
+// process the restart check compares with. A poll without a process leaves
+// that record as it is, so a restart is found across polls that saw none.
+func (c *OpenHABCollector) buildSample(status OpenHABStatus, proc openHABProcessInfo, found bool) openHABSample {
+	var sample openHABSample
+	if found {
+		sample.rssBytes, sample.rssOK = proc.rssBytes, true
+		cur := openHABLastProcess{pid: proc.pid, startTicks: proc.startTicks}
+		if c.last != nil && *c.last != cur {
+			sample.restart = proc.pid
+		}
+		c.last = &cur
+	}
+	if status.JVM != nil {
+		sample.heapBytes, sample.heapOK = status.JVM.HeapUsedBytes, true
+	}
+	return sample
 }
 
 // installed reports whether one of openHAB's standard paths exists.

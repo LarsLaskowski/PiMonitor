@@ -184,13 +184,18 @@ type OpenHAB struct {
 
 // HistoryCapacity returns the number of openHAB history points that cover
 // HistoryWindowHours at PollIntervalSeconds resolution.
+// The count is at least 1 and at most maxHistoryCapacity.
 func (o OpenHAB) HistoryCapacity() int {
-	return 0
+	if o.PollIntervalSeconds <= 0 || o.HistoryWindowHours <= 0 {
+		return 1
+	}
+	capacity := int64(o.HistoryWindowHours) * 3600 / int64(o.PollIntervalSeconds)
+	return int(min(max(capacity, 1), maxHistoryCapacity))
 }
 
 // HistoryWindow returns HistoryWindowHours as a duration.
 func (o OpenHAB) HistoryWindow() time.Duration {
-	return 0
+	return time.Duration(o.HistoryWindowHours) * time.Hour
 }
 
 // OpenHABTokenEnvVar is the environment variable that overrides
@@ -211,6 +216,9 @@ func (o OpenHAB) PollInterval() time.Duration {
 const (
 	minOpenHABPollSeconds = 60
 	maxOpenHABPollSeconds = 86400
+
+	minOpenHABHistoryHours = 1
+	maxOpenHABHistoryHours = 168
 )
 
 // validate checks the openhab block. It runs regardless of Enabled so a typo
@@ -226,6 +234,9 @@ func (o OpenHAB) validate() error {
 	}
 	if o.PollIntervalSeconds < minOpenHABPollSeconds || o.PollIntervalSeconds > maxOpenHABPollSeconds {
 		return fmt.Errorf("openhab.poll_interval_seconds must be between %d and %d (got %v)", minOpenHABPollSeconds, maxOpenHABPollSeconds, o.PollIntervalSeconds)
+	}
+	if o.HistoryWindowHours < minOpenHABHistoryHours || o.HistoryWindowHours > maxOpenHABHistoryHours {
+		return fmt.Errorf("openhab.history_window_hours must be between %d and %d (got %v)", minOpenHABHistoryHours, maxOpenHABHistoryHours, o.HistoryWindowHours)
 	}
 	if strings.IndexFunc(o.APIToken, func(r rune) bool { return unicode.IsSpace(r) || unicode.IsControl(r) }) >= 0 {
 		return errors.New("openhab.api_token must not contain whitespace or control characters")
@@ -304,6 +315,7 @@ func Default() Config {
 			Enabled:             "auto",
 			BaseURL:             "http://127.0.0.1:8080",
 			PollIntervalSeconds: 60,
+			HistoryWindowHours:  24,
 		},
 	}
 }
@@ -620,7 +632,7 @@ func loadYAMLFile(path string, cfg *Config) error {
 // integerOptionNames are the YAML key paths of the int-typed options. The
 // decoder truncates a fractional value for them, so checkIntegerOptions
 // inspects each one before the real decode.
-var integerOptionNames = []string{"processes_top_n", "alerts.notify_max_retries", "openhab.poll_interval_seconds"}
+var integerOptionNames = []string{"processes_top_n", "alerts.notify_max_retries", "openhab.poll_interval_seconds", "openhab.history_window_hours"}
 
 // checkIntegerOptions decodes data a second time, with the same decoder and
 // so the same alias, merge-key and tag resolution, into float64 fields for the
@@ -634,6 +646,7 @@ func checkIntegerOptions(data []byte) error {
 		} `yaml:"alerts"`
 		OpenHAB struct {
 			PollIntervalSeconds *float64 `yaml:"poll_interval_seconds"`
+			HistoryWindowHours  *float64 `yaml:"history_window_hours"`
 		} `yaml:"openhab"`
 	}
 	if err := yaml.NewDecoder(bytes.NewReader(data)).Decode(&shadow); err != nil {
@@ -644,6 +657,7 @@ func checkIntegerOptions(data []byte) error {
 		"processes_top_n":               shadow.ProcessesTopN,
 		"alerts.notify_max_retries":     shadow.Alerts.NotifyMaxRetries,
 		"openhab.poll_interval_seconds": shadow.OpenHAB.PollIntervalSeconds,
+		"openhab.history_window_hours":  shadow.OpenHAB.HistoryWindowHours,
 	}
 	for _, name := range integerOptionNames {
 		v := values[name]

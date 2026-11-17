@@ -59,6 +59,9 @@ const (
 	seriesNetworkTxBytesPerSec
 	seriesDiskIOReadBytesPerSec
 	seriesDiskIOWriteBytesPerSec
+	seriesOpenHABRSSBytes
+	seriesOpenHABHeapUsedBytes
+	seriesOpenHABRestarts
 )
 
 // historySeries is one time series flattened out of a History for
@@ -98,6 +101,15 @@ func historySeriesList(h History) []historySeries {
 	appendMap(seriesNetworkTxBytesPerSec, h.NetworkTxBytesPerSec)
 	appendMap(seriesDiskIOReadBytesPerSec, h.DiskIOReadBytesPerSec)
 	appendMap(seriesDiskIOWriteBytesPerSec, h.DiskIOWriteBytesPerSec)
+	for _, s := range []historySeries{
+		{seriesOpenHABRSSBytes, "", h.OpenHABRSSBytes},
+		{seriesOpenHABHeapUsedBytes, "", h.OpenHABHeapUsedBytes},
+		{seriesOpenHABRestarts, "", h.OpenHABRestarts},
+	} {
+		if len(s.points) > 0 {
+			list = append(list, s)
+		}
+	}
 	return list
 }
 
@@ -137,6 +149,12 @@ func seriesToHistory(list []historySeries) History {
 			mapEntry(&h.DiskIOReadBytesPerSec, s)
 		case seriesDiskIOWriteBytesPerSec:
 			mapEntry(&h.DiskIOWriteBytesPerSec, s)
+		case seriesOpenHABRSSBytes:
+			h.OpenHABRSSBytes = s.points
+		case seriesOpenHABHeapUsedBytes:
+			h.OpenHABHeapUsedBytes = s.points
+		case seriesOpenHABRestarts:
+			h.OpenHABRestarts = s.points
 		}
 	}
 	return h
@@ -456,4 +474,14 @@ func (c *Collector) importHistory(h History, now time.Time) {
 	importMap(c.diskIOWriteHist, h.DiskIOWriteBytesPerSec)
 	importMap(c.rxHist, h.NetworkRxBytesPerSec)
 	importMap(c.txHist, h.NetworkTxBytesPerSec)
+
+	if c.ohRSSHist != nil {
+		ohCutoff := now.Add(-time.Duration(c.cfg.OpenHAB.HistoryWindowHours) * time.Hour)
+		ohTrim := func(points []HistoryPoint) []HistoryPoint {
+			return dropPrefix(points, func(p HistoryPoint) bool { return !p.Timestamp.Before(ohCutoff) })
+		}
+		c.ohRSSHist.Fill(ohTrim(h.OpenHABRSSBytes))
+		c.ohHeapHist.Fill(ohTrim(h.OpenHABHeapUsedBytes))
+		c.ohRestartHist.Fill(ohTrim(h.OpenHABRestarts))
+	}
 }

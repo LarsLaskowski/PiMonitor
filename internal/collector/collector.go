@@ -141,6 +141,9 @@ func (h History) Since(t time.Time) History {
 	out.DiskIOWriteBytesPerSec = filterDevices(h.DiskIOWriteBytesPerSec)
 	out.NetworkRxBytesPerSec = filterDevices(h.NetworkRxBytesPerSec)
 	out.NetworkTxBytesPerSec = filterDevices(h.NetworkTxBytesPerSec)
+	out.OpenHABRSSBytes = dropPrefix(h.OpenHABRSSBytes, newer)
+	out.OpenHABHeapUsedBytes = dropPrefix(h.OpenHABHeapUsedBytes, newer)
+	out.OpenHABRestarts = dropPrefix(h.OpenHABRestarts, newer)
 	return out
 }
 
@@ -239,14 +242,22 @@ type Collector struct {
 	// actually changed since a cached, already-serialised response was built,
 	// so a client polling faster than the collector ticks doesn't force a
 	// fresh deep-copy-and-encode of the whole window on every request.
-	historyGen      uint64
-	cpuHist         *RingBuffer[HistoryPoint]
-	l1Hist          *RingBuffer[HistoryPoint]
-	l5Hist          *RingBuffer[HistoryPoint]
-	l15Hist         *RingBuffer[HistoryPoint]
-	tempHist        *RingBuffer[HistoryPoint]
-	memHist         *RingBuffer[HistoryPoint]
-	swapHist        *RingBuffer[HistoryPoint]
+	historyGen uint64
+	cpuHist    *RingBuffer[HistoryPoint]
+	l1Hist     *RingBuffer[HistoryPoint]
+	l5Hist     *RingBuffer[HistoryPoint]
+	l15Hist    *RingBuffer[HistoryPoint]
+	tempHist   *RingBuffer[HistoryPoint]
+	memHist    *RingBuffer[HistoryPoint]
+	swapHist   *RingBuffer[HistoryPoint]
+	// ohRSSHist, ohHeapHist and ohRestartHist hold the openHAB series; nil
+	// unless cfg.OpenHAB.Enabled. ohWaiting holds the samples of finished
+	// polls that the next fast tick records (docs/decisions/0020), at most
+	// cfg.OpenHAB.HistoryCapacity of them.
+	ohRSSHist       *RingBuffer[HistoryPoint]
+	ohHeapHist      *RingBuffer[HistoryPoint]
+	ohRestartHist   *RingBuffer[HistoryPoint]
+	ohWaiting       []openHABSample
 	diskHist        map[string]*RingBuffer[HistoryPoint]
 	diskIOReadHist  map[string]*RingBuffer[HistoryPoint]
 	diskIOWriteHist map[string]*RingBuffer[HistoryPoint]
@@ -334,6 +345,11 @@ func New(cfg Config, log *slog.Logger) *Collector {
 	c.fastInterval = c.clampInterval(cfg.FastInterval, "FastInterval")
 	if cfg.OpenHAB.Enabled {
 		c.openhab = NewOpenHABCollector(cfg.OpenHAB, c.memoryTotal, log)
+		c.openhab.onSample = c.queueOpenHABSample
+		capacity := max(cfg.OpenHAB.HistoryCapacity, 1)
+		c.ohRSSHist = NewRingBuffer[HistoryPoint](capacity)
+		c.ohHeapHist = NewRingBuffer[HistoryPoint](capacity)
+		c.ohRestartHist = NewRingBuffer[HistoryPoint](capacity)
 	}
 	return c
 }
@@ -457,7 +473,61 @@ func (c *Collector) History() History {
 			h.NetworkTxBytesPerSec[k] = rb.Snapshot()
 		}
 	}
+	c.addOpenHABHistory(&h)
 	return h
+}
+
+// addOpenHABHistory sets the openHAB series of h, each cut
+// to the openHAB window before the latest fast tick (no cut before the first
+// one). Called with c.mu held.
+func (c *Collector) addOpenHABHistory(h *History) {
+	if c.ohRSSHist == nil {
+		return
+	}
+	cut := func(rb *RingBuffer[HistoryPoint]) []HistoryPoint {
+		points := rb.Snapshot()
+		if c.latest.Timestamp.IsZero() || c.cfg.OpenHAB.HistoryWindowHours <= 0 {
+			return points
+		}
+		cutoff := c.latest.Timestamp.Add(-time.Duration(c.cfg.OpenHAB.HistoryWindowHours) * time.Hour)
+		return dropPrefix(points, func(p HistoryPoint) bool { return !p.Timestamp.Before(cutoff) })
+	}
+	h.OpenHABRSSBytes = cut(c.ohRSSHist)
+	h.OpenHABHeapUsedBytes = cut(c.ohHeapHist)
+	h.OpenHABRestarts = cut(c.ohRestartHist)
+}
+
+// queueOpenHABSample is the OpenHABCollector's onSample hook. It stamps the
+// sample with the time it reads while holding c.mu, so every waiting sample is
+// newer than the start of every fast tick that drained before it, queues it
+// for the next fast tick (the oldest is dropped beyond the openHAB capacity)
+// and returns the time.
+func (c *Collector) queueOpenHABSample(sample openHABSample) time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	sample.at = c.openhab.now()
+	c.ohWaiting = append(c.ohWaiting, sample)
+	if over := len(c.ohWaiting) - max(c.cfg.OpenHAB.HistoryCapacity, 1); over > 0 {
+		c.ohWaiting = append(c.ohWaiting[:0], c.ohWaiting[over:]...)
+	}
+	return sample.at
+}
+
+// drainOpenHABSamples records the waiting openHAB samples in the series.
+// Called from fastTick with c.mu held.
+func (c *Collector) drainOpenHABSamples() {
+	for _, s := range c.ohWaiting {
+		if s.rssOK {
+			c.ohRSSHist.Add(HistoryPoint{Timestamp: s.at, Value: float64(s.rssBytes)})
+		}
+		if s.heapOK {
+			c.ohHeapHist.Add(HistoryPoint{Timestamp: s.at, Value: float64(s.heapBytes)})
+		}
+		if s.restart != 0 {
+			c.ohRestartHist.Add(HistoryPoint{Timestamp: s.at, Value: float64(s.restart)})
+		}
+	}
+	c.ohWaiting = c.ohWaiting[:0]
 }
 
 // HistoryGeneration returns a counter that increments every time fastTick
@@ -636,6 +706,7 @@ func (c *Collector) fastTick(ctx context.Context) {
 	addPoint(c.swapHist, s.memErr, s.swap.UsedPercent)
 
 	c.recordDeviceHistory(s.now, s.disks, s.diskIO, s.netIfaces)
+	c.drainOpenHABSamples()
 	c.historyGen++
 
 	// Evaluate the freshly collected values against the alert thresholds.
