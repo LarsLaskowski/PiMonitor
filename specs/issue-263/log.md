@@ -16,3 +16,4 @@ are quoted in full.
 | 2026-11-17 19:33 | 6 Coverage skipped | Orchestrator | skipped — gate passes (100% new lines), no deferred tests, no open test docs |
 | 2026-11-17 19:33 | 6 Documentation | Orchestrator | written in 6 Implement |
 | 2026-11-17 19:33 | 7 Gate stamp | Orchestrator | PASS on 630bf02da5a6c21db28c81c8b69fc14d5768e7c3 (tier standard): Format check pass; Analyzer gate pass; Test with coverage pass; Coverage gate pass; decision-check.py pass; scope-check.py pass · figure-check.py 0 hit(s) |
+| 2026-11-17 19:34 | 8 Review | Reviewer | VERDICT: BLOCKING 1 \| NON-BLOCKING 0 on 630bf02da5a6c21db28c81c8b69fc14d5768e7c3; AC3 fixture uses time.UTC, fails west of UTC (persist_test.go:1056) (opus/medium · 38,422 tokens · 8 tool uses · 63 s · 14 in · 3,559 out · 191,039 cache read · 32,409 cache write · 135,744 weighted) |
