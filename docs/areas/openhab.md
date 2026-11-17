@@ -50,8 +50,10 @@ Each source is collected on its own; a failing source leaves only its values abs
 - **Prometheus.** `GET /metrics` exports these values as `pimonitor_openhab_*` series (state, process memory, heap, uptime,
   start level, Thing counts per status, Item and add-on counts, version); an absent value has no series, never a `0`.
   Names and rules: [`API.md`](../API.md#get-metrics-prometheus).
-- **Uptime** is the time since the process started (`/proc/uptime` minus the start time), in whole seconds. openHAB's
-  own `systemInfo.uptime`, also in seconds, is used only when no process was found.
+- **Uptime** is the time since the process started (`/proc/uptime` minus the start time), in whole seconds. When
+  `/proc/uptime` cannot be read or its first field is not a finite number, the process uptime is unknown: openHAB's
+  own `systemInfo.uptime`, also in seconds, is used if that call answered, otherwise uptime is absent. That value is
+  also used when no process was found.
 - **Not-ONLINE list.** Up to 10 Things whose status is not `ONLINE`, sorted by UID, each with UID, label, status,
   status detail and, when openHAB gives one, its description. A disabled Thing (status `UNINITIALIZED`, detail
   `DISABLED`) is counted under its status but neither listed nor a reason for the card's warning state.

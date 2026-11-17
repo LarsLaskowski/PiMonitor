@@ -30,7 +30,7 @@ it; the operator relies on the file rules.
   read in that tick. A failed collection adds no point to the series it feeds, while the other series of the tick
   still get theirs, and the snapshot keeps its 0 for the metric ([Metrics](metrics.md#limits-and-errors)):
   `cpu_percent` when the CPU statistics cannot be read, `load1`, `load5` and `load15` when the load average
-  cannot, `temperature` when there is no CPU thermal zone or it cannot be read, `memory_used_percent` and
+  cannot, or holds a value that is not a finite number, `temperature` when there is no CPU thermal zone or it cannot be read, `memory_used_percent` and
   `swap_used_percent` when `/proc/meminfo` cannot. A host without a thermal zone therefore has an empty
   `temperature` series, and series can differ in length. `cpu_percent` also gets no point on the first tick
   after start, which has no previous sample to diff against ([Metrics](metrics.md#cpu-and-load)).

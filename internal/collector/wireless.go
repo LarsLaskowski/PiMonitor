@@ -3,6 +3,7 @@ package collector
 import (
 	"bufio"
 	"fmt"
+	"math"
 	"os"
 	"sort"
 	"strconv"
@@ -29,6 +30,9 @@ const procNetWirelessPath = "/proc/net/wireless"
 // interface would be reported as a real reading of signal_dbm 0, which is
 // actually the strongest possible signal — the opposite of "no signal" this
 // represents. That line is skipped rather than parsed.
+//
+// A link or level value strconv.ParseFloat decodes as NaN or ±Inf is
+// rejected, because it would make the JSON encoding of the snapshot fail.
 func parseWireless(data string) ([]Wireless, error) {
 	var result []Wireless
 	scanner := bufio.NewScanner(strings.NewReader(data))
@@ -52,9 +56,15 @@ func parseWireless(data string) ([]Wireless, error) {
 		if err != nil {
 			return nil, fmt.Errorf("parse link quality for %q: %w", name, err)
 		}
+		if math.IsNaN(link) || math.IsInf(link, 0) {
+			return nil, fmt.Errorf("parse link quality for %q: non-finite value %q", name, fields[1])
+		}
 		level, err := strconv.ParseFloat(fields[2], 64)
 		if err != nil {
 			return nil, fmt.Errorf("parse signal level for %q: %w", name, err)
+		}
+		if math.IsNaN(level) || math.IsInf(level, 0) {
+			return nil, fmt.Errorf("parse signal level for %q: non-finite value %q", name, fields[2])
 		}
 		if isNullWirelessStats(fields[1], fields[2], link, level) {
 			continue
