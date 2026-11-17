@@ -658,6 +658,22 @@ func countInvocations(t *testing.T, logFile string) int {
 	return len(strings.Split(strings.TrimSpace(string(logged)), "\n"))
 }
 
+// assertNonFiniteCalls runs collect calls times, requires each to yield no
+// reading and errVcgencmdUnsupportedOutput, then checks the fake vcgencmd was
+// invoked wantInvocations times.
+func assertNonFiniteCalls(t *testing.T, name string, calls int, logFile string, wantInvocations int, collect func() (any, bool, error)) {
+	t.Helper()
+	for i := 0; i < calls; i++ {
+		got, nonNil, err := collect()
+		if nonNil || !errors.Is(err, errVcgencmdUnsupportedOutput) {
+			t.Fatalf("%s #%d = (%+v, %v), want nil and errVcgencmdUnsupportedOutput", name, i, got, err)
+		}
+	}
+	if got := countInvocations(t, logFile); got != wantInvocations {
+		t.Errorf("vcgencmd invoked %d times across %d %s calls, want %d", got, calls, name, wantInvocations)
+	}
+}
+
 // TestTemperatureCollector_CollectGPUAndPMIC_NonFinite_AC2 checks that a
 // vcgencmd answering temp=nan'C yields no reading and an unsupported-output
 // error, latched for the PMIC and not for the GPU.
@@ -673,27 +689,17 @@ func TestTemperatureCollector_CollectGPUAndPMIC_NonFinite_AC2(t *testing.T) {
 
 	t.Run("AC2 GPU fails every call", func(t *testing.T) {
 		c, logFile := newCollector(t)
-		for i := 0; i < calls; i++ {
+		assertNonFiniteCalls(t, "CollectGPU", calls, logFile, calls, func() (any, bool, error) {
 			gpu, err := c.CollectGPU(context.Background())
-			if gpu != nil || !errors.Is(err, errVcgencmdUnsupportedOutput) {
-				t.Fatalf("CollectGPU #%d = (%+v, %v), want nil and errVcgencmdUnsupportedOutput", i, gpu, err)
-			}
-		}
-		if got := countInvocations(t, logFile); got != calls {
-			t.Errorf("vcgencmd invoked %d times across %d GPU calls, want %d (no latch)", got, calls, calls)
-		}
+			return gpu, gpu != nil, err
+		})
 	})
 
 	t.Run("AC2 PMIC latches", func(t *testing.T) {
 		c, logFile := newCollector(t)
-		for i := 0; i < calls; i++ {
+		assertNonFiniteCalls(t, "CollectPMIC", calls, logFile, 1, func() (any, bool, error) {
 			pmic, err := c.CollectPMIC(context.Background())
-			if pmic != nil || !errors.Is(err, errVcgencmdUnsupportedOutput) {
-				t.Fatalf("CollectPMIC #%d = (%+v, %v), want nil and errVcgencmdUnsupportedOutput", i, pmic, err)
-			}
-		}
-		if got := countInvocations(t, logFile); got != 1 {
-			t.Errorf("vcgencmd invoked %d times across %d PMIC calls, want 1 (latched)", got, calls)
-		}
+			return pmic, pmic != nil, err
+		})
 	})
 }
