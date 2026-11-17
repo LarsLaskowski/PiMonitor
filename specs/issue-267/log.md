@@ -20,4 +20,5 @@ are quoted in full.
 | 2026-11-17 20:01 | 7 Gate stamp | Orchestrator | PASS on 0e890183f809735886e3781dea8943a73c1c1621 (tier standard): Format check pass; Analyzer gate pass; Test with coverage pass; Coverage gate pass; decision-check.py pass; scope-check.py pass · figure-check.py 0 hit(s) |
 | 2026-11-17 20:02 | 8 Review | Reviewer | VERDICT: BLOCKING 0 \| NON-BLOCKING 2 on 0e890183f809735886e3781dea8943a73c1c1621. Two docs wording findings, both with verbatim fixes (history.md:33 list grammar; API.md:759 uptime row) (opus/medium · 47,775 tokens · 5 tool uses · 44 s · 10 in · 4,273 out · 126,823 cache read · 40,445 cache write · 156,545 weighted) |
 | 2026-11-17 20:02 | 7 Gate stamp | Orchestrator | PASS on 0379ac4719aaca0c725490b553a1443d724fec8e (tier standard, verbatim): Format check pass; decision-check.py pass; scope-check.py pass |
-| 2026-11-17 20:02 | 8 Verbatim fixes | Orchestrator | Applied both verbatim documentation fixes of the review (history.md, API.md) |
+| 2026-11-17 20:02 | 8 Verbatim fixes | Orchestrator | verbatim: applied [NON-BLOCKING, verbatim] docs/areas/history.md:33 and [NON-BLOCKING, verbatim] docs/API.md:759 as proposed (commit 0379ac4); rewrapped |
+| 2026-11-17 20:02 | 9 PR approval | Orchestrator | approved by checklist |
