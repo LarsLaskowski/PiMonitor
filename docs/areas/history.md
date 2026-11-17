@@ -133,6 +133,9 @@ The format is `PIMH` version 1. All integers are little-endian.
 - Points older than `history_window_minutes` before the current time are dropped; then each series keeps at most
   its newest *capacity* points, by the current configuration. A per-device series left without points is not
   restored.
+- A point whose value is NaN or infinite, or whose timestamp lies outside the years 0-9999, is dropped while the
+  file is read; the rest of its series and of the file are kept, and a series left without points follows the
+  rule above.
 - The openHAB series are restored only while `openhab.enabled` is not `false`, dropping points older than
   `openhab.history_window_hours` before the current time and keeping at most the openHAB capacity. A file without
   them (written by v1.2.0) loads as before; an older PiMonitor reading a file with them skips these kinds and loses
@@ -159,6 +162,8 @@ The format is `PIMH` version 1. All integers are little-endian.
 - [0004](../decisions/0004-final-history-write-waits.md): the final history write waits for a running write.
 - [0019](../decisions/0019-openhab-history-has-its-own-window.md): the openHAB history has its own window.
 - [0020](../decisions/0020-openhab-points-recorded-by-next-fast-tick.md): openHAB points are recorded by the next fast tick.
+- [0021](../decisions/0021-non-finite-history-point-dropped-on-restore.md): a point with a non-finite value or an
+  unencodable timestamp is dropped on restore.
 
 ## Not here
 

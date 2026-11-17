@@ -3,7 +3,9 @@ package collector
 import (
 	"context"
 	"encoding/binary"
+	"encoding/json"
 	"errors"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -895,4 +897,196 @@ func TestCollector_LoadHistory_OpenHAB(t *testing.T) {
 
 		pointsEqual(t, "OpenHABRSSBytes", c.History().OpenHABRSSBytes, points[3:])
 	})
+}
+
+// rawPoint is one point of a history file as it lies on disk: the
+// timestamp in Unix milliseconds and the IEEE 754 bits of the value.
+type rawPoint struct {
+	ms   int64
+	bits uint64
+}
+
+func rawBytes(points []rawPoint) []byte {
+	raw := make([]byte, 0, len(points)*pointSize)
+	for _, p := range points {
+		raw = binary.LittleEndian.AppendUint64(raw, uint64(p.ms))
+		raw = binary.LittleEndian.AppendUint64(raw, p.bits)
+	}
+	return raw
+}
+
+// validRawPoints are two finite points of a current year, in file order.
+var (
+	validBefore = rawPoint{ms: 1_700_000_000_000, bits: math.Float64bits(1.5)}
+	validAfter  = rawPoint{ms: 1_700_000_001_000, bits: math.Float64bits(2.5)}
+)
+
+func assertPointBits(t *testing.T, name string, got []HistoryPoint, want []rawPoint) {
+	t.Helper()
+	if len(got) != len(want) {
+		t.Fatalf("%s: got %d points %v, want %d", name, len(got), got, len(want))
+	}
+	for i := range got {
+		if got[i].Timestamp.UnixMilli() != want[i].ms || math.Float64bits(got[i].Value) != want[i].bits {
+			t.Fatalf("%s[%d] = (%d ms, bits %#x), want (%d ms, bits %#x)", name, i,
+				got[i].Timestamp.UnixMilli(), math.Float64bits(got[i].Value), want[i].ms, want[i].bits)
+		}
+	}
+}
+
+func localMillis(year int) int64 {
+	return time.Date(year, 1, 1, 0, 0, 0, 0, time.Local).UnixMilli()
+}
+
+func TestDecodeHistoryPoints_DropsUnencodablePoints_AC1(t *testing.T) {
+	finite := math.Float64bits(3.5)
+	nowMs := validBefore.ms
+	rows := []struct {
+		name string
+		pt   rawPoint
+		keep bool
+	}{
+		{"AC1 quiet NaN value", rawPoint{nowMs, 0x7FF8000000000001}, false},
+		{"AC1 signalling NaN value", rawPoint{nowMs, 0x7FF0000000000001}, false},
+		{"AC1 negative NaN value", rawPoint{nowMs, 0xFFF8000000000000}, false},
+		{"AC1 NaN with full mantissa", rawPoint{nowMs, 0x7FFFFFFFFFFFFFFF}, false},
+		{"AC1 positive infinity", rawPoint{nowMs, 0x7FF0000000000000}, false},
+		{"AC1 negative infinity", rawPoint{nowMs, 0xFFF0000000000000}, false},
+		{"AC1 timestamp MaxInt64", rawPoint{math.MaxInt64, finite}, false},
+		{"AC1 timestamp MinInt64", rawPoint{math.MinInt64, finite}, false},
+		{"AC1 first millisecond of year 10000", rawPoint{localMillis(10000), finite}, false},
+		{"AC1 millisecond before year 0", rawPoint{localMillis(0) - 1, finite}, false},
+		{"AC1 max finite value", rawPoint{nowMs, 0x7FEFFFFFFFFFFFFF}, true},
+		{"AC1 min finite value", rawPoint{nowMs, 0xFFEFFFFFFFFFFFFF}, true},
+		{"AC1 smallest subnormal", rawPoint{nowMs, 0x0000000000000001}, true},
+		{"AC1 negative zero", rawPoint{nowMs, 0x8000000000000000}, true},
+		{"AC1 first millisecond of year 0", rawPoint{localMillis(0), finite}, true},
+		{"AC1 last millisecond of year 9999", rawPoint{localMillis(10000) - 1, finite}, true},
+	}
+	for _, row := range rows {
+		t.Run(row.name, func(t *testing.T) {
+			raw := rawBytes([]rawPoint{validBefore, row.pt, validAfter})
+			want := []rawPoint{validBefore, validAfter}
+			if row.keep {
+				want = []rawPoint{validBefore, row.pt, validAfter}
+			}
+
+			got := decodeHistoryPoints(raw, 3)
+
+			assertPointBits(t, "points", got, want)
+		})
+	}
+}
+
+// historyFileWithSeries builds a history file of one series of the given
+// kind and key holding points.
+func historyFileWithSeries(kind uint8, key string, points []rawPoint) []byte {
+	buf := append([]byte(historyMagic), 0, 0)
+	binary.LittleEndian.PutUint16(buf[len(historyMagic):], historyVersion)
+	buf = binary.LittleEndian.AppendUint32(buf, 1)
+	buf = append(buf, kind)
+	buf = binary.LittleEndian.AppendUint16(buf, uint16(len(key)))
+	buf = append(buf, key...)
+	buf = binary.LittleEndian.AppendUint32(buf, uint32(len(points)))
+	return append(buf, rawBytes(points)...)
+}
+
+func TestDecodeHistory_DropsUnencodablePointsPerKind_AC2(t *testing.T) {
+	kinds := []struct {
+		name string
+		kind uint8
+		key  string
+		get  func(History) []HistoryPoint
+	}{
+		{"CPUPercent", seriesCPUPercent, "", func(h History) []HistoryPoint { return h.CPUPercent }},
+		{"Load1", seriesLoad1, "", func(h History) []HistoryPoint { return h.Load1 }},
+		{"Load5", seriesLoad5, "", func(h History) []HistoryPoint { return h.Load5 }},
+		{"Load15", seriesLoad15, "", func(h History) []HistoryPoint { return h.Load15 }},
+		{"Temperature", seriesTemperature, "", func(h History) []HistoryPoint { return h.Temperature }},
+		{"MemoryUsedPercent", seriesMemoryUsedPercent, "", func(h History) []HistoryPoint { return h.MemoryUsedPercent }},
+		{"SwapUsedPercent", seriesSwapUsedPercent, "", func(h History) []HistoryPoint { return h.SwapUsedPercent }},
+		{"DiskUsedPercent", seriesDiskUsedPercent, "/", func(h History) []HistoryPoint { return h.DiskUsedPercent["/"] }},
+		{"NetworkRxBytesPerSec", seriesNetworkRxBytesPerSec, "eth0", func(h History) []HistoryPoint { return h.NetworkRxBytesPerSec["eth0"] }},
+		{"NetworkTxBytesPerSec", seriesNetworkTxBytesPerSec, "eth0", func(h History) []HistoryPoint { return h.NetworkTxBytesPerSec["eth0"] }},
+		{"DiskIOReadBytesPerSec", seriesDiskIOReadBytesPerSec, "mmcblk0", func(h History) []HistoryPoint { return h.DiskIOReadBytesPerSec["mmcblk0"] }},
+		{"DiskIOWriteBytesPerSec", seriesDiskIOWriteBytesPerSec, "mmcblk0", func(h History) []HistoryPoint { return h.DiskIOWriteBytesPerSec["mmcblk0"] }},
+		{"OpenHABRSSBytes", seriesOpenHABRSSBytes, "", func(h History) []HistoryPoint { return h.OpenHABRSSBytes }},
+		{"OpenHABHeapUsedBytes", seriesOpenHABHeapUsedBytes, "", func(h History) []HistoryPoint { return h.OpenHABHeapUsedBytes }},
+		{"OpenHABRestarts", seriesOpenHABRestarts, "", func(h History) []HistoryPoint { return h.OpenHABRestarts }},
+	}
+	third := rawPoint{ms: 1_700_000_002_000, bits: math.Float64bits(4.5)}
+	fourth := rawPoint{ms: 1_700_000_003_000, bits: math.Float64bits(5.5)}
+	fifth := rawPoint{ms: 1_700_000_004_000, bits: math.Float64bits(6.5)}
+	finite := math.Float64bits(1)
+	points := []rawPoint{
+		validBefore,
+		{validBefore.ms, math.Float64bits(math.NaN())},
+		validAfter,
+		{validAfter.ms, math.Float64bits(math.Inf(1))},
+		third,
+		{third.ms, math.Float64bits(math.Inf(-1))},
+		fourth,
+		{localMillis(10000), finite},
+		fifth,
+	}
+	want := []rawPoint{validBefore, validAfter, third, fourth, fifth}
+	for _, k := range kinds {
+		t.Run("AC2 "+k.name, func(t *testing.T) {
+			data := historyFileWithSeries(k.kind, k.key, points)
+
+			h, err := decodeHistory(data)
+
+			if err != nil {
+				t.Fatalf("decodeHistory: %v, want no error", err)
+			}
+			assertPointBits(t, k.name, k.get(h), want)
+		})
+	}
+}
+
+func TestCollector_LoadHistory_DropsUnencodablePoints_AC3(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "history.bin")
+	base := time.Now().Truncate(time.Millisecond).Add(-10 * time.Minute)
+	valid := func(i int) HistoryPoint {
+		return HistoryPoint{Timestamp: base.Add(time.Duration(i) * time.Minute), Value: float64(i) + 0.5}
+	}
+	bad := func(i int, v float64) HistoryPoint {
+		return HistoryPoint{Timestamp: base.Add(time.Duration(i) * time.Minute), Value: v}
+	}
+	farFuture := HistoryPoint{Timestamp: time.Date(10000, 1, 1, 0, 0, 0, 0, time.Local), Value: 1}
+	mixed := []HistoryPoint{valid(0), bad(1, math.NaN()), valid(2), bad(3, math.Inf(1)), valid(4), bad(5, math.Inf(-1)), valid(6), farFuture, valid(7)}
+	wantMixed := []HistoryPoint{valid(0), valid(2), valid(4), valid(6), valid(7)}
+	onlyBad := []HistoryPoint{bad(1, math.NaN()), bad(2, math.Inf(1)), farFuture}
+	writeHistoryFile(t, path, History{
+		CPUPercent:             mixed,
+		Temperature:            mixed,
+		DiskUsedPercent:        map[string][]HistoryPoint{"/": mixed},
+		NetworkRxBytesPerSec:   map[string][]HistoryPoint{"eth0": onlyBad},
+		DiskIOReadBytesPerSec:  map[string][]HistoryPoint{"mmcblk0": {valid(1), valid(2)}},
+		OpenHABRSSBytes:        mixed,
+		OpenHABHeapUsedBytes:   mixed,
+		OpenHABRestarts:        mixed,
+		NetworkTxBytesPerSec:   map[string][]HistoryPoint{"eth0": mixed},
+		DiskIOWriteBytesPerSec: map[string][]HistoryPoint{"mmcblk0": mixed},
+	})
+	c := newOHPersistCollector(path, time.Hour, 2, 1440)
+
+	c.loadHistory()
+
+	h := c.History()
+	pointsEqual(t, "CPUPercent", h.CPUPercent, wantMixed)
+	pointsEqual(t, "Temperature", h.Temperature, wantMixed)
+	pointsEqual(t, "OpenHABRSSBytes", h.OpenHABRSSBytes, wantMixed)
+	pointsEqual(t, "OpenHABHeapUsedBytes", h.OpenHABHeapUsedBytes, wantMixed)
+	pointsEqual(t, "OpenHABRestarts", h.OpenHABRestarts, wantMixed)
+	mapsEqual(t, "DiskUsedPercent", h.DiskUsedPercent, map[string][]HistoryPoint{"/": wantMixed})
+	mapsEqual(t, "NetworkTxBytesPerSec", h.NetworkTxBytesPerSec, map[string][]HistoryPoint{"eth0": wantMixed})
+	mapsEqual(t, "DiskIOWriteBytesPerSec", h.DiskIOWriteBytesPerSec, map[string][]HistoryPoint{"mmcblk0": wantMixed})
+	mapsEqual(t, "DiskIOReadBytesPerSec", h.DiskIOReadBytesPerSec, map[string][]HistoryPoint{"mmcblk0": {valid(1), valid(2)}})
+	if len(h.NetworkRxBytesPerSec) != 0 {
+		t.Fatalf("NetworkRxBytesPerSec = %v, want the series of only dropped points not restored", h.NetworkRxBytesPerSec)
+	}
+	if _, err := json.Marshal(h); err != nil {
+		t.Fatalf("json.Marshal(History()): %v, want the restored history encodable", err)
+	}
 }
