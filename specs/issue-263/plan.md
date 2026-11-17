@@ -141,3 +141,38 @@ I checked the plan against the code and it holds. The root cause, the 15 series 
 Objections:
 
 1. minor (AC3 could pass without the drop working). Instruction for the Tester: in `TestCollector_LoadHistory_DropsNonFinitePoints_AC3`, give every fixture point a timestamp inside both windows (the `HistoryWindow` passed to `newOHPersistCollector` and `openhab.history_window_hours`). Make the per-device series that is meant to disappear hold only non-finite points, and give a second per-device series finite points around non-finite ones. Then assert that `History()` holds exactly those finite points for each restored series, not just that `json.Marshal` succeeds. A fixture whose points fall outside the window would make the "not restored" and "Marshal succeeds" checks pass because of trimming, even on a build without the fix.
+
+## Security notes
+
+Security plan review for issue #263 (specs/issue-263/plan.md, decision 0021). Mode: plan.
+
+Files I read: /home/user/PiMonitor/specs/issue-263/plan.md, /home/user/PiMonitor/docs/decisions/0021-non-finite-history-point-dropped-on-restore.md, /home/user/PiMonitor/internal/collector/persist.go (decodeHistory, decodeSeries, decodeHistoryPoints, importHistory), /home/user/PiMonitor/internal/collector/collector.go (dropPrefix, addPoint and the series feeds), /home/user/PiMonitor/internal/collector/types.go (HistoryPoint), memory.go, disk.go, /home/user/PiMonitor/docs/areas/history.md, and .squad/routing.md *Tiers*.
+
+What holds:
+- **Tier `standard` is right.** The check only stops malformed input from breaking the program. It is input handling, not a guard deciding what an attacker may reach. "Security areas touched" names the correct area (`history.bin`, bounded decode).
+- **The resource bound is unchanged.** `n` is still checked against `maxPointsPerSeries` before `take` and before allocation. `make([]HistoryPoint, 0, n)` keeps the same bound, and nothing derived is retained beyond the slice.
+- **The non-finite enumeration is complete for the value.** `math.IsNaN || math.IsInf(v, 0)` covers every pattern with an all-ones exponent. The AC1 bit patterns cover quiet and signalling NaN, negative NaN, a payload NaN and ±Inf, and the kept row covers the finite edge values.
+- **Fact 7 checks out (live sources stay finite).** Memory, swap and disk percentages guard a zero denominator (memory.go:105/116, disk.go:292/304). loadavg is parsed with ParseFloat from kernel-formatted text. The openHAB series are integer casts.
+- **Splitting off the vcgencmd follow-up is appropriate.** Those values reach the snapshot, not the history series.
+
+Findings:
+
+1. [BLOCKING] The guard misses the second decoded field that `json.Marshal` cannot encode: the timestamp. AC3's claim that "`json.Marshal` of its `History()` succeeds" does not hold for a tampered file.
+   - **What the plan says:** Problem / root cause names only the value bits. The Approach checks only `v`.
+   - **The code:** `decodeHistoryPoints` (persist.go:295) accepts any int64 as `time.UnixMilli(ms)`. `HistoryPoint.Timestamp` is a `time.Time` encoded by its own `MarshalJSON` (types.go:264-267).
+   - **Measurement:** I ran `GOFLAGS=-mod=mod go run main.go` in /tmp/claude-0/-home-user-PiMonitor/72303d5b-aa99-5b0f-99e9-14b0e782767b/scratchpad/m. It marshals a struct shaped like HistoryPoint. Output:
+     `maxint64 ms: json: error calling MarshalJSON for type time.Time: Time.MarshalJSON: year outside of range [0,9999]`
+     `year 10000: json: error calling MarshalJSON for type time.Time: Time.MarshalJSON: year outside of range [0,9999]`
+     `nan: json: unsupported value: NaN`
+     So a timestamp outside years 0–9999 breaks the history response in the same way and gives the same 500 as the NaN in the issue.
+   - **Why the restore does not remove it:**
+     - A far-future point (e.g. ms = 253402300800000, year 10000) is kept, because `importHistory` drops only points older than the cutoff (persist.go:447 and 481, `!p.Timestamp.Before(cutoff)`). The capacity trim keeps the newest positions, so the point stays in the ring buffers and in every later `history.bin`. It never leaves the window, which is worse than the up-to-168 h case in the issue.
+     - A point before year 0 placed after a recent point is also kept. `dropPrefix` (collector.go:157-158) is a `sort.Search` over a prefix and assumes sorted input, which the decoder does not enforce.
+   - **Fix, without changing scope:** in `decodeHistoryPoints`, also drop a point whose `time.UnixMilli(ms).Year()` is outside [0, 9999]. Equivalently, drop a point whose ms lies outside the ms values of 0000-01-01T00:00:00Z and 9999-12-31T23:59:59.999Z.
+   - **Tests:** extend AC1 with rows for ms = math.MaxInt64, math.MinInt64, 253402300800000 (year 10000) and −62167219200001 (just before year 0). Add kept rows at both boundaries (−62167219200000 and 253402300799999).
+   - **AC wording:** reword AC1, AC2 and AC3 and the decision record 0021 (Context, Decision, Consequences), and the history.md bullet, to "a point whose value is NaN or infinite, or whose timestamp lies outside years 0–9999".
+   - **Alternatively:** if the Lead keeps the timestamp out of scope, AC3 must stop claiming that `json.Marshal` succeeds in general, and a linked follow-up issue is needed now. I recommend fixing it here, because it is the same root cause in the same function.
+
+2. [NON-BLOCKING] The drop is silent (0021, Consequences). For a file that can only be produced with write access to `data_dir`, that is acceptable. But an operator investigating a tampered or damaged file gets no signal, whereas the "file not valid" rule logs a warning. Smallest fix: one warning per file with the number of dropped points, without values or keys. Recommendation: leave it as decided, or open a linked issue. It is not required for this change.
+
+No other security area is touched: no Docker, CI, build or dependency change, and no log call is added.
