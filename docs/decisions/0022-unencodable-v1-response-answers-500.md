@@ -1,6 +1,6 @@
 # 0022: A v1 response that cannot be encoded answers 500 in v1
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-17
 - **Area:** HTTP API
 - **Source:** Issue #268
