@@ -1,7 +1,10 @@
 package httpapi
 
 import (
+	"compress/gzip"
 	"encoding/json"
+	"io"
+	"log/slog"
 	"math"
 	"net/http"
 	"net/http/httptest"
@@ -1330,5 +1333,88 @@ func TestHandlePrometheusMetrics_OpenHABAfterExistingFamilies_AC6(t *testing.T) 
 	}
 	if strings.Contains(existing, "pimonitor_openhab_") {
 		t.Fatalf("AC6 existing families name an openHAB metric:\n%s", existing)
+	}
+}
+
+// nanMetricsServer returns a server whose snapshot cannot be encoded as JSON:
+// json.Marshal rejects the NaN.
+func nanMetricsServer(log *slog.Logger) *Server {
+	fm := &fakeMetrics{}
+	fm.snapshot.CPU.OverallPercent = math.NaN()
+	return New(fm, Config{}, nil, log)
+}
+
+func serveGetEncoded(s *Server, path, acceptEncoding string) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(http.MethodGet, path, nil)
+	if acceptEncoding != "" {
+		req.Header.Set("Accept-Encoding", acceptEncoding)
+	}
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	return rec
+}
+
+func decodedBody(t *testing.T, rec *httptest.ResponseRecorder) string {
+	t.Helper()
+	if rec.Header().Get("Content-Encoding") != "gzip" {
+		return rec.Body.String()
+	}
+	zr, err := gzip.NewReader(rec.Body)
+	if err != nil {
+		t.Fatalf("gzip reader: %v", err)
+	}
+	out, err := io.ReadAll(zr)
+	if err != nil {
+		t.Fatalf("gunzip body: %v", err)
+	}
+	return string(out)
+}
+
+func TestWriteJSON_EncodeFailureReturns500_AC1(t *testing.T) {
+	tests := []struct {
+		name, path, acceptEncoding string
+	}{
+		{"AC1 GET /api/v1/metrics", "/api/v1/metrics", ""},
+		{"AC1 GET /api/v1/metrics/cpu", "/api/v1/metrics/cpu", ""},
+		{"AC1 GET /api/v1/metrics gzip", "/api/v1/metrics", "gzip"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := nanMetricsServer(nil)
+
+			rec := serveGetEncoded(s, tt.path, tt.acceptEncoding)
+
+			if rec.Code != http.StatusInternalServerError {
+				t.Errorf("status = %d, want %d", rec.Code, http.StatusInternalServerError)
+			}
+			if got, want := rec.Header().Get("Content-Type"), "text/plain; charset=utf-8"; got != want {
+				t.Errorf("Content-Type = %q, want %q", got, want)
+			}
+			if got, want := rec.Header().Get("Content-Encoding"), tt.acceptEncoding; got != want {
+				t.Errorf("Content-Encoding = %q, want %q", got, want)
+			}
+			if got, want := decodedBody(t, rec), "internal error\n"; got != want {
+				t.Errorf("body = %q, want %q", got, want)
+			}
+		})
+	}
+}
+
+func TestWriteJSON_EncodeFailureCountedAs5xx_AC3(t *testing.T) {
+	s := nanMetricsServer(nil)
+	serveGetEncoded(s, "/api/v1/metrics", "")
+	s.metrics.(*fakeMetrics).snapshot.CPU.OverallPercent = 1
+
+	rec := serveGetEncoded(s, "/api/v1/serverstats", "")
+
+	var got serverStatsSnapshot
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("unmarshal serverstats %q: %v", rec.Body.String(), err)
+	}
+	if got.ByStatusClass["5xx"] != 1 {
+		t.Errorf("5xx = %d, want 1", got.ByStatusClass["5xx"])
+	}
+	if got.ByStatusClass["2xx"] != 0 {
+		t.Errorf("2xx = %d, want 0", got.ByStatusClass["2xx"])
 	}
 }
