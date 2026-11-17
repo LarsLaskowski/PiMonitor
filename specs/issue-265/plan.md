@@ -137,3 +137,17 @@ Related defects found while checking (proposed issues for the orchestrator):
   would break `GET /api/v1/metrics` the same way. The kernel formats these as decimals, so it is hardening only.
 - "[HTTP API] writeJSON answers 200 with an empty body when encoding fails": `handlers.go:13-18` logs the
   encode error but the client gets an empty 200; a 500 would tell clients the response failed.
+
+## Challenge notes
+
+The plan holds up. I checked it against the code and found nothing to object to.
+
+- **Facts 1, 3, 4, 6 and 7 hold:**
+  - `parseVcgencmdTemp` has no finiteness check (`/home/user/PiMonitor/internal/collector/temperature.go:243-256`).
+  - The overflowing-literal error path stays as it is.
+  - The values go only into `c.latest` (`collector.go:670-671`). The other readers are `prometheus.go:129-130` and JSON. Nothing in history, persistence or alerts reads them.
+  - The PMIC latch is only in `CollectPMIC` (`temperature.go:198-209`).
+- **AC1 error text is right:** `sanitizeVcgencmdDetail` (`/home/user/PiMonitor/internal/collector/vcgencmd.go:137-147`) only collapses whitespace and truncates past the bound. `%q` does not escape `'`, so the exact text given for `temp=nan'C` is what the code will produce.
+- **No other vcgencmd parser has the same defect:** `throttled.go:77` uses `ParseUint`, which cannot return NaN or Inf. The `/proc` parsers that use `ParseFloat` (`loadavg.go`, `uptime.go`, `wireless.go`) are already listed as follow-ups.
+- **AC3 is buildable and catches the defect:** `newOptionalSourceEnv` (`collector_test.go:1050`) and the fake vcgencmd pattern of `installVcgencmd` support it. Without the fix, `json.Marshal` of the snapshot would fail.
+- **The fix is the simplest one:** it reuses the existing error class, and the alternatives the plan rejected were rightly rejected.
