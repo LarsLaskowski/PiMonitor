@@ -756,7 +756,7 @@ every other `/api/v1/...` endpoint.
 | `collected_at` | string | Time the poll handed its values to the history, a moment after its last request (RFC 3339, UTC); the timestamp of its history points. Absent in `pending` and `not_installed`. |
 | `version` | string | openHAB's version (`runtimeInfo.version`). |
 | `start_level` | number | openHAB's start level; below 100 it is still starting. |
-| `uptime_seconds` | number | Seconds since the openHAB process started; openHAB's own value when no process was found or `/proc/uptime` is unreadable or non-finite. |
+| `uptime_seconds` | number | Seconds since the openHAB process started; openHAB's own value when no process was found or `/proc/uptime` cannot be read or its first field is not a finite number. |
 | `process` | object | `pid`, `rss_bytes` and `rss_percent_of_ram` (percent of `memory.total_bytes`, absent when that is 0) of the openHAB Java process with the lowest PID. Present whenever the process is found, also when every REST call fails. |
 | `jvm` | object | `heap_used_bytes` (total minus free) and `heap_total_bytes` of the JVM heap. |
 | `things` | object | `total` (every Thing), `by_status` (counts for `UNINITIALIZED`, `INITIALIZING`, `UNKNOWN`, `ONLINE`, `OFFLINE`, `REMOVING`, `REMOVED`; other status strings are not counted per status) and `not_online`, always an array: up to 10 Things that are not `ONLINE` and not disabled (`UNINITIALIZED` with detail `DISABLED`), sorted by `uid`, each with `uid`, `label`, `status`, `status_detail` and, when openHAB gives one, `description`. |
