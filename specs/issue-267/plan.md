@@ -26,7 +26,8 @@ decimals.
 | 5 | A failed uptime reading leaves `UptimeSeconds` at 0 and logs a warning every tick | `collector.go:649-652`, `:663` | confirmed |
 | 6 | A `parseWireless` error fails the whole reading: nil (field omitted), reported through `wirelessFailures` (logged once) | `wireless.go:51-58`, `collector.go:643-644`, `:691` | confirmed |
 | 7 | A NaN `link`/`level` is not mistaken for the null-stats placeholder (`link == 0` is false for NaN), so it reaches the result today | `wireless.go:59`, `:81-83` | confirmed |
-| 8 | `GET /metrics` (Prometheus) exports none of these three values, alerts read none of them | `internal/httpapi/prometheus.go:129-141` read, grep of `internal/alert` | confirmed |
+| 8 | The fast-tick values are not in `GET /metrics` and no alert reads them; but `parseUptime` has a second caller, `OpenHABCollector.processUptime` (`openhab.go:459`), whose result becomes the openHAB `uptime_seconds` (`openhab.go:322-323`) and `pimonitor_openhab_uptime_seconds` (`prometheus.go:70-72`); the first version's "exports none of these three values" was wrong (Challenge, major 1) | `prometheus.go:129-141`, grep of `internal/alert`, grep of `parseUptime` | confirmed |
+| 11 | Today a `/proc/uptime` of `inf` makes `processUptime` convert +Inf to `uint64` (implementation-defined value, an invented reading), `nan` yields 0; once `parseUptime` errors, `processUptime` returns nil as for a malformed file, and `status.UptimeSeconds` is openHAB's `systemInfo.uptime` if that call answered (`applySystemInfo`, `openhab.go:558-561`), else absent | `openhab.go:454-469`, `:318-323`, `:555-561`; Go spec, *Conversions* (float to integer out of range) | confirmed |
 | 9 | The only other `ParseFloat` outside these files, `qualityIsZero` (`internal/httpapi/middleware.go:190`), is not affected: NaN/Inf compare unequal to 0, so such a qvalue keeps compressing (no related defect) | read | confirmed |
 | 10 | #269 rejects non-finite vcgencmd temperatures with `math.IsNaN(v) \|\| math.IsInf(v, 0)` right after `ParseFloat`, error text "non-finite …" | `temperature.go:254-261` | confirmed |
 
@@ -44,6 +45,8 @@ decimals.
 - AC4: a fast tick reading such values from all three files leaves `Load` at `LoadAverage{}`, `UptimeSeconds` at
   0 and `Wireless` nil, records no `load1`/`load5`/`load15` history point, and both the snapshot and the history
   encode as JSON without error.
+- AC5: with an openHAB process found and its REST calls failing, a `/proc/uptime` whose first field parses as NaN or
+  ±Inf leaves the openHAB status's `UptimeSeconds` absent, as an unreadable or malformed file does.
 
 ## Tests per criterion
 
@@ -53,6 +56,7 @@ decimals.
 | AC2 | TestParseUptime_NonFinite_AC2: the same five forms as first field (`<form> 100.00`); asserts 0 and exact error text | internal/collector/uptime_test.go |
 | AC3 | TestParseWireless_NonFinite_AC3: cases `nan` in `link`, `-Infinity` in `level`, `Inf` in `link` of `wlan1` after a valid `wlan0` line; asserts nil result and exact error text | internal/collector/wireless_test.go |
 | AC4 | TestCollector_FastTick_NonFiniteProcValues_AC4: `newOptionalSourceEnv`, with `c.loadAvg` and `c.uptime` pointed at temp files (`nan 0.50 0.50 1/1 1`, `inf 1.00`) and the wireless file holding a `nan` link; one `e.tick(1)`; asserts the snapshot fields, empty `Load1`/`Load5`/`Load15` in `c.History()`, and nil errors of `json.Marshal` on snapshot and history | internal/collector/collector_test.go |
+| AC5 | TestOpenHABCollector_Poll_ProcessUptimeUnreadable_AC4: new row `{"AC5 /proc/uptime non-finite", "inf 30000.00\n"}`; the existing assertions (process pid 938 found, `UptimeSeconds == nil`) apply unchanged | internal/collector/openhab_test.go |
 
 ## Approach
 
@@ -62,7 +66,8 @@ In each parser, directly after each existing `ParseFloat` error check, add the c
 Five checks: three in `parseLoadAvg`, one in `parseUptime`, two in `parseWireless` (before the null-stats test).
 Each file imports `math`. Extend each parser's doc comment by one sentence: a value `ParseFloat` decodes as NaN or
 ±Inf is rejected, because it would make the JSON encoding of the snapshot fail. `Collect` methods, callers and
-logging stay as they are: the new error takes the existing failure path of each reading (facts 4-6).
+logging stay as they are: the new error takes the existing failure path of each reading (facts 4-6), and in
+`OpenHABCollector.processUptime` the existing `parseUptime` error branch (nil process uptime, fact 11).
 
 No new user-visible output beyond the error texts fixed above (they appear in the existing warning log lines).
 
@@ -94,7 +99,8 @@ nothing to add.
 ## Test files
 
 internal/collector/loadavg_test.go, internal/collector/uptime_test.go, internal/collector/wireless_test.go,
-internal/collector/collector_test.go.
+internal/collector/collector_test.go, internal/collector/openhab_test.go (one row added to an existing table test,
+by the Tester).
 
 Existing test code that calls a changed signature: none. Existing tests kept unchanged: `TestParseLoadAvg_Malformed`,
 `TestParseUptime_Malformed`, `TestParseWireless_MalformedLine` — none of their inputs is a non-finite spelling.
@@ -103,7 +109,8 @@ Files no unit test can cover: none.
 
 ## Areas
 
-`docs/areas/metrics.md` and `docs/areas/history.md`: a non-finite value is a failed reading (see below).
+`docs/areas/metrics.md`, `docs/areas/history.md` and `docs/areas/openhab.md`: a non-finite value is a failed reading
+(see below).
 
 ## Documentation updates
 
@@ -121,6 +128,12 @@ All by the Dev, once the code is green:
   indistinguishable from a real 0; the `wireless` note adds that the field is also omitted when
   `/proc/net/wireless` cannot be read or holds a malformed or non-finite value. Presence rules of keys do not
   change (no `v2`).
+- `docs/areas/openhab.md`, *Uptime*: when `/proc/uptime` cannot be read or its first field is not a finite number,
+  the process uptime is unknown: openHAB's own `systemInfo.uptime` is used if that call answered, otherwise uptime
+  is absent. This also corrects the sentence "used only when no process was found", which already did not hold
+  for an unreadable or malformed file (fact 11).
+- `docs/API.md`, openHAB status table, `uptime_seconds` row ("openHAB's own value only when no process was found"):
+  the same rule in short; the `pimonitor_openhab_uptime_seconds` row ("omitted when absent") stays.
 - `docs/ARCHITECTURE.md`, `README.md`: none (sweep: no statement on parser input validity of these files).
   No changelog file exists in the repository.
 
@@ -140,6 +153,19 @@ rules. No guarantee of `.squad/project.md` is weakened.
 ## Decision records
 
 - none: no decision beyond the obvious fix, following #269.
+
+## Challenge
+
+- **major 1 — missed caller of `parseUptime` (openHAB `uptime_seconds`, `pimonitor_openhab_uptime_seconds`):
+  accepted.** Fact 8 corrected and fact 11 added; AC5 with its row in
+  `TestOpenHABCollector_Poll_ProcessUptimeUnreadable_AC4`; `docs/areas/openhab.md` and the `docs/API.md` openHAB
+  row added to *Documentation updates*; *Approach* names the caller. No code change beyond the planned check: the
+  existing error branch of `processUptime` already gives the right outcome, and the fix removes today's invented
+  reading from `uint64(+Inf)`.
+
+## Security review
+
+Security approved the plan with no findings and no notes.
 
 ## Out of scope / follow-ups
 
