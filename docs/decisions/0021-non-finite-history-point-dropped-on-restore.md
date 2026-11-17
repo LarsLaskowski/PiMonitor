@@ -1,6 +1,6 @@
 # 0021: An unencodable point in history.bin is dropped on restore
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-17
 - **Area:** History
 - **Source:** Issue #263

@@ -82,5 +82,5 @@ once in the [area document](../areas/README.md) of the record's area, and the re
 | [0018](0018-new-key-in-v1-response-is-no-shape-change.md) | Adding a key to a v1 response is no shape change | Accepted | 2026-11-17 |
 | [0019](0019-openhab-history-has-its-own-window.md) | openHAB memory history has its own window and capacity | Accepted | 2026-11-17 |
 | [0020](0020-openhab-points-recorded-by-next-fast-tick.md) | openHAB history points are recorded by the next fast tick | Accepted | 2026-11-17 |
-| [0021](0021-non-finite-history-point-dropped-on-restore.md) | An unencodable point in history.bin is dropped on restore | Proposed | 2026-11-17 |
+| [0021](0021-non-finite-history-point-dropped-on-restore.md) | An unencodable point in history.bin is dropped on restore | Accepted | 2026-11-17 |
 <!-- project:end index -->
