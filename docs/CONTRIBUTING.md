@@ -180,7 +180,7 @@ and described in [`ARCHITECTURE.md`](ARCHITECTURE.md) unless a change explicitly
 
 ### REST API stability
 
-Changes to an existing key of an `/api/v1/...` response (its name, type, meaning or when it is present) or to a
+Changes to an existing key of an `/api/v1/...` response (its name, type, meaning or when it is present) or to the
 status code of a documented response are breaking changes: bump to `/api/v2/...` instead of changing `v1` in place, and update
 [`API.md`](API.md). A new key in an object of a `v1` response, with its presence rule documented in
 [`API.md`](API.md), is not a breaking change
