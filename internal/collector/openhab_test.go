@@ -1195,6 +1195,7 @@ func TestOpenHABCollector_Poll_ProcessUptimeUnreadable_AC4(t *testing.T) {
 	}{
 		{"AC4 /proc/uptime missing", ""},
 		{"AC4 /proc/uptime malformed", "soon\n"},
+		{"AC5 /proc/uptime non-finite", "inf 30000.00\n"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

@@ -2,6 +2,7 @@ package collector
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"strconv"
 	"strings"
@@ -10,7 +11,9 @@ import (
 const procUptimePath = "/proc/uptime"
 
 // parseUptime parses /proc/uptime content, e.g. "12345.67 89012.34", and
-// returns the first field: seconds since boot.
+// returns the first field: seconds since boot. A value strconv.ParseFloat
+// decodes as NaN or ±Inf is rejected, because it would make the JSON encoding
+// of the snapshot fail.
 func parseUptime(data string) (float64, error) {
 	fields := strings.Fields(data)
 	if len(fields) < 1 {
@@ -19,6 +22,9 @@ func parseUptime(data string) (float64, error) {
 	secs, err := strconv.ParseFloat(fields[0], 64)
 	if err != nil {
 		return 0, fmt.Errorf("parse uptime: %w", err)
+	}
+	if math.IsNaN(secs) || math.IsInf(secs, 0) {
+		return 0, fmt.Errorf("parse uptime: non-finite value %q", fields[0])
 	}
 	return secs, nil
 }

@@ -2391,3 +2391,37 @@ fi`)
 		t.Errorf("json.Marshal(snapshot) error = %v, want nil", err)
 	}
 }
+
+// TestCollector_FastTick_NonFiniteProcValues_AC4 pins that a NaN or Inf in
+// /proc/loadavg, /proc/uptime and /proc/net/wireless fails those readings
+// instead of reaching the snapshot and the history, whose JSON encoding
+// would otherwise fail.
+func TestCollector_FastTick_NonFiniteProcValues_AC4(t *testing.T) {
+	e := newOptionalSourceEnv(t)
+	e.c.loadAvg = &LoadAvgCollector{path: writeTempFile(t, t.TempDir(), "loadavg", "nan 0.50 0.50 1/1 1\n")}
+	e.c.uptime = &UptimeCollector{path: writeTempFile(t, t.TempDir(), "uptime", "inf 1.00\n")}
+	overwriteTempFile(t, e.wireless, strings.Replace(wirelessFixture, "70.", "nan", 1))
+
+	e.tick(1)
+
+	snap := e.c.Snapshot()
+	if snap.Load != (LoadAverage{}) {
+		t.Errorf("Load = %+v, want the zero LoadAverage", snap.Load)
+	}
+	if snap.UptimeSeconds != 0 {
+		t.Errorf("UptimeSeconds = %v, want 0", snap.UptimeSeconds)
+	}
+	if snap.Wireless != nil {
+		t.Errorf("Wireless = %+v, want nil", snap.Wireless)
+	}
+	h := e.c.History()
+	if len(h.Load1) != 0 || len(h.Load5) != 0 || len(h.Load15) != 0 {
+		t.Errorf("load history = %d, %d, %d points, want none", len(h.Load1), len(h.Load5), len(h.Load15))
+	}
+	if _, err := json.Marshal(snap); err != nil {
+		t.Errorf("json.Marshal(snapshot): %v, want nil", err)
+	}
+	if _, err := json.Marshal(h); err != nil {
+		t.Errorf("json.Marshal(history): %v, want nil", err)
+	}
+}

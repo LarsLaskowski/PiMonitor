@@ -230,12 +230,14 @@ Notes:
 
 - `timestamp` is the Pi's own clock at collection time (useful as the
   displayed device time), and `uptime_seconds` is the time elapsed since
-  boot.
+  boot; it reads 0 after a failed `/proc/uptime` read (a non-finite value included).
 - `cpu.overall_percent` reads 0 on the first fast tick after start and after a failed `/proc/stat` read, which in v1
   is indistinguishable from a real 0 (`GET /metrics` leaves the CPU families out for such a tick instead).
 - After a failed `/proc/meminfo` read (one that fails, lacks a field the kernel always writes or holds a value out of range,
   [Metrics](areas/metrics.md#memory-and-swap)) every `memory` and `swap` figure reads 0, which in v1 is indistinguishable from
   a real 0 (`GET /metrics` leaves the memory and swap families out for such a tick instead).
+- After a failed `/proc/loadavg` read (a non-finite value included) every `load_average` figure reads 0, which in v1
+  is indistinguishable from a real 0.
 - `system.cpu_model` is best-effort: it is empty on kernels whose
   `/proc/cpuinfo` omits a `model name` field (common on some Raspberry Pi
   kernels).
@@ -272,7 +274,8 @@ Notes:
   wireless hardware at all: the file is usually present regardless — created
   by kernels built with wireless extensions support, which is the common
   case — but then simply lists no interfaces, or lists one with no reading
-  yet, e.g. not currently associated to a network).
+  yet, e.g. not currently associated to a network). It is also omitted when
+  `/proc/net/wireless` cannot be read or holds a malformed or non-finite value.
   `link_quality` is the raw driver-reported value from the file's `link`
   column - its maximum is driver-dependent (commonly, but not always, 70) so
   it is not normalized to a 0-100 percentage. `signal_dbm` is the received
@@ -758,7 +761,7 @@ every other `/api/v1/...` endpoint.
 | `collected_at` | string | Time the poll handed its values to the history, a moment after its last request (RFC 3339, UTC); the timestamp of its history points. Absent in `pending` and `not_installed`. |
 | `version` | string | openHAB's version (`runtimeInfo.version`). |
 | `start_level` | number | openHAB's start level; below 100 it is still starting. |
-| `uptime_seconds` | number | Seconds since the openHAB process started; openHAB's own value only when no process was found. |
+| `uptime_seconds` | number | Seconds since the openHAB process started; openHAB's own value when no process was found or `/proc/uptime` cannot be read or its first field is not a finite number. |
 | `process` | object | `pid`, `rss_bytes` and `rss_percent_of_ram` (percent of `memory.total_bytes`, absent when that is 0) of the openHAB Java process with the lowest PID. Present whenever the process is found, also when every REST call fails. |
 | `jvm` | object | `heap_used_bytes` (total minus free) and `heap_total_bytes` of the JVM heap. |
 | `things` | object | `total` (every Thing), `by_status` (counts for `UNINITIALIZED`, `INITIALIZING`, `UNKNOWN`, `ONLINE`, `OFFLINE`, `REMOVING`, `REMOVED`; other status strings are not counted per status) and `not_online`, always an array: up to 10 Things that are not `ONLINE` and not disabled (`UNINITIALIZED` with detail `DISABLED`), sorted by `uid`, each with `uid`, `label`, `status`, `status_detail` and, when openHAB gives one, `description`. |
