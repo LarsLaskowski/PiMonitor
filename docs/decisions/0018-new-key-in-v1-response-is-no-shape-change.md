@@ -30,7 +30,9 @@ the others.
 
 A key added to an object of an existing `/api/v1/...` response, with its own presence rule documented in
 [`API.md`](../API.md), is no shape change and stays in v1; any change to an existing key — its name, type, meaning or
-when it is present — or to a status code is a shape change and needs `/api/v2/...` (option 1). The rule is stated in
+when it is present — or to the status code of a documented response is a shape change and needs `/api/v2/...`
+(option 1); a status for a failure that had no valid response is none
+([0022](0022-unencodable-v1-response-answers-500.md)). The rule is stated in
 [HTTP API](../areas/http-api.md#versioning-and-stability).
 
 ## Consequences
