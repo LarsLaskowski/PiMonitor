@@ -622,3 +622,78 @@ echo`)
 		t.Errorf("fake vcgencmd ran %d times across 2 calls, want 1:\n%s", n, logged)
 	}
 }
+
+// TestParseVcgencmdTemp_NonFinite_AC1 pins that every spelling of NaN or
+// infinity that strconv.ParseFloat accepts is rejected as output that is not
+// a temperature reading, with the exact error text.
+func TestParseVcgencmdTemp_NonFinite_AC1(t *testing.T) {
+	tests := []string{"temp=nan'C", "temp=NaN'C", "temp=inf'C", "temp=+Inf'C", "temp=-Infinity'C"}
+	for _, output := range tests {
+		t.Run("AC1 "+output, func(t *testing.T) {
+			celsius, err := parseVcgencmdTemp(output)
+			if err == nil {
+				t.Fatalf("parseVcgencmdTemp(%q) = (%v, nil), want an error", output, celsius)
+			}
+			if celsius != 0 {
+				t.Errorf("parseVcgencmdTemp(%q) celsius = %v, want 0", output, celsius)
+			}
+			if !errors.Is(err, errVcgencmdUnsupportedOutput) {
+				t.Errorf("errors.Is(err, errVcgencmdUnsupportedOutput) = false, err = %v", err)
+			}
+			want := "vcgencmd: output is not a temperature reading: non-finite vcgencmd temp " + strconv.Quote(output)
+			if err.Error() != want {
+				t.Errorf("error text = %q, want %q", err.Error(), want)
+			}
+		})
+	}
+}
+
+// countInvocations returns how many lines the fake vcgencmd appended to logFile.
+func countInvocations(t *testing.T, logFile string) int {
+	t.Helper()
+	logged, err := os.ReadFile(logFile)
+	if err != nil {
+		t.Fatalf("read invocation log %s: %v", logFile, err)
+	}
+	return len(strings.Split(strings.TrimSpace(string(logged)), "\n"))
+}
+
+// TestTemperatureCollector_CollectGPUAndPMIC_NonFinite_AC2 checks that a
+// vcgencmd answering temp=nan'C yields no reading and an unsupported-output
+// error, latched for the PMIC and not for the GPU.
+func TestTemperatureCollector_CollectGPUAndPMIC_NonFinite_AC2(t *testing.T) {
+	const calls = 3
+	newCollector := func(t *testing.T) (*TemperatureCollector, string) {
+		t.Helper()
+		dir := t.TempDir()
+		logFile := filepath.Join(dir, "invocations")
+		path := writeFakeVcgencmd(t, dir, "fake-vcgencmd", "echo \"$@\" >> "+logFile+"\necho \"temp=nan'C\"")
+		return &TemperatureCollector{vcg: &vcgencmdRunner{detected: true, path: path}}, logFile
+	}
+
+	t.Run("AC2 GPU fails every call", func(t *testing.T) {
+		c, logFile := newCollector(t)
+		for i := 0; i < calls; i++ {
+			gpu, err := c.CollectGPU(context.Background())
+			if gpu != nil || !errors.Is(err, errVcgencmdUnsupportedOutput) {
+				t.Fatalf("CollectGPU #%d = (%+v, %v), want nil and errVcgencmdUnsupportedOutput", i, gpu, err)
+			}
+		}
+		if got := countInvocations(t, logFile); got != calls {
+			t.Errorf("vcgencmd invoked %d times across %d GPU calls, want %d (no latch)", got, calls, calls)
+		}
+	})
+
+	t.Run("AC2 PMIC latches", func(t *testing.T) {
+		c, logFile := newCollector(t)
+		for i := 0; i < calls; i++ {
+			pmic, err := c.CollectPMIC(context.Background())
+			if pmic != nil || !errors.Is(err, errVcgencmdUnsupportedOutput) {
+				t.Fatalf("CollectPMIC #%d = (%+v, %v), want nil and errVcgencmdUnsupportedOutput", i, pmic, err)
+			}
+		}
+		if got := countInvocations(t, logFile); got != 1 {
+			t.Errorf("vcgencmd invoked %d times across %d PMIC calls, want 1 (latched)", got, calls)
+		}
+	})
+}

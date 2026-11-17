@@ -2366,3 +2366,28 @@ func TestHistorySince_FiltersOpenHABSeries_AC4(t *testing.T) {
 		}
 	})
 }
+
+// TestCollector_FastTick_NonFiniteVcgencmdTemp_AC3 checks that a vcgencmd
+// answering temp=nan'C leaves both temperatures out of the snapshot, so the
+// snapshot stays encodable as JSON.
+func TestCollector_FastTick_NonFiniteVcgencmdTemp_AC3(t *testing.T) {
+	e := newOptionalSourceEnv(t)
+	writeFakeVcgencmd(t, e.binDir, "vcgencmd", `if [ "$1" = "get_throttled" ]; then
+  echo "throttled=0x0"
+else
+  echo "temp=nan'C"
+fi`)
+
+	e.tick(1)
+
+	snap := e.c.latest
+	if snap.GPUTemperature != nil {
+		t.Errorf("GPUTemperature = %+v, want nil for a non-finite answer", snap.GPUTemperature)
+	}
+	if snap.PMICTemperature != nil {
+		t.Errorf("PMICTemperature = %+v, want nil for a non-finite answer", snap.PMICTemperature)
+	}
+	if _, err := json.Marshal(snap); err != nil {
+		t.Errorf("json.Marshal(snapshot) error = %v, want nil", err)
+	}
+}
