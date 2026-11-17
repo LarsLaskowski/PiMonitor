@@ -123,3 +123,21 @@ a gap, as in decision 0003), the bounded decode is unchanged, the v1 shape is un
   output would put NaN into `gpu_temperature` or `pmic_temperature` and make `json.Marshal` fail
   `GET /api/v1/metrics`. Proposed: treat a non-finite value as unsupported output (`errVcgencmdUnsupportedOutput`),
   with a unit test.
+
+## Challenge notes
+
+Mode plan, issue #263, work folder /home/user/PiMonitor/specs/issue-263 (plan.md).
+
+I checked the plan against the code and it holds. The root cause, the 15 series kinds and the restore rules all match:
+
+- **Root cause:** `decodeHistoryPoints` stores `math.Float64frombits` with no check (`internal/collector/persist.go:292-299`). `decodeSeries` (line 289) calls it for every kind.
+- **Series kinds:** there are 15 (`persist.go:49-65`): 7 scalar, 5 per-device and 3 openHAB. AC2's table matches.
+- **Per-device restore:** `importMap` skips a series with `len(points) == 0` (`persist.go` importHistory). AC3's "per-device series not restored" therefore follows once the decoder returns an empty slice.
+- **Scalar and openHAB restore:** these series go through `Fill` as they are (`persist.go:450-456`, `483-485`).
+- **Live sources:** the openHAB series are pushed from integer conversions (`collector.go:521-527`). The only `ParseFloat` feeding a history series is `/proc/loadavg` (`loadavg.go:19-27`). This agrees with fact 7 and with the scope of record 0021.
+- **Need:** the change is real and still needed. Nothing filters non-finite values today, and no accepted decision record covers this.
+- **Scope:** filtering at decode time is the narrowest fix. The vcgencmd sibling is correctly left as a follow-up, because it affects `/api/v1/metrics`, not the history series.
+
+Objections:
+
+1. minor (AC3 could pass without the drop working). Instruction for the Tester: in `TestCollector_LoadHistory_DropsNonFinitePoints_AC3`, give every fixture point a timestamp inside both windows (the `HistoryWindow` passed to `newOHPersistCollector` and `openhab.history_window_hours`). Make the per-device series that is meant to disappear hold only non-finite points, and give a second per-device series finite points around non-finite ones. Then assert that `History()` holds exactly those finite points for each restored series, not just that `json.Marshal` succeeds. A fixture whose points fall outside the window would make the "not restored" and "Marshal succeeds" checks pass because of trimming, even on a build without the fix.
