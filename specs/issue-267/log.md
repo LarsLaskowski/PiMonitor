@@ -22,3 +22,4 @@ are quoted in full.
 | 2026-11-17 20:02 | 7 Gate stamp | Orchestrator | PASS on 0379ac4719aaca0c725490b553a1443d724fec8e (tier standard, verbatim): Format check pass; decision-check.py pass; scope-check.py pass |
 | 2026-11-17 20:02 | 8 Verbatim fixes | Orchestrator | verbatim: applied [NON-BLOCKING, verbatim] docs/areas/history.md:33 and [NON-BLOCKING, verbatim] docs/API.md:759 as proposed (commit 0379ac4); rewrapped |
 | 2026-11-17 20:02 | 9 PR approval | Orchestrator | approved by checklist |
+| 2026-11-17 20:03 | 10 Pull request | Orchestrator | Working record posted to #267 (issue comment 6959422109), specs/issue-267 removed, draft PR opened |
