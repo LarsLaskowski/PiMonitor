@@ -425,7 +425,8 @@ Notes:
 ### `GET /api/v1/metrics/history`
 
 Returns the retained history (a rolling window, typically the last 30-60
-minutes) for every time-series metric. When history persistence is enabled
+minutes; up to `openhab.history_window_hours` for the `openhab_*` keys) for
+every time-series metric. When history persistence is enabled
 (`history_persist_enabled`, on by default), history is periodically
 snapshotted to disk and restored on startup, so the returned window may
 span service restarts and reboots; points older than the configured window
@@ -435,7 +436,7 @@ only and starts empty after every restart.
 A scalar series has no point for a tick whose reading failed, so the series
 may differ in length or be empty (`temperature` on a host without a thermal
 zone). `cpu_percent` also has no point for the first fast tick after start,
-because no previous sample exists yet; the shape is unchanged and each of the seven scalar keys above is always present.
+because no previous sample exists yet; the shape is unchanged and each of the seven scalar keys (`cpu_percent`, `load1`, `load5`, `load15`, `temperature`, `memory_used_percent`, `swap_used_percent`) is always present.
 
 ```json
 {
