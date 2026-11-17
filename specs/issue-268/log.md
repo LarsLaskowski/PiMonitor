@@ -25,3 +25,4 @@ are quoted in full.
 | 2026-11-17 20:18 | 8 Verbatim fixes | Orchestrator | verbatim: applied [NON-BLOCKING, plan, verbatim] AGENTS.md:140, .github/copilot-instructions.md:139, docs/CONTRIBUTING.md:183 as proposed (a status code -> the status code); rewrapped none |
 | 2026-11-17 20:18 | 7 Gate stamp | Orchestrator | PASS on 5366cd69357b8ea11c9c5ee564f3c7d3b2225145 (tier standard, verbatim): Format check pass; decision-check.py pass; scope-check.py pass |
 | 2026-11-17 20:18 | 9 PR approval | Orchestrator | approved by checklist |
+| 2026-11-17 20:18 | 10 Pull request | Orchestrator | Working record posted to #268 (comment 6959812333), specs/issue-268 removed, draft PR opened |
