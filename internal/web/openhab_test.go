@@ -208,4 +208,10 @@ func TestAppJS_OpenHABChart_AC7(t *testing.T) {
 	if !regexp.MustCompile(`legend-rss[\s\S]*legend-heap`).MatchString(render + drawer) {
 		t.Error("app.js: expected the RSS legend entry before the Heap used entry")
 	}
+	// The label and the legend are built by renderOpenHAB only, so the card
+	// is rebuilt when the chart's signature (line keys and largest value)
+	// changes, not only when the chart appears or disappears.
+	if !strings.Contains(strings.ToLower(history), "signature") {
+		t.Error("renderHistory: expected a comparison of the chart signature (line keys and largest value) before and after the new history, so the label and legend never disagree with the drawn chart")
+	}
 }

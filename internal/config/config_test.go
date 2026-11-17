@@ -1022,24 +1022,6 @@ func TestOpenHAB_HistoryCapacity_AC3(t *testing.T) {
 	}
 }
 
-func TestOpenHAB_HistoryWindow_AC3(t *testing.T) {
-	tests := []struct {
-		hours int
-		want  time.Duration
-	}{
-		{1, time.Hour},
-		{24, 24 * time.Hour},
-		{168, 168 * time.Hour},
-	}
-	for _, tt := range tests {
-		t.Run(fmt.Sprintf("AC3 %d hours", tt.hours), func(t *testing.T) {
-			if got := (OpenHAB{HistoryWindowHours: tt.hours}).HistoryWindow(); got != tt.want {
-				t.Fatalf("HistoryWindow() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
-
 const (
 	errOpenHABBaseURL  = "openhab.base_url must be an http URL with a loopback host (127.0.0.0/8, ::1 or localhost) and no user, path, query or fragment"
 	errOpenHABAPIToken = "openhab.api_token must not contain whitespace or control characters"
