@@ -37,11 +37,15 @@ Affected: the call sites at `handlers.go:42` (metrics), `:128` (alerts), `:135` 
 - AC4: An encodable value is answered as before: status `200`, `Content-Type: application/json; charset=utf-8`, body
   byte-identical to `json.Marshal(v)` followed by `\n`.
 
+
 ## Tests per criterion
+
+Every request of AC1–AC4 goes through `s.Handler().ServeHTTP` (the full middleware chain), never through `writeJSON`
+or a handler method called directly.
 
 | AC | Test(s) | Test file |
 | -- | ------- | --------- |
-| AC1 | `TestWriteJSON_EncodeFailureReturns500_AC1`, table with `t.Run("AC1 GET /api/v1/metrics")` and `t.Run("AC1 GET /api/v1/metrics/cpu")` (both call sites: `fakeMetrics.snapshot.CPU.OverallPercent = math.NaN()`) | `internal/httpapi/handlers_test.go` |
+| AC1 | `TestWriteJSON_EncodeFailureReturns500_AC1`, table with `t.Run("AC1 GET /api/v1/metrics")`, `t.Run("AC1 GET /api/v1/metrics/cpu")` (both call sites: `fakeMetrics.snapshot.CPU.OverallPercent = math.NaN()`) and `t.Run("AC1 GET /api/v1/metrics gzip")` (request with `Accept-Encoding: gzip`; asserts `500`, `Content-Encoding: gzip` and a decompressed body of `internal error\n`) | `internal/httpapi/handlers_test.go` |
 | AC2 | `TestWriteJSON_EncodeFailureLogged_AC2` (server built with `New(fm, Config{}, nil, slog.New(slog.NewTextHandler(&buf, …)))`, as `middleware_test.go:75-76`; asserts `level=ERROR`, the message and `error=` in `buf`) | `internal/httpapi/handlers_test.go` |
 | AC3 | `TestWriteJSON_EncodeFailureCountedAs5xx_AC3` (a NaN `GET /api/v1/metrics`, then `GET /api/v1/serverstats` with an encodable state; `5xx` is 1 and `2xx` is 0: a request is recorded after its handler returns) | `internal/httpapi/handlers_test.go` |
 | AC4 | `TestWriteJSON_SuccessBodyUnchanged_AC4` (`GET /api/v1/metrics` with `newTestServer`; body equals `json.Marshal(fm.snapshot)` plus `\n`) | `internal/httpapi/handlers_test.go` |
@@ -68,7 +72,7 @@ The error body is no new user-visible layout: it is the existing `internal error
    `400`, history `500`); a second error format for one case lost.
 4. **Publish the fix under `/api/v2/...`** (the issue asks to decide it; 0018 calls a status-code change a shape
    change) — lost: see [0022](../../docs/decisions/0022-unencodable-v1-response-answers-500.md); no documented response
-   changes status.
+   changes status, and 0018 now names that scope.
 
 ## Affected projects and types
 
@@ -95,30 +99,56 @@ Files of the change no unit test can cover: none.
 ## Areas
 
 - HTTP API (`docs/areas/http-api.md`): the encode-failure row covers every JSON endpoint; the "truncated body" bullet
-  goes; the versioning paragraph and *Related decisions* link 0022.
+  goes; the versioning paragraph names the documented response and links 0022; *Related decisions* lists 0022.
 
 ## Documentation updates
 
-All by the Dev, once the code is green:
+By the Dev once the code is green, except where an owner reports text for the orchestrator to write in. Where the
+rule's wording is fixed below, it is exact, so the five statements of the rule stay in step.
 
 - `docs/areas/http-api.md`, *Limits and errors*: the row "History response could not be encoded" becomes "A JSON
   response could not be encoded (any `/api/v1/...` JSON endpoint)", same status `500` and body text; delete the
   bullet at lines 202-203 ("The other JSON endpoints write their body as they encode it …").
-- `docs/areas/http-api.md`, *Versioning and stability* (line 22-23): after "changing a status code is a shape change"
-  add that a `500` for a response that cannot be encoded is not one, with a link to 0022.
+- `docs/areas/http-api.md`, *Versioning and stability* (lines 22-23): "or changing a status code is a shape change and
+  needs `/api/v2/...`." reads "or changing the status code of a documented response is a shape change and needs
+  `/api/v2/...`; a `500` for a response that cannot be encoded is none
+  ([0022](../decisions/0022-unencodable-v1-response-answers-500.md))."
 - `docs/areas/http-api.md`, *Related decisions*: add 0022 at the top.
 - `docs/API.md`: a short `## Errors` section before `## Endpoints`: any `/api/v1/...` JSON endpoint answers `500
   Internal Server Error` with the plain-text body `internal error` when its response cannot be encoded; clients treat
   it as a server error.
+- `docs/CONTRIBUTING.md`, project block `stability` (lines 183-187), Dev: "or to a status code are breaking changes"
+  reads "or to the status code of a documented response are breaking changes"; after "is not a breaking change
+  ([decision 0018](decisions/0018-new-key-in-v1-response-is-no-shape-change.md))." add the sentence "Neither is a
+  `500` for a response that cannot be encoded
+  ([decision 0022](decisions/0022-unencodable-v1-response-answers-500.md))."
+- `AGENTS.md` and `.github/copilot-instructions.md`, project block `code-style` (`AGENTS.md:140-143`), identical in
+  both (`config-check.py`); the Dev reports the text, the orchestrator writes it in (instruction files): "or to a
+  status code is a breaking change" reads "or to the status code of a documented response is a breaking change", and
+  "is not breaking ([decision 0018](/docs/decisions/0018-new-key-in-v1-response-is-no-shape-change.md))." reads "is not
+  breaking ([decision 0018](/docs/decisions/0018-new-key-in-v1-response-is-no-shape-change.md)), nor is a `500` for a
+  response that cannot be encoded ([decision 0022](/docs/decisions/0022-unencodable-v1-response-answers-500.md))."
+- `.squad/project.md`, *Guarantees*, the `/api/v1/...` line (lines 67-70); the Dev reports the text, the orchestrator
+  writes it in: "or to a status code adds `/api/v2/...`; a new key in a response object, with its presence rule
+  documented in API.md, stays in v1" reads "or to the status code of a documented response adds `/api/v2/...`; a new
+  key in a response object, with its presence rule documented in API.md, stays in v1, and so does a `500` for a
+  response that cannot be encoded", and the link list gains
+  `[0022](../docs/decisions/0022-unencodable-v1-response-answers-500.md)` after the 0018 link. The Product Manager
+  approved this edit of the guarantee (answer (a) to the Lead's escalation, 2026-11-17).
 
-Sweep: the only enumeration of error statuses is the *Limits and errors* table of `http-api.md`; `README.md`,
-`SECURITY.md` and `docs/ARCHITECTURE.md` name no encode-failure behavior. No changelog exists; the PR template asks
-for `docs/API.md` (above).
+Sweep: the error statuses are enumerated only in the *Limits and errors* table of `http-api.md`. The status-code rule
+("status code" searched in `AGENTS.md`, `.github/copilot-instructions.md`, `.squad/project.md`, `docs/`, `README.md`)
+is stated in `AGENTS.md:140-141`, `.github/copilot-instructions.md:139-140`, `docs/CONTRIBUTING.md:183-184`,
+`.squad/project.md:67-68`, `docs/areas/http-api.md:22-23` and the records 0018 (edited in place by the Lead) and 0022,
+each covered above; `docs/API.md:7-9` speaks only of response shape and stays. `README.md`, `SECURITY.md` and
+`docs/ARCHITECTURE.md` name neither. No changelog exists; the PR template asks for `docs/API.md` (above).
 
 ## Architecture check
 
-No guarantee of `.squad/project.md` or flow of `docs/ARCHITECTURE.md` changes: every route keeps its middleware chain,
-and the v1 stability guarantee holds per 0022 (no documented response changes). No `ARCHITECTURE.md` update.
+No flow of `docs/ARCHITECTURE.md` changes: every route keeps its middleware chain; no `ARCHITECTURE.md` update. The
+v1 stability guarantee of `.squad/project.md` gets its scope named (the status of documented responses), which keeps
+every documented response's status and body and admits the `500` this fix adds; the Product Manager approved this change of
+the guarantee's text (answer (a), 2026-11-17).
 
 ## Security considerations
 
@@ -129,6 +159,31 @@ and the v1 stability guarantee holds per 0022 (no documented response changes). 
 ## Decision records
 
 - `docs/decisions/0022-unencodable-v1-response-answers-500.md` (Proposed)
+- `docs/decisions/0018-new-key-in-v1-response-is-no-shape-change.md` (unreleased, edited in place: the Decision names
+  the documented response and links 0022)
+
+## Challenge
+
+Devil's Advocate, plan round (one major, three minor objections):
+
+- **Major 1 — 0022 narrows 0018 without changing it; the rule stays unqualified in four places.** Accepted. 0018's
+  Decision now reads "or to the status code of a documented response" with a link to 0022 (unreleased: no tag
+  contains it); 0022's Decision says it states the scope of 0018's rule. *Documentation updates* qualifies the rule
+  in `AGENTS.md` with `.github/copilot-instructions.md`, `docs/CONTRIBUTING.md`, `.squad/project.md` and
+  `docs/areas/http-api.md` with exact wording, and the sweep lists every statement. The `.squad/project.md` line is a
+  guarantee; the Product Manager approved its edit (answer (a)).
+- **Minor 1 — a status-only probe does see the change.** Accepted: 0022 Option 1 and *Consequences* say that such a
+  check now reports the failure, which is intended.
+- **Minor 2 — no gzip case.** Accepted: AC1's table gains `t.Run("AC1 GET /api/v1/metrics gzip")`.
+- **Minor 3 — tests through the full chain.** Accepted: *Tests per criterion* requires `s.Handler().ServeHTTP` for
+  every request of AC1–AC4.
+
+## Security review
+
+Security, plan round: `APPROVED`, one non-blocking note.
+
+- **AC1 not tested under gzip.** Taken (the recommended fix): the same gzip row as Minor 2, asserting `500`,
+  `Content-Encoding: gzip` and the decompressed body `internal error\n`.
 
 ## Out of scope / follow-ups
 
