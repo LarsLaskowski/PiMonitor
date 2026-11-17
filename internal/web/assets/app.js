@@ -1028,6 +1028,10 @@
   const HISTORY_DEVICE_KEYS = [
     'disk_used_percent', 'network_rx_bytes_per_sec', 'network_tx_bytes_per_sec',
   ];
+  // The openHAB series are scalar series with their own window: the server
+  // keeps them for openhab.history_window_hours, which GET /api/v1/openhab
+  // reports. The server omits a key without points.
+  const HISTORY_OPENHAB_KEYS = ['openhab_rss_bytes', 'openhab_heap_used_bytes', 'openhab_restarts'];
 
   // Timestamp of the newest point held locally, in the exact string form the
   // server sent it, or null when there is nothing to append to and the next
@@ -1054,6 +1058,7 @@
 
   function forEachHistorySeries(hist, fn) {
     for (const key of HISTORY_SCALAR_KEYS) fn(hist?.[key] || []);
+    for (const key of HISTORY_OPENHAB_KEYS) fn(hist?.[key] || []);
     for (const key of HISTORY_DEVICE_KEYS) {
       for (const series of Object.values(hist?.[key] || {})) fn(series);
     }
@@ -1110,6 +1115,9 @@
     for (const key of HISTORY_SCALAR_KEYS) {
       merged[key] = (prev[key] || []).concat(delta?.[key] || []);
     }
+    for (const key of HISTORY_OPENHAB_KEYS) {
+      merged[key] = (prev[key] || []).concat(delta?.[key] || []);
+    }
     for (const key of HISTORY_DEVICE_KEYS) {
       const devices = {};
       for (const [name, series] of Object.entries(prev[key] || {})) devices[name] = series;
@@ -1126,16 +1134,21 @@
   // Pi's clock, not the browser's). Without it the locally accumulated
   // window would keep growing for as long as the dashboard stays open. A
   // device left with no points is removed, matching how the server omits
-  // devices it has no data for.
+  // devices it has no data for. The openHAB series are cut to the window
+  // GET /api/v1/openhab reports (history_window_hours) instead, and not at
+  // all while it is unknown.
   function trimHistoryWindow(hist) {
     const windowMs = Math.max(0, config.history_window_minutes || 0) * 60000;
     const { newest, points } = historyBounds(hist);
     if (!windowMs || points === 0) return hist;
     const cutoff = newest - windowMs;
     const keep = series => series.filter(p => pointTime(p) >= cutoff);
+    const openhabWindowMs = Math.max(0, latestOpenHAB?.history_window_hours || 0) * 3600000;
+    const keepOpenHAB = series => (openhabWindowMs ? series.filter(p => pointTime(p) >= newest - openhabWindowMs) : series);
 
     const out = {};
     for (const key of HISTORY_SCALAR_KEYS) out[key] = keep(hist[key] || []);
+    for (const key of HISTORY_OPENHAB_KEYS) out[key] = keepOpenHAB(hist[key] || []);
     for (const key of HISTORY_DEVICE_KEYS) {
       const devices = {};
       for (const [name, series] of Object.entries(hist[key] || {})) {
@@ -1160,12 +1173,21 @@
   function redrawSparklines(hist) {
     if (hist.cpu_percent) drawSparkline(document.getElementById('cpu-sparkline'), hist.cpu_percent, { min: 0, max: 100 });
     if (hist.temperature) drawSparkline(document.getElementById('temp-sparkline'), hist.temperature);
+    drawOpenHABChart(hist);
   }
 
   function renderHistory(hist) {
+    const hadChart = openhabHasChart(latestHistory);
     latestHistory = hist;
     const { newestPoint } = historyBounds(hist);
     historySince = newestPoint ? newestPoint.t : null;
+    // The memory chart block exists only while a series holds two points, so
+    // the card is rebuilt when that changes (a rendered state only; the
+    // pending and not_installed ones have no card body).
+    if (hadChart !== openhabHasChart(hist) && latestOpenHAB
+        && latestOpenHAB.state !== 'pending' && latestOpenHAB.state !== 'not_installed') {
+      renderOpenHAB(latestOpenHAB);
+    }
     redrawSparklines(hist);
     // Keep the open detail modal in sync with freshly polled history (and
     // repaint it after a theme change, which re-calls renderHistory).
@@ -1276,6 +1298,48 @@
     return parts.length ? parts.join(' · ') : '0 Things';
   }
 
+  // The lines of the memory chart: RSS first, then heap used; a line exists
+  // only with two points, so that the legend names only what is drawn.
+  function openhabChartLines(hist) {
+    const lines = [];
+    ['openhab_rss_bytes', 'openhab_heap_used_bytes'].forEach(key => {
+      const points = (hist?.[key] || [])
+        .map(p => ({ t: pointTime(p), v: p.v }))
+        .filter(p => Number.isFinite(p.t));
+      if (points.length >= 2) lines.push({ key, points });
+    });
+    return lines;
+  }
+
+  function openhabHasChart(hist) {
+    return openhabChartLines(hist).length > 0;
+  }
+
+  // Draws the memory chart into the card's canvas, if the card has one: points
+  // by time from the oldest to the newest, a break where two neighbors are
+  // more than 1.5 poll intervals apart, a marker at each restart in range.
+  function drawOpenHABChart(hist) {
+    const canvas = document.querySelector('#openhab-body .openhab-chart');
+    const lines = openhabChartLines(hist);
+    if (!canvas || !lines.length) return;
+    const times = lines.flatMap(line => line.points.map(p => p.t));
+    const from = Math.min(...times);
+    const to = Math.max(...times);
+    const intervalSeconds = Math.max(1, latestOpenHAB?.poll_interval_seconds || 60);
+    const markers = (hist?.openhab_restarts || []).map(pointTime).filter(t => t >= from && t <= to);
+    const css = getComputedStyle(document.documentElement);
+    const colors = { 'openhab_rss_bytes': '--accent', 'openhab_heap_used_bytes': '--muted' };
+    drawTimeChart(canvas, lines.map(line => ({
+      points: line.points,
+      color: css.getPropertyValue(colors[line.key]).trim() || '#2563eb',
+    })), {
+      from, to,
+      gapMs: 1.5 * intervalSeconds * 1000,
+      markers,
+      markerColor: css.getPropertyValue('--warn').trim() || '#d97706',
+    });
+  }
+
   // Every openHAB-supplied text goes in through textContent.
   function renderOpenHAB(st) {
     applyOpenHABVisibility();
@@ -1311,8 +1375,31 @@
       openhabRow('Add-ons', st.addons_installed !== undefined ? String(st.addons_installed) : openhabMissing(st, 'addons')),
       openhabRow('Things', st.things ? openhabThingsText(st.things) : openhabMissing(st, 'things')));
 
+    const lines = openhabChartLines(latestHistory);
+    const chart = [];
+    if (lines.length) {
+      // The block: the largest value shown, the canvas (drawn by
+      // drawOpenHABChart below) and a legend of the lines drawn.
+      const largest = Math.max(...lines.flatMap(line => line.points.map(p => p.v)));
+      const block = document.createElement('div');
+      block.className = 'openhab-history';
+      const canvas = document.createElement('canvas');
+      canvas.className = 'openhab-chart';
+      const legend = document.createElement('div');
+      legend.className = 'openhab-legend';
+      lines.forEach(line => {
+        const entry = document.createElement('span');
+        const swatch = document.createElement('span');
+        swatch.className = 'legend-swatch ' + (line.key === 'openhab_rss_bytes' ? 'legend-rss' : 'legend-heap');
+        entry.append(swatch, line.key === 'openhab_rss_bytes' ? 'RSS' : 'Heap used');
+        legend.appendChild(entry);
+      });
+      block.append(openhabRow('Memory history', fmtBytes(largest)), canvas, legend);
+      chart.push(block);
+    }
     const extra = notOnline.length ? [openhabThingsToggle(notOnline)] : [];
-    body.replaceChildren(stateLine, ...rows, ...extra);
+    body.replaceChildren(stateLine, ...rows, ...chart, ...extra);
+    if (chart.length) drawOpenHABChart(latestHistory);
   }
 
   // The openHAB poll has its own cadence: the interval the server reports
