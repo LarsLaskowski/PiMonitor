@@ -4,7 +4,7 @@ Plan: [plan.md](plan.md)
 
 | # | Group | Task | Files | Criteria | Depends on | Owner | Done |
 | - | ----- | ---- | ----- | -------- | ---------- | ----- | ---- |
-| 1 | G1 | Skeleton: `OpenHAB.HistoryWindowHours`, `OpenHAB.HistoryCapacity`, `OpenHAB.HistoryWindow`; `OpenHABConfig.HistoryWindowHours`, `OpenHABConfig.HistoryCapacity`; `OpenHABStatus.HistoryWindowHours`; `History.OpenHABRSSBytes`, `History.OpenHABHeapUsedBytes`, `History.OpenHABRestarts` | `internal/config/config.go`, `internal/collector/openhab.go`, `internal/collector/collector.go` | AC1–AC9 | — | Dev | [ ] |
+| 1 | G1 | Skeleton: `OpenHAB.HistoryWindowHours`, `OpenHAB.HistoryCapacity`; `OpenHABConfig.HistoryWindowHours`, `OpenHABConfig.HistoryCapacity`; `OpenHABStatus.HistoryWindowHours`; `History.OpenHABRSSBytes`, `History.OpenHABHeapUsedBytes`, `History.OpenHABRestarts` | `internal/config/config.go`, `internal/collector/openhab.go`, `internal/collector/collector.go` | AC1–AC9 | — | Dev | [ ] |
 | 2 | G1 | Tests first for config, collector, persistence and handlers, and the adapted pins | `internal/config/config_test.go`, `cmd/pimonitor/main_test.go`, `internal/collector/openhab_test.go`, `internal/collector/collector_test.go`, `internal/collector/persist_test.go`, `internal/httpapi/handlers_test.go` | AC1–AC6, AC9 | 1 | Tester | [ ] |
 | 3 | G1 | Option and validation, wiring, sample and restart, waiting slice and drain, read cut, `Since`, kinds 12–14 | `internal/config/config.go`, `cmd/pimonitor/main.go`, `internal/collector/openhab.go`, `internal/collector/collector.go`, `internal/collector/persist.go` | AC1–AC6, AC9 | 2 | Dev | [ ] |
 | 4 | G1 | Coverage pass | `internal/**/*_test.go`, `cmd/pimonitor/main_test.go` | AC1–AC6, AC9 | 3 | Tester | [ ] |

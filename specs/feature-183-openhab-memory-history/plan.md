@@ -118,7 +118,7 @@ point of RSS and heap; markers: restarts inside it.
 
 | Project | Type / file | Change |
 | ------- | ----------- | ------ |
-| `internal/config` | `OpenHAB`, `config.go` | option, validation, `HistoryCapacity`, `HistoryWindow` |
+| `internal/config` | `OpenHAB`, `config.go` | option, validation, `HistoryCapacity` |
 | `cmd/pimonitor` | `collectorConfig`, `main.go` | maps the two values |
 | `internal/collector` | `OpenHABConfig`, `OpenHABStatus`, `OpenHABCollector`, `openhab.go` | sample, restart, field |
 | `internal/collector` | `History`, `Collector`, `collector.go` | fields, buffers, drain, read cut, `Since` |
@@ -128,7 +128,7 @@ point of RSS and heap; markers: restarts inside it.
 ## Signatures (for the Dev's skeleton)
 
 - `internal/config`: field `HistoryWindowHours int` on `OpenHAB` (YAML key history_window_hours);
-  `func (o OpenHAB) HistoryCapacity() int`; `func (o OpenHAB) HistoryWindow() time.Duration`.
+  `func (o OpenHAB) HistoryCapacity() int`.
 - `internal/collector`, `OpenHABConfig`: fields `HistoryWindowHours int` and `HistoryCapacity int`.
 - `internal/collector`, `OpenHABStatus`: field `HistoryWindowHours int` (JSON key history_window_hours, no
   omitempty), placed directly after the poll interval field.
