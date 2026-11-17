@@ -13,3 +13,5 @@ are quoted in full.
 | 2026-11-17 19:31 | 3 Plan security delta | Security | VERDICT: APPROVED (opus/medium · 12,474 tokens · 3 tool uses · 26 s · 8 in · 2,096 out · 116,673 cache read · 13,556 cache write · 66,533 weighted · continued) |
 | 2026-11-17 19:32 | 5 Tests first | Tester | 3 tests (AC1-AC3) written, compile, fail on current code (confirmed). Deferred: none (sonnet/medium · 103,156 tokens · 8 tool uses · 67 s · 14 in · 8,721 out · 566,421 cache read · 50,010 cache write · 162,774 weighted) |
 | 2026-11-17 19:33 | 6 Implement | Dev | Fix in decodeHistoryPoints + history.md; tests green, coverage gate 100% new lines, analyzer clean (sonnet/medium · 79,830 tokens · 4 tool uses · 48 s · 8 in · 1,626 out · 276,201 cache read · 27,325 cache write · 69,914 weighted) |
+| 2026-11-17 19:33 | 6 Coverage skipped | Orchestrator | skipped — gate passes (100% new lines), no deferred tests, no open test docs |
+| 2026-11-17 19:33 | 6 Documentation | Orchestrator | written in 6 Implement |
