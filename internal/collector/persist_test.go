@@ -1053,7 +1053,7 @@ func TestCollector_LoadHistory_DropsUnencodablePoints_AC3(t *testing.T) {
 	bad := func(i int, v float64) HistoryPoint {
 		return HistoryPoint{Timestamp: base.Add(time.Duration(i) * time.Minute), Value: v}
 	}
-	farFuture := HistoryPoint{Timestamp: time.Date(10000, 1, 1, 0, 0, 0, 0, time.UTC), Value: 1}
+	farFuture := HistoryPoint{Timestamp: time.Date(10000, 1, 1, 0, 0, 0, 0, time.Local), Value: 1}
 	mixed := []HistoryPoint{valid(0), bad(1, math.NaN()), valid(2), bad(3, math.Inf(1)), valid(4), bad(5, math.Inf(-1)), valid(6), farFuture, valid(7)}
 	wantMixed := []HistoryPoint{valid(0), valid(2), valid(4), valid(6), valid(7)}
 	onlyBad := []HistoryPoint{bad(1, math.NaN()), bad(2, math.Inf(1)), farFuture}
