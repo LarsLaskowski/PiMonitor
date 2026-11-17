@@ -298,15 +298,15 @@ Notes:
   and a core that is offline or whose driver doesn't expose both files is
   simply left out rather than failing the whole reading.
 - `gpu_temperature` is only present if `vcgencmd` is installed and
-  responded successfully; otherwise the field is omitted. Note that it is
+  responded with a finite temperature; otherwise the field is omitted. Note that it is
   not a second physical sensor: CPU and GPU share the SoC die, so this
   reads the same sensor as `temperature`, by a different route.
 - `pmic_temperature` is the Power-Management IC's own sensor — genuinely
   separate silicon from the SoC, and useful for spotting power-delivery or
   board-level heat distinct from CPU load. It exists only on the Raspberry
   Pi 4 and 5, is read via `vcgencmd measure_temp pmic`, and is omitted
-  (exactly like `gpu_temperature`) whenever `vcgencmd` is unavailable or
-  the board has no PMIC sensor. It is not exposed through sysfs hwmon on
+  (exactly like `gpu_temperature`) whenever `vcgencmd` is unavailable,
+  the board has no PMIC sensor, or the answer is not a finite temperature. It is not exposed through sysfs hwmon on
   Raspberry Pi OS, so it never appears in `sensors` either.
 - `throttled` decodes the Raspberry Pi `vcgencmd get_throttled` bitmask.
   The `*_now` flags reflect the current state; the `*_since_boot` flags
