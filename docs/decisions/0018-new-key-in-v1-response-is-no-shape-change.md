@@ -1,6 +1,6 @@
 # 0018: Adding a key to a v1 response is no shape change
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-17
 - **Area:** HTTP API
 - **Source:** Issue #183

@@ -1,6 +1,6 @@
 # 0019: openHAB memory history has its own window and capacity
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-17
 - **Area:** History
 - **Source:** Issue #183

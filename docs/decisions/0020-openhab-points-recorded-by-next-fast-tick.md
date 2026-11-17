@@ -1,6 +1,6 @@
 # 0020: openHAB history points are recorded by the next fast tick
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-17
 - **Area:** History
 - **Source:** Issue #183
