@@ -27,15 +27,18 @@ fast tick's generation counter.
 
 ## Decision
 
-A finished openHAB poll's values wait in the collector until the next fast tick, which records them, timestamped
-with the poll's `collected_at`, in the same locked update as its own points (option 1). The rules are in
+A finished openHAB poll hands its values to the collector, which stamps them with the time it reads while holding
+its lock (that time becomes the poll's `collected_at`); they wait until the next fast tick records them in the same
+locked update as its own points (option 1). A value stamped before it is handed over could be older than a tick that
+already drained, which is why the time is taken under the lock. The rules are in
 [History](../areas/history.md#recording).
 
 ## Consequences
 
 - openHAB points reach the API at most one fast interval after the poll; a poll finished just before shutdown may be
   lost, like the points since the last history write.
-- The waiting samples are bounded: a fast tick drains them all, and at most ⌈`poll_interval_seconds` ÷
-  `openhab.poll_interval_seconds`⌉ + 1 polls finish between two ticks.
+- The waiting samples are bounded: a fast tick drains them all, and the collector keeps at most
+  `OpenHAB.HistoryCapacity()` of them, dropping the oldest, so a delayed tick cannot grow them further.
+- `collected_at` is the hand-over time, a moment after the poll's last request, not the end of `poll` itself.
 - Within one tick's batch an openHAB point may be newer than the tick's own points; clients take the newest `t` of
   all series, as `API.md` says.

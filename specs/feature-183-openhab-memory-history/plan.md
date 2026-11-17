@@ -42,9 +42,9 @@ Issue claims checked: see the spec's *Open questions*.
 | AC3 | `TestCollector_OpenHABHistory_Retention`: "AC3 full series drops its oldest point", "AC3 History omits points older than the window before the latest tick" | `internal/collector/collector_test.go` |
 | AC3 | `TestCollectorConfig_MapsFields`: rows `OpenHAB.HistoryWindowHours`, `OpenHAB.HistoryCapacity` | `cmd/pimonitor/main_test.go` |
 | AC4 | `TestHandleHistory_OpenHABKeys`: "AC4 keys absent while series empty", "AC4 keys present as point arrays", "AC4 since omits a key without newer points", "AC4 other keys unchanged", "AC4 401 without key when api_key is set"; `TestCollector_History_OpenHABDisabled_AC4` (no openHAB field set); `TestHistorySince_FiltersOpenHABSeries_AC4` | `internal/httpapi/handlers_test.go`, `internal/collector/collector_test.go` |
-| AC5 | `TestCollector_OpenHABHistory_DeltaSafe`: "AC5 waiting sample invisible before the next tick", "AC5 tick records it and increments the generation", "AC5 Since of the newest point after one tick returns every point of the next" | `internal/collector/collector_test.go` |
+| AC5 | `TestCollector_OpenHABHistory_DeltaSafe`: "AC5 waiting sample invisible before the next tick", "AC5 tick records it and increments the generation", "AC5 Since of the newest point after one tick returns every point of the next", "AC5 sample whose poll ended before tick k started but handed over after tick k's drain reaches a client passing tick k's newest t" (poll clock injected through `OpenHABConfig.Now` for the poll's end, hook called after `fastTick`), "AC5 waiting samples capped at the openHAB capacity without a tick" (capacity + 2 samples, no tick: exactly capacity remain, the two oldest dropped); `TestOpenHABCollector_Poll_CollectedAtFromHook_AC5` (status `collected_at` equals the hook's time) | `internal/collector/collector_test.go` |
 | AC6 | `TestHistory_EncodeDecodeRoundTrip_OpenHAB_AC6` (kinds 12, 13, 14 in the bytes); `TestEncodeHistory_NoOpenHABSeriesWritesNoRecord_AC6`; `TestCollector_LoadHistory_OpenHAB`: "AC6 file without openHAB series restores the others", "AC6 drops points older than the openHAB window", "AC6 caps to the openHAB capacity", "AC6 disabled restores none" | `internal/collector/persist_test.go` |
-| AC7 | `TestChartJS_TimeChart_AC7` (positions by time, break above `1.5 *` gap, markers, y from 0); `TestAppJS_OpenHABChart_AC7` (legend `RSS`/`Heap used`, `fmtBytes` label, block only with two points, `textContent` only) — plus manual: Product Manager, on the stamped head built with `make build-arm64` (or `make build-arm`) on a Pi with openHAB: chart shape, legend without token, a break after `systemctl stop openhab` for two polls, one marker after `systemctl restart openhab` | `internal/web/chart_test.go`, `internal/web/openhab_test.go` |
+| AC7 | `TestChartJS_TimeChart_AC7` (positions by time, break above `1.5 *` gap, markers, y from 0); `TestAppJS_OpenHABChart_AC7` (legend `RSS`/`Heap used`, `fmtBytes` label, block only with two points, `renderHistory` calls `renderOpenHAB` when the two-point condition changes, `textContent` only) — plus manual: Product Manager, on the stamped head built with `make build-arm64` (or `make build-arm`) on a Pi with openHAB: chart shape, legend without token, a break after `systemctl stop openhab` for two polls, one marker after `systemctl restart openhab` | `internal/web/chart_test.go`, `internal/web/openhab_test.go` |
 | AC8 | `TestAppJS_HistoryOpenHABKeys_AC8` (`HISTORY_OPENHAB_KEYS` with the three keys, used by `forEachHistorySeries`, `mergeHistory`, `trimHistoryWindow`; trim reads `history_window_hours`) — plus the manual run of AC7 (chart still full after 15 min open) | `internal/web/history_test.go` |
 | AC9 | `TestOpenHABCollector_Status_HistoryWindowHours_AC9` (pending, not_installed, ok); pins at `openhab_test.go:246`, `:412` adapted; `TestHandleOpenHAB_HistoryWindowHours_AC9`; pin at `handlers_test.go:1028` adapted | `internal/collector/openhab_test.go`, `internal/httpapi/handlers_test.go` |
 
@@ -57,14 +57,19 @@ of `checkIntegerOptions`. `HistoryCapacity()` = max(1, hours × 3600 / `PollInte
 `maxHistoryCapacity`; with `PollIntervalSeconds` ≤ 0 it returns 1. `cmd/pimonitor/main.go` `collectorConfig` maps
 both into `OpenHABConfig`.
 
-**Poll side** (`openhab.go`). `poll` builds a private `openHABSample` (time = `collected_at`; RSS and heap each with
-an ok flag; restart PID, 0 for none). Restart: a private `last` (PID, `startTicks`) touched only by the poll
-goroutine, compared when a process is found, updated then, never reset by a poll without a process. `Poll` calls a
-private hook `onSample` (set by `Collector.New`; nil in `newOHCollector`, so a test sets it) after storing the
-status, not for `not_installed`. `baseStatus` sets `HistoryWindowHours`.
+**Poll side** (`openhab.go`). `poll` builds a private `openHABSample` (RSS and heap each with an ok flag; restart
+PID, 0 for none). Restart: a private `last` (PID, `startTicks`) touched only by the poll goroutine, compared when a
+process is found, updated then, never reset by a poll without a process. `Poll` then calls a private hook
+`onSample func(openHABSample) time.Time` (set by `Collector.New`; nil in `newOHCollector`, so a test sets it), not
+for `not_installed`; the time it returns becomes the status's `collected_at` (without a hook `collected_at` stays
+`c.now()`). Order, with no lock held across the two: first the hook (it takes `c.mu`, reads the clock, appends,
+releases), then `Poll` stores the status under `OpenHABCollector.mu`; `Poll` holds no `OpenHABCollector` lock while
+calling the hook. `baseStatus` sets `HistoryWindowHours`.
 
-**Recording** ([0020](../../docs/decisions/0020-openhab-points-recorded-by-next-fast-tick.md)). The collector's hook
-appends the sample to a private waiting slice under `c.mu`. `fastTick`, inside its locked update before
+**Recording** ([0020](../../docs/decisions/0020-openhab-points-recorded-by-next-fast-tick.md)). The collector's hook,
+holding `c.mu`, reads the clock (`cfg.OpenHAB.Now`, else `time.Now`), stamps the sample with it, appends it to a
+private waiting slice capped at `OpenHAB.HistoryCapacity` (the oldest dropped) and returns the time. So every
+waiting sample is newer than every tick that drained before it. `fastTick`, inside its locked update before
 `historyGen++`, drains the slice into three ring buffers (`OpenHAB.HistoryCapacity`), in a private method so
 `fastTick` stays under `gocognit` 15. The buffers exist only with `cfg.OpenHAB.Enabled`.
 
@@ -89,7 +94,10 @@ Layout: in `renderOpenHAB`, after the Things row and before the Things-offline t
 (64 px high, full width), (3) `div.openhab-legend`: per drawn line, RSS first, a `span.legend-swatch` with class
 `legend-rss` or `legend-heap` and the text `RSS` / `Heap used`. Colors: RSS `--accent`, heap `--muted`, markers
 `--warn`, read with `getComputedStyle`. The block exists only while RSS or heap holds two points. It is drawn when
-`renderOpenHAB` builds it and from `redrawSparklines` (history poll, theme, layout reveal). Range: oldest to newest
+`renderOpenHAB` builds it and from `redrawSparklines` (history poll, theme, layout reveal). `renderHistory` checks
+the two-point condition: when it changes and `latestOpenHAB` holds a rendered state (not `pending`,
+`not_installed`), it calls `renderOpenHAB(latestOpenHAB)`, which creates or removes the block; otherwise it only
+redraws. Range: oldest to newest
 point of RSS and heap; markers: restarts inside it.
 
 ## Options considered
@@ -155,7 +163,8 @@ All by the Dev after the code, except where noted.
   tick, `collected_at`, restart rule with E3/E9); *Retention* (openHAB capacity, cut by age on read); *File format*
   (kinds 12–14, written after the per-device series and only when non-empty); *Restore* (openHAB window, disabled);
   *Related decisions* 0019, 0020; *Not here* adds `openhab.history_window_hours`.
-- `docs/areas/openhab.md`: *Cadence*: each poll feeds the history ([History](../../docs/areas/history.md)).
+- `docs/areas/openhab.md`: *Cadence*: each poll feeds the history ([History](../../docs/areas/history.md));
+  `collected_at` is taken when the finished poll hands its values to the history (also `API.md`'s field row).
 - `docs/areas/dashboard.md`: *Data sources* (`history_window_hours` from the openHAB poll); *History in the browser*
   (openHAB keys trimmed by it); *Rendering* (the chart, AC7); *Limits and errors* ("at most `history_window_minutes`"
   gets the openHAB exception).
@@ -181,8 +190,8 @@ reading); the v1 guarantee is reworded by 0018 on the Product Manager's statemen
 
 ## Security considerations
 
-- [x] Limits: the decode limits apply to the raw file before allocation, unchanged; the waiting slice is bounded
-  (0020); the capacity is bounded by validation.
+- [x] Limits: the decode limits apply to the raw file before allocation, unchanged; the waiting slice is capped at `OpenHAB.HistoryCapacity()` (pinned by "AC5 waiting samples capped at the
+  openHAB capacity without a tick"); the capacity is bounded by validation.
 - [x] Exceptions reaching the user: the AC3 startup errors only; they name the option and the number.
 
 ## Decision records
@@ -190,6 +199,23 @@ reading); the v1 guarantee is reworded by 0018 on the Product Manager's statemen
 - `docs/decisions/0018-new-key-in-v1-response-is-no-shape-change.md` (Proposed)
 - `docs/decisions/0019-openhab-history-has-its-own-window.md` (Proposed)
 - `docs/decisions/0020-openhab-points-recorded-by-next-fast-tick.md` (Proposed)
+
+## Challenge
+
+- 1 (major, a sample stamped before tick k's start but appended after its drain is lost to `?since=`). Accepted:
+  the hook now takes the time while holding `c.mu` and that time becomes the status's `collected_at`
+  (*Poll side*, *Recording*); 0020's Decision and Consequences say so; a test case with an injected poll clock is
+  added to AC5. The spec needs no change: AC1, AC2 and E9 name the poll's `collected_at`, which is still the value
+  `GET /api/v1/openhab` reports and still taken right after the poll finishes.
+- 2 (minor, the chart block appears only on the next browser openHAB poll). Accepted: `renderHistory` re-renders the
+  card when the two-point condition changes (*Dashboard*), with a source-scan case in AC7.
+
+## Security review
+
+- 1 (blocking, the waiting slice's bound depends on tick timing). Accepted: capped at `OpenHAB.HistoryCapacity()`,
+  oldest dropped (*Recording*), a test case in AC5, *Security considerations* and 0020 reworded.
+- 2 (non-blocking, lock order of the hook). Accepted: *Poll side* states the order — hook under `c.mu` first, then
+  the status under `OpenHABCollector.mu`, never one held while taking the other.
 
 ## Out of scope / follow-ups
 
