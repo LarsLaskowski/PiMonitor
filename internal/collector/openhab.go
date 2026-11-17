@@ -53,6 +53,10 @@ type OpenHABConfig struct {
 	Token string
 	// Interval is the time between polls.
 	Interval time.Duration
+	// HistoryWindowHours is the retention window of the openHAB history series.
+	HistoryWindowHours int
+	// HistoryCapacity is the number of points kept per openHAB history series.
+	HistoryCapacity int
 	// Root is the file system root for the install paths and /proc; empty means "/".
 	Root string
 	// Timeout bounds each REST request; zero means 5 s.
@@ -68,6 +72,7 @@ type OpenHABConfig struct {
 type OpenHABStatus struct {
 	State               string          `json:"state"`
 	PollIntervalSeconds int             `json:"poll_interval_seconds"`
+	HistoryWindowHours  int             `json:"history_window_hours"`
 	APITokenConfigured  bool            `json:"api_token_configured"`
 	CollectedAt         *time.Time      `json:"collected_at,omitempty"`
 	Version             string          `json:"version,omitempty"`

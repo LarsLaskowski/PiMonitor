@@ -93,6 +93,9 @@ type History struct {
 	DiskIOWriteBytesPerSec map[string][]HistoryPoint `json:"disk_io_write_bytes_per_sec,omitempty"`
 	NetworkRxBytesPerSec   map[string][]HistoryPoint `json:"network_rx_bytes_per_sec,omitempty"`
 	NetworkTxBytesPerSec   map[string][]HistoryPoint `json:"network_tx_bytes_per_sec,omitempty"`
+	OpenHABRSSBytes        []HistoryPoint            `json:"openhab_rss_bytes,omitempty"`
+	OpenHABHeapUsedBytes   []HistoryPoint            `json:"openhab_heap_used_bytes,omitempty"`
+	OpenHABRestarts        []HistoryPoint            `json:"openhab_restarts,omitempty"`
 }
 
 // Since returns h reduced to the points strictly newer than t, for callers

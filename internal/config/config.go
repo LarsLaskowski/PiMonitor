@@ -178,6 +178,19 @@ type OpenHAB struct {
 	APIToken string `yaml:"api_token"`
 	// PollIntervalSeconds is the interval between openHAB polls.
 	PollIntervalSeconds int `yaml:"poll_interval_seconds"`
+	// HistoryWindowHours is the retention window of the openHAB history series.
+	HistoryWindowHours int `yaml:"history_window_hours"`
+}
+
+// HistoryCapacity returns the number of openHAB history points that cover
+// HistoryWindowHours at PollIntervalSeconds resolution.
+func (o OpenHAB) HistoryCapacity() int {
+	return 0
+}
+
+// HistoryWindow returns HistoryWindowHours as a duration.
+func (o OpenHAB) HistoryWindow() time.Duration {
+	return 0
 }
 
 // OpenHABTokenEnvVar is the environment variable that overrides
