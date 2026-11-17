@@ -289,12 +289,19 @@ func (d *historyDecoder) decodeSeries() (s historySeries, err error, ok bool) {
 	return historySeries{kind: kind, key: key, points: decodeHistoryPoints(raw, n)}, nil, true
 }
 
+// decodeHistoryPoints decodes n raw points and drops those json.Marshal
+// cannot encode: a NaN or infinite value, or a timestamp whose year lies
+// outside 0-9999. Such a point would fail every history response.
 func decodeHistoryPoints(raw []byte, n uint32) []HistoryPoint {
-	points := make([]HistoryPoint, n)
-	for j := range points {
+	points := make([]HistoryPoint, 0, n)
+	for j := range int(n) {
 		ms := int64(binary.LittleEndian.Uint64(raw[j*pointSize:]))
-		bits := binary.LittleEndian.Uint64(raw[j*pointSize+8:])
-		points[j] = HistoryPoint{Timestamp: time.UnixMilli(ms), Value: math.Float64frombits(bits)}
+		v := math.Float64frombits(binary.LittleEndian.Uint64(raw[j*pointSize+8:]))
+		ts := time.UnixMilli(ms)
+		if math.IsNaN(v) || math.IsInf(v, 0) || ts.Year() < 0 || ts.Year() > 9999 {
+			continue
+		}
+		points = append(points, HistoryPoint{Timestamp: ts, Value: v})
 	}
 	return points
 }
