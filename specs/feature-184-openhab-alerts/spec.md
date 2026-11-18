@@ -1,7 +1,7 @@
 # Spec: Alert rules for a local openHAB
 
 Source: Issue #184
-Status: Draft
+Status: Approved by Lead
 
 ## Problem
 
@@ -183,5 +183,5 @@ when it is down or stuck, which is exactly when the operator needs to hear about
   a level; the plan names its test.
 - 7 (E11 unproven): accepted — E11 reworded to any failure of the root call, refused token and owner
   check included; tested with the fake server.
-- 8 (immediate card warning): accepted — AC10 keeps it beside the badge.
+- 8 (immediate card warning): accepted — AC10 keeps it.
 - 9 (`PIMONITOR_OPENHAB_TOKEN`): accepted — S3 and E1 name both.
