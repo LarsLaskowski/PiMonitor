@@ -206,3 +206,103 @@ dependency, request, file write or route.
 ## Out of scope / follow-ups
 
 See [spec.md](spec.md), *Out of scope*. No follow-up issue.
+
+## Challenge notes
+
+Devil's Advocate, mode plan: specs/feature-184-openhab-alerts (/home/user/PiMonitor/specs/feature-184-openhab-alerts/plan.md, spec.md, tasks.md), issue #184
+
+The plan holds up. I checked its verified facts against the code and they hold:
+- `evalMetric` uses `value >= warn` (internal/alert/alert.go:245).
+- The hand-over queue drops its oldest entries (internal/collector/collector.go:505-515).
+- A `not_installed` poll returns `sampled=false` with no `collected_at` (internal/collector/openhab.go:299-305).
+- Any root failure while the process runs gives `running_unreachable` (openhab.go:310-318).
+- systeminfo is fetched before the Things (openhab.go:502-530).
+- `summarizeThings` lists non-ONLINE, non-disabled Things, capped at 10 (openhab.go:569-588).
+- There are exactly 13 `alert.New` calls in alert_test.go plus collector.go:294.
+- The Go version is 1.27.4, so `omitzero` is available.
+- On shutdown, `Run` joins the openHAB goroutine before `notifier.Stop` (deferred functions run last-in, first-out: collector.go:363-380). So the new feed never calls `Notify` after the workers have stopped.
+- The AC4 transitions follow from `nextLevel` (alert.go:284-309) with the plan's `cutoff > 0 && value >= cutoff` rule. When warn is off, `warnAbove` stays false since the first poll, so a confirmed `crit -> ok` goes straight to `ok`.
+
+Tier `standard` fits: no security control changes. Need, scope and the alternatives are sound. I found no major objection, only five minor ones.
+
+**Minor objections (each written as an instruction):**
+
+1. **minor: the AC3 count in the plan is wrong for the fixture it names.** Plan, *Tests per criterion* AC3, says "12 counted → value 12" for `ohManyThingsBody`. The fixture (internal/collector/openhab_test.go:774-795) holds 12 OFFLINE Things plus one `UNKNOWN`, one with the status `<script>` and one `UNINITIALIZED`/`HANDLER_MISSING_ERROR`. All of them are counted under the plan's rule (not `ONLINE`, not disabled). The default systeminfo body reports `startLevel` 100 (openhab_test.go:32).
+   - Tester: assert value 15 at start level 100 and when systeminfo is refused, and 14 at start level 80.
+   - In all three cases the list is node01 to node10 by UID (`ohOfflineNodes(1, 10)`).
+   - Dev: do not change the rule to match 12.
+
+2. **minor: the E11 owner-check case cannot go in the file the plan names.** `peerOwnerRecorder` is defined in internal/collector/openhab_linux_test.go:87-105, which has `//go:build linux` (line 1). Plan AC1 puts the case in internal/collector/openhab_test.go. Tester: put the owner-check case of `TestOpenHABCollector_Poll_AlertSample_AC1` in openhab_linux_test.go, or in a Linux-only test beside the existing owner-check table at openhab_linux_test.go:148-154.
+
+3. **minor: the cleared events on `not_installed` must come in a fixed order.** The plan's pruning ("remove every `openhab_*` state, recording a `cleared` event … for each non-`ok` one") would, if written like `pruneDisks`, walk the `e.states` map (alert.go:321) and produce the events in random order. AC5 fixes the order within a poll only for evaluation.
+   - Dev: prune in the fixed order `openhab_down`, `openhab_rss_percent`, `openhab_things_offline`.
+   - Tester: assert that order in `TestEngine_EvaluateOpenHAB_NotInstalledPrunes_AC6`, with more than one state at warn or crit.
+
+4. **minor: the notifier's ordering assumption breaks with the second feed.** The plan's *Architecture check* and fact 8 cover only non-blocking enqueueing. `recordSent`'s doc comment (internal/alert/notify.go:266-272) justifies pruning other keys' rate-limit entries with "events reach a worker in sample order". With two feeds, an openHAB event stamped at time A can be enqueued after a fast-tick event stamped later. That fast-tick event's `recordSent` can then drop the openHAB key's entry early, so a fired `openhab_*` event inside its rate-limit window gets through. Dev:
+   - Make the pruning safe against out-of-order `At`. For example, prune against the largest `At` the worker has seen, not `ev.At`, or prune only entries older than both.
+   - Correct the comment.
+   - Add a notify_test.go case for an older-stamped event arriving after a newer one.
+   - Say in [Notifications] that delivery order across the two feeds is enqueue order.
+
+5. **minor: `openhab.enabled: true` on a host without openHAB will keep `openhab_down` at `crit`.** With `Always` set, `poll` never returns `not_installed` (openhab.go:300). With no process and a failed root call the state is `installed_not_running` (openhab.go:310-318; docs/areas/openhab.md:32 confirms the state is "never `not_installed`" with `true`). So `openhab_down` fires `crit` and stays there. The spec covers only `auto` (S6). Dev: state this in [Alerts], in the `openhab.enabled` / `alerts.openhab_for_seconds` rows of [Configuration], and in the comment in packaging/pimonitor.example.yaml. Tester: optionally add a case to `TestOpenHABCollector_Poll_AlertSample_AC1` using `withAlways` (openhab_test.go:189) with no process, expecting `Down` true.
+
+## Security notes
+
+Security plan review for feature 184 (openHAB alert rules). I read `specs/feature-184-openhab-alerts/spec.md` and `plan.md` at `ae7e88a`, on branch claude/squad-feature-184-7jqtun. One blocking finding: the plan's memory bound for Thing data does not hold. There are two non-blocking findings.
+
+**Tier and listed areas**
+- `standard` is the right tier. No control is created, changed or removed:
+  - `api_key` already guards `GET /api/v1/alerts` (`internal/httpapi/routes.go:63`, `api: true`), the same as `GET /api/v1/openhab`. N3 is true.
+  - The default webhook payload still goes through `encoding/json`.
+  - The owner check and the bearer-token path are unchanged.
+- The four listed areas (Outbound calls, openHAB API token, Dashboard XSS, Parsing of local input) are complete:
+  - The Logging area is not touched: the only log call in the new path is the existing queue-full warning, which logs metric and resource only (`internal/alert/notify.go:210`).
+  - The HTTP surface gets no new route.
+- The dashboard side is safe:
+  - The badge and banner get only engine levels and metric names, set through `textContent`/`className` (`app.js:405-455`).
+  - No Thing string is rendered.
+  - The plan's `applyOpenHABAlertLevels` uses fixed `metric-warn`/`metric-crit` classes.
+- Leaving `description` out of `alert.OpenHABThing` is correct: it carries binding error texts.
+
+**Measurement I ran**
+Plan fact 9 and AC8/AC9 (`omitzero`, escaping). In `/tmp/claude-0/-home-user-PiMonitor/955b6d88-c31d-5aa5-8bda-5584324fbbba/scratchpad/oz`, `go run .` (go1.24.7 linux/amd64) printed:
+```
+{"metric":"cpu"}
+{"metric":"x","things":[]}
+{"metric":"x","things":[{"uid":"a\"\n\u0000</b>"}]}
+```
+A nil slice is omitted, an empty slice gives `[]`, and a hostile label is escaped. The claim holds.
+
+**Findings**
+
+1. [BLOCKING] The memory bound for Thing data counts entries, not bytes.
+   - The claim: N1 and the plan's *Security considerations* ("an event holds at most 10 Things", "event list stays capped at 100") present this as the bound on retained Thing data.
+   - Why it does not hold: no field of a Thing is length-limited. Only the whole body is capped at 8 MiB (`internal/collector/openhab.go:124`, `:631`). `summarizeThings` copies `UID`, `Label`, `Status` and `StatusDetail` unchanged (`openhab.go:584-585`).
+   - What retains it today: one poll's list, in the served status.
+   - What retains it after this plan:
+     - the Things state's last list;
+     - every one of up to 100 events (`internal/alert/alert.go:27`, `:354`);
+     - up to 256 queued events per webhook (`notify.go:39`, sharing the strings);
+     - a rendered POST body per delivery, possibly to an internet endpoint.
+   - Worst case: one label of about 8 MiB in each of 100 Things events is about 800 MiB retained on a Pi. Each transition needs a poll at least 60 s apart, so filling the list takes about 100 minutes.
+   - Who can cause it: an openHAB admin, or a binding that takes a label from a discovered device. A spoofed server cannot, since the token and owner check are required.
+   - Smallest fix: in the collector, where `alert.OpenHABThing` is built, cut each of the four strings to a fixed maximum (for example 256 bytes, at a UTF-8 rune boundary).
+     - State the cap in *Alerts* and *Notifications*, and in the `things` notes of `docs/API.md`.
+     - Add a Tester test under AC3 or AC8 that pins it: a label longer than the cap comes out at the cap length and still valid UTF-8.
+   - The worst case then drops to about 1 MiB (100 × 10 × 4 × 256 B). The served `NotOnline` of `GET /api/v1/openhab` stays unchanged.
+
+2. [NON-BLOCKING] After an upgrade, existing webhooks start sending Thing names off-host without the operator changing anything.
+   - Defaults are warn 1 and alerts on (N2). With a token set, every existing webhook whose `min_level` admits `warn` starts receiving up to 10 Thing UIDs and labels per event. UIDs often contain IP or MAC addresses (for example `network:pingdevice:192_168_1_10`).
+   - The receiver may be a public ntfy topic, which anyone who knows its name can read.
+   - The plan's SECURITY.md edit (line 67) names the new places the data appears, but not that it starts on upgrade, nor how to stop it.
+   - Recommendation: fix now by appending to that SECURITY.md bullet, verbatim:
+     "After an upgrade with an `openhab.api_token` set and alerts on, every webhook whose `min_level` admits `warn`
+     receives the UIDs and labels of up to 10 offline Things in `openhab_things_offline` events; set both
+     `thresholds.openhab_things_offline_warn` and `thresholds.openhab_things_offline_crit` to `0` to stop them."
+
+3. [NON-BLOCKING] `alerts.openhab_for_seconds` has no upper limit.
+   - `OpenHABAlertFor()` copies `AlertFor()` (`internal/config/config.go:320-321`), which converts float seconds to a Duration with no upper bound. When the value is out of range, the result of that conversion depends on the platform.
+   - Measured on amd64 (`go run . 1e12` in the scratchpad folder above): `-2562047h47m16.854775808s`. A negative window means a reading is confirmed on the first poll instead of never.
+   - arm64 was not run: the binary builds, but running it needs an arm64 host or qemu.
+   - `alerts.for_seconds` already has the same gap, so this is a copied validation gap, not a new control.
+   - Recommendation: a linked issue covering both keys (an upper bound with an error text), not this change.
