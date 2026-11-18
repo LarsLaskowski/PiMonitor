@@ -293,7 +293,7 @@ func New(cfg Config, log *slog.Logger) *Collector {
 	var alerts *alert.Engine
 	var notifier *alert.Notifier
 	if cfg.AlertsEnabled {
-		alerts = alert.New(cfg.Thresholds, cfg.AlertFor)
+		alerts = alert.New(cfg.Thresholds, cfg.AlertFor, cfg.OpenHABAlertFor)
 		notifier = cfg.Notifier
 	}
 	// TemperatureCollector and ThrottledCollector both shell out to

@@ -115,6 +115,8 @@ type Event struct {
 	To       Level     `json:"to"`
 	Value    float64   `json:"value"`
 	At       time.Time `json:"at"`
+	// Things lists the offline things of an openHAB things-offline event.
+	Things []OpenHABThing `json:"things,omitzero"`
 }
 
 // Report is the response body for GET /api/v1/alerts: the current per-metric
@@ -157,6 +159,7 @@ type metricState struct {
 type Engine struct {
 	thresholds config.Thresholds
 	forDur     time.Duration
+	openHABFor time.Duration
 	maxEvents  int
 
 	mu     sync.Mutex
@@ -167,10 +170,12 @@ type Engine struct {
 // New returns an Engine that evaluates against thresholds and only promotes
 // a threshold crossing to an alert after it has persisted for forDur. A
 // zero forDur disables the debounce (crossings fire on the first sample).
-func New(thresholds config.Thresholds, forDur time.Duration) *Engine {
+// openHABFor is the debounce window of the openHAB metrics.
+func New(thresholds config.Thresholds, forDur, openHABFor time.Duration) *Engine {
 	return &Engine{
 		thresholds: thresholds,
 		forDur:     forDur,
+		openHABFor: openHABFor,
 		maxEvents:  defaultMaxEvents,
 		states:     make(map[string]*metricState),
 	}

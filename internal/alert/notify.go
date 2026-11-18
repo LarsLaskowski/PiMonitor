@@ -429,6 +429,8 @@ type eventView struct {
 	Value    float64   `json:"value"`
 	At       time.Time `json:"at"`
 	Message  string    `json:"message"`
+	// Things lists the offline things of an openHAB things-offline event.
+	Things []OpenHABThing `json:"things,omitzero"`
 }
 
 // renderBody builds the request body for an event: the webhook's template if
@@ -457,6 +459,7 @@ func makeView(ev Event) eventView {
 		Value:    ev.Value,
 		At:       ev.At,
 		Message:  formatMessage(ev),
+		Things:   ev.Things,
 	}
 }
 
