@@ -644,7 +644,7 @@ func summarizeThings(things []openHABThingResponse, startLevel *int) (*OpenHABTh
 		thing := OpenHABThing{UID: th.UID, Label: th.Label, Status: info.Status,
 			StatusDetail: info.StatusDetail, Description: info.Description}
 		listed = append(listed, thing)
-		if !(starting && info.Status == "UNKNOWN") {
+		if !starting || info.Status != "UNKNOWN" {
 			counted = append(counted, thing)
 		}
 	}

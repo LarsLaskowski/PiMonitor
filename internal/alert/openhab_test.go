@@ -335,83 +335,108 @@ func TestEngine_EvaluateOpenHAB_WindowAndOrder_AC5(t *testing.T) {
 }
 
 func TestEngine_EvaluateOpenHAB_NotInstalledPrunes_AC6(t *testing.T) {
+	t.Run("AC6 all three cleared in fixed order with last values", checkNotInstalledClearsAllAC6)
+	t.Run("AC6 only non-ok states produce an event", checkNotInstalledOnlyNonOKAC6)
+	t.Run("AC6 never installed produces no event and no state", checkNeverInstalledAC6)
+	t.Run("AC6 reinstall starts again at ok with fresh timers", checkReinstallAC6)
+}
+
+// ohAllCritThings returns a fresh list of the three Things used by the
+// all-critical samples.
+func ohAllCritThings() []OpenHABThing {
+	return []OpenHABThing{ohThing("a:1"), ohThing("b:2"), ohThing("c:3")}
+}
+
+// ohAllCritSample returns a sample with openHAB down, RSS at 80 percent and all
+// three Things offline, taken at offset.
+func ohAllCritSample(offset time.Duration) OpenHABSample {
+	return OpenHABSample{
+		Timestamp: ohAt(offset), Installed: true, Down: true,
+		RSSPercent: 80, RSSValid: true,
+		ThingsOffline: 3, ThingsValid: true, Things: ohAllCritThings(),
+	}
+}
+
+func checkNotInstalledClearsAllAC6(t *testing.T) {
 	minute := time.Minute
-	thingList := []OpenHABThing{ohThing("a:1"), ohThing("b:2"), ohThing("c:3")}
-	allCrit := func(offset time.Duration) OpenHABSample {
-		return OpenHABSample{
-			Timestamp: ohAt(offset), Installed: true, Down: true,
-			RSSPercent: 80, RSSValid: true,
-			ThingsOffline: 3, ThingsValid: true, Things: thingList,
-		}
+	e := New(ohThresholds(), 0, minute)
+	e.EvaluateOpenHAB(ohAllCritSample(0))
+	if got := e.EvaluateOpenHAB(ohAllCritSample(minute)); len(got) != 3 {
+		t.Fatalf("setup produced %d events, want 3", len(got))
 	}
 
-	t.Run("AC6 all three cleared in fixed order with last values", func(t *testing.T) {
-		e := New(ohThresholds(), 0, minute)
-		e.EvaluateOpenHAB(allCrit(0))
-		if got := e.EvaluateOpenHAB(allCrit(minute)); len(got) != 3 {
-			t.Fatalf("setup produced %d events, want 3", len(got))
-		}
+	got := e.EvaluateOpenHAB(OpenHABSample{Timestamp: ohAt(2 * minute)})
 
-		got := e.EvaluateOpenHAB(OpenHABSample{Timestamp: ohAt(2 * minute)})
+	want := []string{MetricOpenHABDown, MetricOpenHABRSSPercent, MetricOpenHABThingsOffline}
+	if !slices.Equal(eventMetrics(got), want) {
+		t.Fatalf("cleared metrics = %v, want %v", eventMetrics(got), want)
+	}
+	checkClearedEventsAC6(t, got, ohAt(2*minute))
+	if states := ohStates(e.Report()); len(states) != 0 {
+		t.Fatalf("states after not_installed = %+v, want none", states)
+	}
+}
 
-		want := []string{MetricOpenHABDown, MetricOpenHABRSSPercent, MetricOpenHABThingsOffline}
-		if !slices.Equal(eventMetrics(got), want) {
-			t.Fatalf("cleared metrics = %v, want %v", eventMetrics(got), want)
+// checkClearedEventsAC6 asserts that each cleared event goes crit to ok with
+// its last value at the sample time, and that only the things event carries
+// the last Things list.
+func checkClearedEventsAC6(t *testing.T, got []Event, at time.Time) {
+	t.Helper()
+	values := []float64{1, 80, 3}
+	for i, ev := range got {
+		if ev.Kind != KindCleared || ev.From != LevelCrit || ev.To != LevelOK || ev.Value != values[i] || !ev.At.Equal(at) {
+			t.Fatalf("event %d = %+v, want cleared crit->ok value %v at the sample time", i, ev, values[i])
 		}
-		values := []float64{1, 80, 3}
-		for i, ev := range got {
-			if ev.Kind != KindCleared || ev.From != LevelCrit || ev.To != LevelOK || ev.Value != values[i] || !ev.At.Equal(ohAt(2*minute)) {
-				t.Fatalf("event %d = %+v, want cleared crit->ok value %v at the sample time", i, ev, values[i])
-			}
-		}
-		if !slices.Equal(got[2].Things, thingList) {
-			t.Fatalf("things event list = %+v, want the last list %+v", got[2].Things, thingList)
-		}
-		if len(got[0].Things) != 0 || len(got[1].Things) != 0 {
-			t.Fatalf("down/rss events carry things: %+v %+v", got[0].Things, got[1].Things)
-		}
-		if states := ohStates(e.Report()); len(states) != 0 {
-			t.Fatalf("states after not_installed = %+v, want none", states)
-		}
-	})
-	t.Run("AC6 only non-ok states produce an event", func(t *testing.T) {
-		e := New(ohThresholds(), 0, 0)
-		e.EvaluateOpenHAB(OpenHABSample{Timestamp: ohAt(0), Installed: true, RSSPercent: 60, RSSValid: true})
+	}
+	if !slices.Equal(got[2].Things, ohAllCritThings()) {
+		t.Fatalf("things event list = %+v, want the last list %+v", got[2].Things, ohAllCritThings())
+	}
+	if len(got[0].Things) != 0 || len(got[1].Things) != 0 {
+		t.Fatalf("down/rss events carry things: %+v %+v", got[0].Things, got[1].Things)
+	}
+}
 
-		got := e.EvaluateOpenHAB(OpenHABSample{Timestamp: ohAt(minute)})
+func checkNotInstalledOnlyNonOKAC6(t *testing.T) {
+	e := New(ohThresholds(), 0, 0)
+	e.EvaluateOpenHAB(OpenHABSample{Timestamp: ohAt(0), Installed: true, RSSPercent: 60, RSSValid: true})
 
-		if len(got) != 1 || got[0].Metric != MetricOpenHABRSSPercent || got[0].From != LevelWarn || got[0].Value != 60 {
-			t.Fatalf("events = %+v, want one cleared warn->ok openhab_rss_percent (60)", got)
-		}
-	})
-	t.Run("AC6 never installed produces no event and no state", func(t *testing.T) {
-		e := New(ohThresholds(), 0, 0)
+	got := e.EvaluateOpenHAB(OpenHABSample{Timestamp: ohAt(time.Minute)})
 
-		for i := 0; i < 3; i++ {
-			if got := e.EvaluateOpenHAB(OpenHABSample{Timestamp: ohAt(time.Duration(i) * minute)}); len(got) != 0 {
-				t.Fatalf("AC6 sample %d produced %+v, want none", i, got)
-			}
-		}
-		if states := ohStates(e.Report()); len(states) != 0 {
-			t.Fatalf("AC6 states = %+v, want none", states)
-		}
-		if evs := e.Report().Events; len(evs) != 0 {
-			t.Fatalf("AC6 report events = %+v, want none", evs)
-		}
-	})
-	t.Run("AC6 reinstall starts again at ok with fresh timers", func(t *testing.T) {
-		e := New(ohThresholds(), 0, minute)
-		e.EvaluateOpenHAB(allCrit(0))
-		e.EvaluateOpenHAB(allCrit(minute))
-		e.EvaluateOpenHAB(OpenHABSample{Timestamp: ohAt(2 * minute)})
+	if len(got) != 1 || got[0].Metric != MetricOpenHABRSSPercent || got[0].From != LevelWarn || got[0].Value != 60 {
+		t.Fatalf("events = %+v, want one cleared warn->ok openhab_rss_percent (60)", got)
+	}
+}
 
-		if got := e.EvaluateOpenHAB(allCrit(3 * minute)); len(got) != 0 {
-			t.Fatalf("first poll after reinstall produced %+v, want none", got)
+func checkNeverInstalledAC6(t *testing.T) {
+	minute := time.Minute
+	e := New(ohThresholds(), 0, 0)
+
+	for i := 0; i < 3; i++ {
+		if got := e.EvaluateOpenHAB(OpenHABSample{Timestamp: ohAt(time.Duration(i) * minute)}); len(got) != 0 {
+			t.Fatalf("AC6 sample %d produced %+v, want none", i, got)
 		}
-		if got := e.EvaluateOpenHAB(allCrit(4 * minute)); len(got) != 3 {
-			t.Fatalf("second poll after reinstall produced %d events, want 3 fired", len(got))
-		}
-	})
+	}
+	if states := ohStates(e.Report()); len(states) != 0 {
+		t.Fatalf("AC6 states = %+v, want none", states)
+	}
+	if evs := e.Report().Events; len(evs) != 0 {
+		t.Fatalf("AC6 report events = %+v, want none", evs)
+	}
+}
+
+func checkReinstallAC6(t *testing.T) {
+	minute := time.Minute
+	e := New(ohThresholds(), 0, minute)
+	e.EvaluateOpenHAB(ohAllCritSample(0))
+	e.EvaluateOpenHAB(ohAllCritSample(minute))
+	e.EvaluateOpenHAB(OpenHABSample{Timestamp: ohAt(2 * minute)})
+
+	if got := e.EvaluateOpenHAB(ohAllCritSample(3 * minute)); len(got) != 0 {
+		t.Fatalf("first poll after reinstall produced %+v, want none", got)
+	}
+	if got := e.EvaluateOpenHAB(ohAllCritSample(4 * minute)); len(got) != 3 {
+		t.Fatalf("second poll after reinstall produced %d events, want 3 fired", len(got))
+	}
 }
 
 func TestEngine_EvaluateOpenHAB_DefaultRSSSampleStaysOK_AC7(t *testing.T) {
@@ -493,66 +518,76 @@ func customWebhook(t *testing.T, text string) webhook {
 	return webhook{tmpl: tmpl}
 }
 
+// ohHostileLabel holds characters that a JSON payload or a template must escape
+// or pass through unchanged.
+const ohHostileLabel = "Lamp \"A\" \\ <b>\n'x'"
+
 func TestRenderBody_OpenHABThings_AC9(t *testing.T) {
-	hostile := "Lamp \"A\" \\ <b>\n'x'"
+	t.Run("AC9 default payload escapes a hostile label", checkDefaultPayloadEscapesAC9)
+	t.Run("AC9 message keeps the one-line format", checkMessageOneLineAC9)
+	t.Run("AC9 an event without things has no things key", checkNoThingsKeyAC9)
+	t.Run("AC9 a custom template reads .Things", checkCustomTemplateThingsAC9)
+}
 
-	t.Run("AC9 default payload escapes a hostile label", func(t *testing.T) {
-		body, err := renderBody(webhook{}, ohThingsEvent(hostile))
-		if err != nil {
-			t.Fatalf("renderBody: %v", err)
+func checkDefaultPayloadEscapesAC9(t *testing.T) {
+	body, err := renderBody(webhook{}, ohThingsEvent(ohHostileLabel))
+	if err != nil {
+		t.Fatalf("renderBody: %v", err)
+	}
+	var decoded struct {
+		Message string `json:"message"`
+		Things  []map[string]string
+	}
+	if err := json.Unmarshal(body, &decoded); err != nil {
+		t.Fatalf("default payload is not valid JSON: %v\n%s", err, body)
+	}
+	if len(decoded.Things) != 1 || decoded.Things[0]["label"] != ohHostileLabel {
+		t.Fatalf("things = %+v, want the hostile label round-tripped", decoded.Things)
+	}
+	for _, key := range []string{"uid", "label", "status", "status_detail"} {
+		if decoded.Things[0][key] == "" {
+			t.Errorf("things entry lacks %q: %v", key, decoded.Things[0])
 		}
-		var decoded struct {
-			Message string `json:"message"`
-			Things  []map[string]string
-		}
-		if err := json.Unmarshal(body, &decoded); err != nil {
-			t.Fatalf("default payload is not valid JSON: %v\n%s", err, body)
-		}
-		if len(decoded.Things) != 1 || decoded.Things[0]["label"] != hostile {
-			t.Fatalf("things = %+v, want the hostile label round-tripped", decoded.Things)
-		}
-		for _, key := range []string{"uid", "label", "status", "status_detail"} {
-			if decoded.Things[0][key] == "" {
-				t.Errorf("things entry lacks %q: %v", key, decoded.Things[0])
-			}
-		}
-	})
-	t.Run("AC9 message keeps the one-line format", func(t *testing.T) {
-		body, err := renderBody(webhook{}, ohThingsEvent("x"))
-		if err != nil {
-			t.Fatalf("renderBody: %v", err)
-		}
-		var decoded struct {
-			Message string `json:"message"`
-		}
-		if err := json.Unmarshal(body, &decoded); err != nil {
-			t.Fatalf("unmarshal: %v", err)
-		}
-		want := "openhab_things_offline fired: ok -> warn (1.0)"
-		if decoded.Message != want {
-			t.Fatalf("message = %q, want %q", decoded.Message, want)
-		}
-	})
-	t.Run("AC9 an event without things has no things key", func(t *testing.T) {
-		ev := ohThingsEvent("x")
-		ev.Things = nil
-		body, err := renderBody(webhook{}, ev)
-		if err != nil {
-			t.Fatalf("renderBody: %v", err)
-		}
-		if strings.Contains(string(body), `"things"`) {
-			t.Fatalf("payload %s has a things key, want none", body)
-		}
-	})
-	t.Run("AC9 a custom template reads .Things", func(t *testing.T) {
-		wh := customWebhook(t, `{{range .Things}}{{.UID}}|{{.Label}}|{{.Status}}|{{.StatusDetail}};{{end}}`)
+	}
+}
 
-		body, err := renderBody(wh, ohThingsEvent("Lamp"))
-		if err != nil {
-			t.Fatalf("renderBody: %v", err)
-		}
-		if want := "a:1|Lamp|OFFLINE|COMMUNICATION_ERROR;"; string(body) != want {
-			t.Fatalf("body = %q, want %q", body, want)
-		}
-	})
+func checkMessageOneLineAC9(t *testing.T) {
+	body, err := renderBody(webhook{}, ohThingsEvent("x"))
+	if err != nil {
+		t.Fatalf("renderBody: %v", err)
+	}
+	var decoded struct {
+		Message string `json:"message"`
+	}
+	if err := json.Unmarshal(body, &decoded); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	want := "openhab_things_offline fired: ok -> warn (1.0)"
+	if decoded.Message != want {
+		t.Fatalf("message = %q, want %q", decoded.Message, want)
+	}
+}
+
+func checkNoThingsKeyAC9(t *testing.T) {
+	ev := ohThingsEvent("x")
+	ev.Things = nil
+	body, err := renderBody(webhook{}, ev)
+	if err != nil {
+		t.Fatalf("renderBody: %v", err)
+	}
+	if strings.Contains(string(body), `"things"`) {
+		t.Fatalf("payload %s has a things key, want none", body)
+	}
+}
+
+func checkCustomTemplateThingsAC9(t *testing.T) {
+	wh := customWebhook(t, `{{range .Things}}{{.UID}}|{{.Label}}|{{.Status}}|{{.StatusDetail}};{{end}}`)
+
+	body, err := renderBody(wh, ohThingsEvent("Lamp"))
+	if err != nil {
+		t.Fatalf("renderBody: %v", err)
+	}
+	if want := "a:1|Lamp|OFFLINE|COMMUNICATION_ERROR;"; string(body) != want {
+		t.Fatalf("body = %q, want %q", body, want)
+	}
 }

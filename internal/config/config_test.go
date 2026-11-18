@@ -1307,84 +1307,98 @@ var openHABAlertErrorCases = []struct {
 }
 
 func TestLoad_OpenHABAlertOptions_AC7(t *testing.T) {
-	t.Run("AC7 defaults", func(t *testing.T) {
-		cfg := Default()
-
-		if cfg.Thresholds.OpenHABRSSWarnPercent != 50 || cfg.Thresholds.OpenHABRSSCritPercent != 75 {
-			t.Errorf("rss thresholds = %v/%v, want 50/75", cfg.Thresholds.OpenHABRSSWarnPercent, cfg.Thresholds.OpenHABRSSCritPercent)
-		}
-		if cfg.Thresholds.OpenHABThingsOfflineWarn != 1 || cfg.Thresholds.OpenHABThingsOfflineCrit != 0 {
-			t.Errorf("things thresholds = %d/%d, want 1/0", cfg.Thresholds.OpenHABThingsOfflineWarn, cfg.Thresholds.OpenHABThingsOfflineCrit)
-		}
-		if cfg.Alerts.OpenHABForSeconds != 300 {
-			t.Errorf("Alerts.OpenHABForSeconds = %v, want 300", cfg.Alerts.OpenHABForSeconds)
-		}
-		if got := cfg.OpenHABAlertFor(); got != 5*time.Minute {
-			t.Errorf("OpenHABAlertFor() = %v, want 5m0s", got)
-		}
-		if err := cfg.Validate(); err != nil {
-			t.Errorf("Default().Validate() = %v, want nil", err)
-		}
-	})
-	t.Run("AC7 file without the keys keeps the defaults", func(t *testing.T) {
-		res, err := loadYAMLText(t, "poll_interval_seconds: 7\n")
-		if err != nil {
-			t.Fatalf("Load error = %v, want nil", err)
-		}
-
-		want := Default()
-		if res.Config.Thresholds != want.Thresholds {
-			t.Errorf("Thresholds = %+v, want %+v", res.Config.Thresholds, want.Thresholds)
-		}
-		if res.Config.Alerts.OpenHABForSeconds != 300 {
-			t.Errorf("Alerts.OpenHABForSeconds = %v, want 300", res.Config.Alerts.OpenHABForSeconds)
-		}
-	})
-	t.Run("AC7 explicit values are read", func(t *testing.T) {
-		doc := "thresholds:\n  openhab_rss_warn_percent: 40.5\n  openhab_rss_crit_percent: 60\n" +
-			"  openhab_things_offline_warn: 2\n  openhab_things_offline_crit: 4\nalerts:\n  openhab_for_seconds: 90\n"
-
-		res, err := loadYAMLText(t, doc)
-
-		if err != nil {
-			t.Fatalf("Load error = %v, want nil", err)
-		}
-		th := res.Config.Thresholds
-		if th.OpenHABRSSWarnPercent != 40.5 || th.OpenHABRSSCritPercent != 60 || th.OpenHABThingsOfflineWarn != 2 || th.OpenHABThingsOfflineCrit != 4 {
-			t.Errorf("thresholds = %+v, want 40.5/60/2/4", th)
-		}
-		if got := res.Config.OpenHABAlertFor(); got != 90*time.Second {
-			t.Errorf("OpenHABAlertFor() = %v, want 1m30s", got)
-		}
-	})
-	t.Run("AC7 zero is accepted for every option", func(t *testing.T) {
-		doc := "thresholds:\n  openhab_rss_warn_percent: 0\n  openhab_rss_crit_percent: 0\n" +
-			"  openhab_things_offline_warn: 0\n  openhab_things_offline_crit: 0\nalerts:\n  openhab_for_seconds: 0\n"
-
-		if _, err := loadYAMLText(t, doc); err != nil {
-			t.Fatalf("Load error = %v, want nil", err)
-		}
-	})
-	t.Run("AC7 warn 0 with crit set is accepted", func(t *testing.T) {
-		doc := "thresholds:\n  openhab_rss_warn_percent: 0\n  openhab_rss_crit_percent: 70\n" +
-			"  openhab_things_offline_warn: 0\n  openhab_things_offline_crit: 3\n"
-
-		if _, err := loadYAMLText(t, doc); err != nil {
-			t.Fatalf("Load error = %v, want nil", err)
-		}
-	})
+	t.Run("AC7 defaults", checkOpenHABAlertDefaultsAC7)
+	t.Run("AC7 file without the keys keeps the defaults", checkOpenHABAlertKeysAbsentAC7)
+	t.Run("AC7 explicit values are read", checkOpenHABAlertExplicitAC7)
+	t.Run("AC7 zero is accepted for every option", checkOpenHABAlertZeroAC7)
+	t.Run("AC7 warn 0 with crit set is accepted", checkOpenHABAlertWarnZeroAC7)
 	for _, enabled := range []string{"true", "false"} {
 		for _, tc := range openHABAlertErrorCases {
 			t.Run(fmt.Sprintf("AC7 E13 alerts.enabled %s %s", enabled, tc.name), func(t *testing.T) {
-				doc := withAlertsEnabled(tc.yaml, enabled)
-
-				_, err := loadYAMLText(t, doc)
-
-				if err == nil || err.Error() != tc.want {
-					t.Fatalf("Load error = %v, want %q", err, tc.want)
-				}
+				checkAlertsEnabledErrorAC7(t, withAlertsEnabled(tc.yaml, enabled), tc.want)
 			})
 		}
+	}
+}
+
+func checkOpenHABAlertDefaultsAC7(t *testing.T) {
+	cfg := Default()
+
+	if cfg.Thresholds.OpenHABRSSWarnPercent != 50 || cfg.Thresholds.OpenHABRSSCritPercent != 75 {
+		t.Errorf("rss thresholds = %v/%v, want 50/75", cfg.Thresholds.OpenHABRSSWarnPercent, cfg.Thresholds.OpenHABRSSCritPercent)
+	}
+	if cfg.Thresholds.OpenHABThingsOfflineWarn != 1 || cfg.Thresholds.OpenHABThingsOfflineCrit != 0 {
+		t.Errorf("things thresholds = %d/%d, want 1/0", cfg.Thresholds.OpenHABThingsOfflineWarn, cfg.Thresholds.OpenHABThingsOfflineCrit)
+	}
+	if cfg.Alerts.OpenHABForSeconds != 300 {
+		t.Errorf("Alerts.OpenHABForSeconds = %v, want 300", cfg.Alerts.OpenHABForSeconds)
+	}
+	if got := cfg.OpenHABAlertFor(); got != 5*time.Minute {
+		t.Errorf("OpenHABAlertFor() = %v, want 5m0s", got)
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Errorf("Default().Validate() = %v, want nil", err)
+	}
+}
+
+func checkOpenHABAlertKeysAbsentAC7(t *testing.T) {
+	res, err := loadYAMLText(t, "poll_interval_seconds: 7\n")
+	if err != nil {
+		t.Fatalf("Load error = %v, want nil", err)
+	}
+
+	want := Default()
+	if res.Config.Thresholds != want.Thresholds {
+		t.Errorf("Thresholds = %+v, want %+v", res.Config.Thresholds, want.Thresholds)
+	}
+	if res.Config.Alerts.OpenHABForSeconds != 300 {
+		t.Errorf("Alerts.OpenHABForSeconds = %v, want 300", res.Config.Alerts.OpenHABForSeconds)
+	}
+}
+
+func checkOpenHABAlertExplicitAC7(t *testing.T) {
+	doc := "thresholds:\n  openhab_rss_warn_percent: 40.5\n  openhab_rss_crit_percent: 60\n" +
+		"  openhab_things_offline_warn: 2\n  openhab_things_offline_crit: 4\nalerts:\n  openhab_for_seconds: 90\n"
+
+	res, err := loadYAMLText(t, doc)
+
+	if err != nil {
+		t.Fatalf("Load error = %v, want nil", err)
+	}
+	th := res.Config.Thresholds
+	if th.OpenHABRSSWarnPercent != 40.5 || th.OpenHABRSSCritPercent != 60 || th.OpenHABThingsOfflineWarn != 2 || th.OpenHABThingsOfflineCrit != 4 {
+		t.Errorf("thresholds = %+v, want 40.5/60/2/4", th)
+	}
+	if got := res.Config.OpenHABAlertFor(); got != 90*time.Second {
+		t.Errorf("OpenHABAlertFor() = %v, want 1m30s", got)
+	}
+}
+
+func checkOpenHABAlertZeroAC7(t *testing.T) {
+	doc := "thresholds:\n  openhab_rss_warn_percent: 0\n  openhab_rss_crit_percent: 0\n" +
+		"  openhab_things_offline_warn: 0\n  openhab_things_offline_crit: 0\nalerts:\n  openhab_for_seconds: 0\n"
+
+	if _, err := loadYAMLText(t, doc); err != nil {
+		t.Fatalf("Load error = %v, want nil", err)
+	}
+}
+
+func checkOpenHABAlertWarnZeroAC7(t *testing.T) {
+	doc := "thresholds:\n  openhab_rss_warn_percent: 0\n  openhab_rss_crit_percent: 70\n" +
+		"  openhab_things_offline_warn: 0\n  openhab_things_offline_crit: 3\n"
+
+	if _, err := loadYAMLText(t, doc); err != nil {
+		t.Fatalf("Load error = %v, want nil", err)
+	}
+}
+
+// checkAlertsEnabledErrorAC7 asserts that loading doc fails with exactly want.
+func checkAlertsEnabledErrorAC7(t *testing.T, doc, want string) {
+	t.Helper()
+	_, err := loadYAMLText(t, doc)
+
+	if err == nil || err.Error() != want {
+		t.Fatalf("Load error = %v, want %q", err, want)
 	}
 }
 
