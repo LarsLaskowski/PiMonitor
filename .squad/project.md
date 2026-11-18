@@ -41,7 +41,7 @@ limits, patterns or sequences.
   [Configuration](../docs/areas/configuration.md)
 - File writes: `<data_dir>/history.bin` (atomic write, bounded decode) in `internal/collector/persist.go` —
   [History](../docs/areas/history.md)
-- Outbound calls: webhook delivery (`text/template` bodies with the `json` helper, retries, per-webhook queues) in
+- Outbound calls: webhook delivery (`text/template` bodies with the `json` helper, retries, per-webhook queues, whose default payload carries openHAB Thing UIDs and labels) in
   `internal/alert/notify.go` — [Notifications](../docs/areas/notifications.md); the openHAB REST client
   (`internal/collector/openhab.go`): loopback `http` only, `base_url` guarded at startup
   (`internal/config/config.go`) and again at connect time, no proxy, no redirect, 5 s timeout, 8 MiB body limit
@@ -49,7 +49,8 @@ limits, patterns or sequences.
   `internal/collector/openhab.go`, `openhab_linux.go`): sent only as a bearer header to `base_url`, only over a
   connection whose server side runs as the owner of `/var/lib/openhab` (looked up in `/proc/net/tcp*`), never
   logged or served; `GET /api/v1/openhab` serves Thing data that openHAB shows only to authenticated users, so
-  `api_key` governs who reads it; `GET /metrics` serves the Thing counts per status under the same key — [openHAB](../docs/areas/openhab.md)
+  `api_key` governs who reads it; the `things` of `openhab_things_offline` events in `GET /api/v1/alerts` carry up to
+  10 of those UIDs and labels under the same key, and the webhook payloads send them to the configured endpoints; `GET /metrics` serves the Thing counts per status under the same key — [openHAB](../docs/areas/openhab.md)
 - Logging: `slog` calls across `internal/` and `cmd/pimonitor`; no call logs the API key; the notifier names a
   webhook by its index in `alerts.webhooks` and by its URL's scheme and host, and redacts the URL in `*url.Error`
   texts, so it never logs the URL's userinfo, path, query or fragment itself — except where the endpoint echoes

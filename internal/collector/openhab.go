@@ -20,6 +20,9 @@ import (
 	"sync"
 	"syscall"
 	"time"
+	"unicode/utf8"
+
+	"github.com/larslaskowski/pimonitor/internal/alert"
 )
 
 // States of the openHAB status; OpenHABStatus.State holds exactly one.
@@ -205,6 +208,11 @@ type OpenHABCollector struct {
 	// means no history; set once before the first poll. Poll calls it holding
 	// no lock of this collector.
 	onSample func(openHABSample) time.Time
+	// onAlert receives the alert sample of every finished poll, not_installed
+	// included, after onSample stamped the poll. Nil means no openHAB alerts;
+	// set once before the first poll. Poll calls it holding no lock of this
+	// collector.
+	onAlert func(alert.OpenHABSample)
 	// last is the process the latest poll that found one saw; touched only by
 	// the poll goroutine.
 	last *openHABLastProcess
@@ -241,7 +249,7 @@ func (c *OpenHABCollector) Run(ctx context.Context) {
 
 // Poll performs one detection and REST round and stores the result.
 func (c *OpenHABCollector) Poll(ctx context.Context) {
-	status, sample, sampled := c.poll(ctx)
+	status, sample, sampled, alerts := c.poll(ctx)
 	if sampled && c.onSample != nil {
 		at := c.onSample(sample)
 		status.CollectedAt = &at
@@ -250,6 +258,12 @@ func (c *OpenHABCollector) Poll(ctx context.Context) {
 	c.status = status
 	c.polled = true
 	c.mu.Unlock()
+	if c.onAlert != nil {
+		if status.CollectedAt != nil {
+			alerts.Timestamp = *status.CollectedAt
+		}
+		c.onAlert(alerts)
+	}
 }
 
 // Status returns the latest stored status.
@@ -295,13 +309,14 @@ func (c *OpenHABCollector) root() string {
 }
 
 // poll runs one detection and REST round and returns the resulting status and
-// the sample for the history; sampled is false for not_installed.
-func (c *OpenHABCollector) poll(ctx context.Context) (status OpenHABStatus, sample openHABSample, sampled bool) {
+// the sample for the history; sampled is false for not_installed. The alert
+// sample carries the time of a not_installed poll; Poll stamps the others.
+func (c *OpenHABCollector) poll(ctx context.Context) (status OpenHABStatus, sample openHABSample, sampled bool, alerts alert.OpenHABSample) {
 	status = c.baseStatus()
 	proc, procErr := c.findProcess()
 	if procErr != nil && !c.cfg.Always && !c.installed() {
 		status.State = OpenHABStateNotInstalled
-		return status, sample, false
+		return status, sample, false, alert.OpenHABSample{Timestamp: c.now()}
 	}
 	c.sources.process.observeAt(c.logger(), "openhab process", procErr, slog.LevelWarn)
 
@@ -310,7 +325,8 @@ func (c *OpenHABCollector) poll(ctx context.Context) (status OpenHABStatus, samp
 		status.Process = c.processStatus(proc)
 		procUptime = c.processUptime(proc)
 	}
-	rootOK := c.pollREST(ctx, &status)
+	var things openHABAlertThings
+	rootOK := c.pollREST(ctx, &status, &things)
 	switch {
 	case rootOK:
 		status.State = OpenHABStateOK
@@ -324,7 +340,18 @@ func (c *OpenHABCollector) poll(ctx context.Context) (status OpenHABStatus, samp
 	}
 	collectedAt := c.now()
 	status.CollectedAt = &collectedAt
-	return status, c.buildSample(status, proc, procErr == nil), true
+	alerts = alert.OpenHABSample{
+		Installed:     true,
+		Down:          !rootOK,
+		ThingsOffline: things.count,
+		ThingsValid:   things.valid,
+		Things:        things.list,
+	}
+	if total := c.totalMemory(); procErr == nil && total > 0 {
+		alerts.RSSPercent = 100 * float64(proc.rssBytes) / float64(total)
+		alerts.RSSValid = true
+	}
+	return status, c.buildSample(status, proc, procErr == nil), true, alerts
 }
 
 // buildSample derives the history sample of a finished poll and updates the
@@ -344,6 +371,14 @@ func (c *OpenHABCollector) buildSample(status OpenHABStatus, proc openHABProcess
 		sample.heapBytes, sample.heapOK = status.JVM.HeapUsedBytes, true
 	}
 	return sample
+}
+
+// totalMemory returns the host's total RAM in bytes, 0 when unknown.
+func (c *OpenHABCollector) totalMemory() uint64 {
+	if c.memTotal == nil {
+		return 0
+	}
+	return c.memTotal()
 }
 
 // installed reports whether one of openHAB's standard paths exists.
@@ -499,7 +534,7 @@ type openHABThingResponse struct {
 // pollREST makes the REST calls in order and fills status; it reports
 // whether the root call answered as openHAB. The other calls are skipped
 // when it did not.
-func (c *OpenHABCollector) pollREST(ctx context.Context, status *OpenHABStatus) bool {
+func (c *OpenHABCollector) pollREST(ctx context.Context, status *OpenHABStatus, alerts *openHABAlertThings) bool {
 	client := c.newClient()
 	defer client.CloseIdleConnections()
 
@@ -526,7 +561,7 @@ func (c *OpenHABCollector) pollREST(ctx context.Context, status *OpenHABStatus) 
 	var things []openHABThingResponse
 	err = c.get(ctx, client, "/rest/things?summary=true", &things)
 	if c.record(&c.sources.things, "things", err, status) {
-		status.Things = summarizeThings(things)
+		status.Things, *alerts = summarizeThings(things, status.StartLevel)
 	}
 
 	var items []struct{}
@@ -565,11 +600,38 @@ func applySystemInfo(status *OpenHABStatus, info openHABSystemInfoResponse) {
 	}
 }
 
+// openHABAlertThings is the Things figure the alert engine gets: the number of
+// counted Things and the first ten of them, valid only when the Things call
+// succeeded. It travels privately from pollREST to Poll.
+type openHABAlertThings struct {
+	valid bool
+	count int
+	list  []alert.OpenHABThing
+}
+
+// openHABAlertFieldMax is the most bytes of each string of an alert Thing.
+const openHABAlertFieldMax = 256
+
+// cutUTF8 returns s cut to at most limit bytes at a rune boundary.
+func cutUTF8(s string, limit int) string {
+	if len(s) <= limit {
+		return s
+	}
+	for limit > 0 && !utf8.RuneStart(s[limit]) {
+		limit--
+	}
+	return s[:limit]
+}
+
 // summarizeThings counts the Things and lists up to ten that are neither
-// ONLINE nor disabled, sorted by UID.
-func summarizeThings(things []openHABThingResponse) *OpenHABThings {
+// ONLINE nor disabled, sorted by UID. It also derives the alert figure: the
+// Things that are not ONLINE, not disabled and, while the start level is
+// reported and below 100, not UNKNOWN (they are still starting).
+func summarizeThings(things []openHABThingResponse, startLevel *int) (*OpenHABThings, openHABAlertThings) {
 	out := &OpenHABThings{Total: len(things), ByStatus: map[string]int{}, NotOnline: []OpenHABThing{}}
 	var listed []OpenHABThing
+	var counted []OpenHABThing
+	starting := startLevel != nil && *startLevel < 100
 	for _, th := range things {
 		info := th.StatusInfo
 		if slices.Contains(openHABThingStatuses, info.Status) {
@@ -579,12 +641,28 @@ func summarizeThings(things []openHABThingResponse) *OpenHABThings {
 		if info.Status == "ONLINE" || disabled {
 			continue
 		}
-		listed = append(listed, OpenHABThing{UID: th.UID, Label: th.Label, Status: info.Status,
-			StatusDetail: info.StatusDetail, Description: info.Description})
+		thing := OpenHABThing{UID: th.UID, Label: th.Label, Status: info.Status,
+			StatusDetail: info.StatusDetail, Description: info.Description}
+		listed = append(listed, thing)
+		if !starting || info.Status != "UNKNOWN" {
+			counted = append(counted, thing)
+		}
 	}
-	slices.SortFunc(listed, func(a, b OpenHABThing) int { return strings.Compare(a.UID, b.UID) })
+	byUID := func(a, b OpenHABThing) int { return strings.Compare(a.UID, b.UID) }
+	slices.SortFunc(listed, byUID)
+	slices.SortFunc(counted, byUID)
 	out.NotOnline = append(out.NotOnline, listed[:min(len(listed), openHABMaxListedThings)]...)
-	return out
+
+	figure := openHABAlertThings{valid: true, count: len(counted)}
+	for _, th := range counted[:min(len(counted), openHABMaxListedThings)] {
+		figure.list = append(figure.list, alert.OpenHABThing{
+			UID:          cutUTF8(th.UID, openHABAlertFieldMax),
+			Label:        cutUTF8(th.Label, openHABAlertFieldMax),
+			Status:       cutUTF8(th.Status, openHABAlertFieldMax),
+			StatusDetail: cutUTF8(th.StatusDetail, openHABAlertFieldMax),
+		})
+	}
+	return out, figure
 }
 
 // record logs the outcome of one source, adds it to the refused list when

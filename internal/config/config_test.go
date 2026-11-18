@@ -1268,3 +1268,185 @@ func TestLoad_OpenHABTokenEnvRealEnvironment_AC8(t *testing.T) {
 		t.Fatalf("%s still set to %q after Load, want unset", OpenHABTokenEnvVar, v)
 	}
 }
+
+// openHABAlertErrorCases are the E13 texts of the five openHAB alert options,
+// each with the YAML document that triggers it.
+var openHABAlertErrorCases = []struct {
+	name string
+	yaml string
+	want string
+}{
+	{"rss warn NaN", "thresholds:\n  openhab_rss_warn_percent: .nan\n",
+		"thresholds.openhab_rss_warn_percent must be a finite number"},
+	{"rss crit +Inf", "thresholds:\n  openhab_rss_crit_percent: .inf\n",
+		"thresholds.openhab_rss_crit_percent must be a finite number"},
+	{"rss warn -Inf", "thresholds:\n  openhab_rss_warn_percent: -.inf\n",
+		"thresholds.openhab_rss_warn_percent must be a finite number"},
+	{"for_seconds NaN", "alerts:\n  openhab_for_seconds: .nan\n",
+		"alerts.openhab_for_seconds must be a finite number"},
+	{"for_seconds +Inf", "alerts:\n  openhab_for_seconds: .inf\n",
+		"alerts.openhab_for_seconds must be a finite number"},
+	{"rss warn negative", "thresholds:\n  openhab_rss_warn_percent: -1\n",
+		"thresholds.openhab_rss_warn_percent must be >= 0 (got -1)"},
+	{"rss crit negative", "thresholds:\n  openhab_rss_crit_percent: -2\n",
+		"thresholds.openhab_rss_crit_percent must be >= 0 (got -2)"},
+	{"things warn negative", "thresholds:\n  openhab_things_offline_warn: -1\n",
+		"thresholds.openhab_things_offline_warn must be >= 0 (got -1)"},
+	{"things crit negative", "thresholds:\n  openhab_things_offline_crit: -3\n",
+		"thresholds.openhab_things_offline_crit must be >= 0 (got -3)"},
+	{"rss warn above crit", "thresholds:\n  openhab_rss_warn_percent: 80\n  openhab_rss_crit_percent: 70\n",
+		"thresholds.openhab_rss_warn_percent (80) must be <= thresholds.openhab_rss_crit_percent (70)"},
+	{"things warn above crit", "thresholds:\n  openhab_things_offline_warn: 5\n  openhab_things_offline_crit: 3\n",
+		"thresholds.openhab_things_offline_warn (5) must be <= thresholds.openhab_things_offline_crit (3)"},
+	{"things warn fractional", "thresholds:\n  openhab_things_offline_warn: 1.5\n",
+		"thresholds.openhab_things_offline_warn must be a whole number (got 1.5)"},
+	{"things crit fractional", "thresholds:\n  openhab_things_offline_crit: 2.5\n",
+		"thresholds.openhab_things_offline_crit must be a whole number (got 2.5)"},
+	{"for_seconds negative", "alerts:\n  openhab_for_seconds: -1\n",
+		"alerts.openhab_for_seconds must be >= 0 (got -1)"},
+}
+
+func TestLoad_OpenHABAlertOptions_AC7(t *testing.T) {
+	t.Run("AC7 defaults", checkOpenHABAlertDefaultsAC7)
+	t.Run("AC7 file without the keys keeps the defaults", checkOpenHABAlertKeysAbsentAC7)
+	t.Run("AC7 explicit values are read", checkOpenHABAlertExplicitAC7)
+	t.Run("AC7 zero is accepted for every option", checkOpenHABAlertZeroAC7)
+	t.Run("AC7 warn 0 with crit set is accepted", checkOpenHABAlertWarnZeroAC7)
+	for _, enabled := range []string{"true", "false"} {
+		for _, tc := range openHABAlertErrorCases {
+			t.Run(fmt.Sprintf("AC7 E13 alerts.enabled %s %s", enabled, tc.name), func(t *testing.T) {
+				checkAlertsEnabledErrorAC7(t, withAlertsEnabled(tc.yaml, enabled), tc.want)
+			})
+		}
+	}
+}
+
+func checkOpenHABAlertDefaultsAC7(t *testing.T) {
+	cfg := Default()
+
+	if cfg.Thresholds.OpenHABRSSWarnPercent != 50 || cfg.Thresholds.OpenHABRSSCritPercent != 75 {
+		t.Errorf("rss thresholds = %v/%v, want 50/75", cfg.Thresholds.OpenHABRSSWarnPercent, cfg.Thresholds.OpenHABRSSCritPercent)
+	}
+	if cfg.Thresholds.OpenHABThingsOfflineWarn != 1 || cfg.Thresholds.OpenHABThingsOfflineCrit != 0 {
+		t.Errorf("things thresholds = %d/%d, want 1/0", cfg.Thresholds.OpenHABThingsOfflineWarn, cfg.Thresholds.OpenHABThingsOfflineCrit)
+	}
+	if cfg.Alerts.OpenHABForSeconds != 300 {
+		t.Errorf("Alerts.OpenHABForSeconds = %v, want 300", cfg.Alerts.OpenHABForSeconds)
+	}
+	if got := cfg.OpenHABAlertFor(); got != 5*time.Minute {
+		t.Errorf("OpenHABAlertFor() = %v, want 5m0s", got)
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Errorf("Default().Validate() = %v, want nil", err)
+	}
+}
+
+func checkOpenHABAlertKeysAbsentAC7(t *testing.T) {
+	res, err := loadYAMLText(t, "poll_interval_seconds: 7\n")
+	if err != nil {
+		t.Fatalf("Load error = %v, want nil", err)
+	}
+
+	want := Default()
+	if res.Config.Thresholds != want.Thresholds {
+		t.Errorf("Thresholds = %+v, want %+v", res.Config.Thresholds, want.Thresholds)
+	}
+	if res.Config.Alerts.OpenHABForSeconds != 300 {
+		t.Errorf("Alerts.OpenHABForSeconds = %v, want 300", res.Config.Alerts.OpenHABForSeconds)
+	}
+}
+
+func checkOpenHABAlertExplicitAC7(t *testing.T) {
+	doc := "thresholds:\n  openhab_rss_warn_percent: 40.5\n  openhab_rss_crit_percent: 60\n" +
+		"  openhab_things_offline_warn: 2\n  openhab_things_offline_crit: 4\nalerts:\n  openhab_for_seconds: 90\n"
+
+	res, err := loadYAMLText(t, doc)
+
+	if err != nil {
+		t.Fatalf("Load error = %v, want nil", err)
+	}
+	th := res.Config.Thresholds
+	if th.OpenHABRSSWarnPercent != 40.5 || th.OpenHABRSSCritPercent != 60 || th.OpenHABThingsOfflineWarn != 2 || th.OpenHABThingsOfflineCrit != 4 {
+		t.Errorf("thresholds = %+v, want 40.5/60/2/4", th)
+	}
+	if got := res.Config.OpenHABAlertFor(); got != 90*time.Second {
+		t.Errorf("OpenHABAlertFor() = %v, want 1m30s", got)
+	}
+}
+
+func checkOpenHABAlertZeroAC7(t *testing.T) {
+	doc := "thresholds:\n  openhab_rss_warn_percent: 0\n  openhab_rss_crit_percent: 0\n" +
+		"  openhab_things_offline_warn: 0\n  openhab_things_offline_crit: 0\nalerts:\n  openhab_for_seconds: 0\n"
+
+	if _, err := loadYAMLText(t, doc); err != nil {
+		t.Fatalf("Load error = %v, want nil", err)
+	}
+}
+
+func checkOpenHABAlertWarnZeroAC7(t *testing.T) {
+	doc := "thresholds:\n  openhab_rss_warn_percent: 0\n  openhab_rss_crit_percent: 70\n" +
+		"  openhab_things_offline_warn: 0\n  openhab_things_offline_crit: 3\n"
+
+	if _, err := loadYAMLText(t, doc); err != nil {
+		t.Fatalf("Load error = %v, want nil", err)
+	}
+}
+
+// checkAlertsEnabledErrorAC7 asserts that loading doc fails with exactly want.
+func checkAlertsEnabledErrorAC7(t *testing.T, doc, want string) {
+	t.Helper()
+	_, err := loadYAMLText(t, doc)
+
+	if err == nil || err.Error() != want {
+		t.Fatalf("Load error = %v, want %q", err, want)
+	}
+}
+
+// withAlertsEnabled returns doc with alerts.enabled set to enabled, merging
+// into an existing alerts block of doc.
+func withAlertsEnabled(doc, enabled string) string {
+	if strings.Contains(doc, "alerts:\n") {
+		return strings.Replace(doc, "alerts:\n", "alerts:\n  enabled: "+enabled+"\n", 1)
+	}
+	return doc + "alerts:\n  enabled: " + enabled + "\n"
+}
+
+func TestValidate_OpenHABAlertOptions_AC7(t *testing.T) {
+	tests := []struct {
+		name   string
+		mutate func(*Config)
+		want   string
+	}{
+		{"AC7 rss warn NaN", func(c *Config) { c.Thresholds.OpenHABRSSWarnPercent = math.NaN() },
+			"thresholds.openhab_rss_warn_percent must be a finite number"},
+		{"AC7 rss crit Inf", func(c *Config) { c.Thresholds.OpenHABRSSCritPercent = math.Inf(1) },
+			"thresholds.openhab_rss_crit_percent must be a finite number"},
+		{"AC7 for_seconds -Inf", func(c *Config) { c.Alerts.OpenHABForSeconds = math.Inf(-1) },
+			"alerts.openhab_for_seconds must be a finite number"},
+		{"AC7 for_seconds negative", func(c *Config) { c.Alerts.OpenHABForSeconds = -5 },
+			"alerts.openhab_for_seconds must be >= 0 (got -5)"},
+		{"AC7 things warn negative", func(c *Config) { c.Thresholds.OpenHABThingsOfflineWarn = -1 },
+			"thresholds.openhab_things_offline_warn must be >= 0 (got -1)"},
+		{"AC7 things crit negative", func(c *Config) { c.Thresholds.OpenHABThingsOfflineCrit = -1 },
+			"thresholds.openhab_things_offline_crit must be >= 0 (got -1)"},
+		{"AC7 rss warn above crit", func(c *Config) { c.Thresholds.OpenHABRSSWarnPercent = 90 },
+			"thresholds.openhab_rss_warn_percent (90) must be <= thresholds.openhab_rss_crit_percent (75)"},
+		{"AC7 things warn above crit", func(c *Config) {
+			c.Thresholds.OpenHABThingsOfflineWarn = 4
+			c.Thresholds.OpenHABThingsOfflineCrit = 2
+		}, "thresholds.openhab_things_offline_warn (4) must be <= thresholds.openhab_things_offline_crit (2)"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := Default()
+			cfg.Alerts.Enabled = false
+			tt.mutate(&cfg)
+
+			err := cfg.Validate()
+
+			if err == nil || err.Error() != tt.want {
+				t.Fatalf("Validate() error = %v, want %q", err, tt.want)
+			}
+		})
+	}
+}

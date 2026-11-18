@@ -17,6 +17,15 @@ its states as badges, and [Notifications](notifications.md) delivers its events 
 - Every fast collection tick (`poll_interval_seconds`, see [Metrics](metrics.md)) produces one sample, and the
   engine evaluates each sample once, in the order the samples were taken. All times the engine uses — debounce,
   `since`, event `at` — are the timestamps of those samples, not the time of evaluation.
+- The three openHAB metrics have their own feed: each finished openHAB poll (`openhab.poll_interval_seconds`,
+  [openHAB](openhab.md#cadence)) is evaluated exactly once, in the order the polls finished, with its `collected_at` as
+  the timestamp (the time the poll finished for a `not_installed` poll, which has no `collected_at`), whether or not a
+  fast tick runs in between and also when the memory history drops waiting points. Their debounce window is
+  `alerts.openhab_for_seconds`, not `alerts.for_seconds`. Fast ticks never re-evaluate the last poll, so they neither
+  shorten the window nor produce `openhab_*` events. They exist only with `alerts.enabled` and openHAB polling on
+  (`openhab.enabled` not `false`).
+- With `openhab.enabled: true` on a host without openHAB the poll is `running_unreachable` or `installed_not_running`,
+  so `openhab_down` fires and stays at `crit`.
 - A sample is evaluated as a whole: a reader of the alert state never sees a sample half applied.
 - All alert state lives in memory only. After a restart every metric starts again at `ok` with an empty event
   list; an alert that was active before the restart fires again once its condition has held for the debounce
@@ -31,10 +40,19 @@ its states as badges, and [Notifications](notifications.md) delivers its events 
 | `memory` | none | RAM used, percent | `thresholds.memory_warn_percent`, `thresholds.memory_crit_percent` |
 | `swap` | none | swap used, percent | `thresholds.swap_warn_percent`, `thresholds.swap_crit_percent` |
 | `disk` | the mountpoint | filesystem used, percent | `thresholds.disk_warn_percent`, `thresholds.disk_crit_percent` |
+| `openhab_down` | none | `1` when the openHAB poll is `installed_not_running` or `running_unreachable` (any failure of the root call while the process runs included), `0` when it is `ok`; only `ok` and `crit` | none |
+| `openhab_rss_percent` | none | resident memory of the openHAB process as a percentage of the Pi's RAM | `thresholds.openhab_rss_warn_percent`, `thresholds.openhab_rss_crit_percent` |
+| `openhab_things_offline` | none | number of Things that are not `ONLINE`, leaving out disabled Things (`UNINITIALIZED` with detail `DISABLED`) and, while the reported start level is below 100, `UNKNOWN` ones; `UNKNOWN` ones count when no start level is reported | `thresholds.openhab_things_offline_warn`, `thresholds.openhab_things_offline_crit` |
 
-- No other metric (load average, network, hwmon sensors, GPU/PMIC temperature, updates, processes) is alerted on.
+- No other metric (load average, network, hwmon sensors, GPU/PMIC temperature, updates, processes, the openHAB JVM
+  heap, add-ons or Items) is alerted on.
 - `disk` has one independent state per mountpoint; all mountpoints share the same pair of thresholds. Which
   filesystems are reported is decided by the collector ([Metrics](metrics.md)).
+- `openhab_things_offline` is one count for all Things, not one alert per Thing
+  ([0026](../decisions/0026-openhab-things-alert-is-one-count.md)); `value` is the count over all Things of the poll,
+  while the card's `Things offline: <n>` counts the at most 10 Things it lists. The Things call needs an openHAB API
+  token (`openhab.api_token` or `PIMONITOR_OPENHAB_TOKEN`): openHAB refuses it without one, and then the rule is
+  not evaluated ([openHAB](openhab.md)).
 - The thresholds are the same `thresholds.*` values the dashboard uses to color its cards. Their defaults and
   valid ranges are in [Configuration](configuration.md).
 
@@ -44,6 +62,12 @@ its states as badges, and [Notifications](notifications.md) delivers its events 
   `value >= *_warn`. Both comparisons are inclusive.
 - A threshold of `0` is reached by every reading, including `0`. There is no per-metric switch to turn alerting
   off; a threshold above any possible reading never triggers.
+- The exception are the four openHAB thresholds (`openhab_rss_warn_percent`, `openhab_rss_crit_percent`,
+  `openhab_things_offline_warn`, `openhab_things_offline_crit`): a cutoff counts only when it is above `0`, so `0` is
+  never reached. With only crit `0` the metric reaches at most `warn`; with only warn `0` it goes `ok` → `crit`
+  directly and `crit` → `ok` once below crit is confirmed; with both `0` the metric has no state and no event
+  ([0023](../decisions/0023-openhab-alert-thresholds-zero-is-off.md)). `openhab_down` has the cutoff 1 only, so it
+  has no `warn` level.
 
 ### Debounce
 
@@ -84,6 +108,13 @@ In every other case the level stays as it is.
   order the collector lists the filesystems, then the `cleared` events of vanished filesystems (below), among
   which the order is not defined.
 - The engine keeps the most recent **100** events; when a new event would exceed that, the oldest is dropped.
+- One openHAB poll produces its events in the order `openhab_down`, `openhab_rss_percent`,
+  `openhab_things_offline`. `events` lists them in the order they were produced; `at` rises within one metric, but
+  between an openHAB event and a fast-tick event it is not guaranteed to rise, because a poll and a fast tick finish
+  independently.
+- An `openhab_things_offline` event carries `things`: the first 10 counted Things sorted by UID, each with `uid`,
+  `label`, `status` and `status_detail`, every string cut to at most 256 bytes at a UTF-8 character boundary; the
+  list is empty when none is counted. Other events have no `things`. Thing labels come from openHAB and are untrusted.
 - Every event is also handed to webhook delivery ([Notifications](notifications.md)).
 
 ### Failed readings and vanished filesystems
@@ -93,6 +124,14 @@ In every other case the level stays as it is.
   never clear an alert. A metric that has never been read successfully since startup (for example `temperature`
   on hardware without a readable sensor) has no state at all. `cpu` has no state until the second sample after
   start, because the first fast tick has no previous CPU sample and counts as no reading.
+- An openHAB metric whose figure is missing in a poll is skipped like any failed reading: `openhab_rss_percent`
+  without a process or with an unknown RAM total, `openhab_things_offline` when the Things call failed or was refused.
+  One that was never evaluated has no state.
+- When the poll goes from installed to `not_installed`, every `openhab_*` state is removed in the order
+  `openhab_down`, `openhab_rss_percent`, `openhab_things_offline`; one at `warn` or `crit` first produces a `cleared`
+  event to `ok` with its last `value` (for the Things rule also its last list) and `at` the time that poll finished.
+  After a reinstall the metrics start again at `ok` with fresh timers. Without a finished poll (`pending`), with
+  `openhab.enabled: false` or `alerts.enabled: false` there is no `openhab_*` state or event.
 - When the filesystem reading fails, all `disk` states are left untouched — neither evaluated nor removed.
 - When the filesystem reading succeeds, the state of every mountpoint missing from it is removed. If that state was
   `warn` or `crit`, a final `cleared` event to `ok` is produced first, with `value` set to the last reading before
@@ -127,6 +166,9 @@ The response shape is defined in [`../API.md`](../API.md#get-apiv1alerts); its f
 ## Related decisions
 
 - [0009](../decisions/0009-first-cpu-tick-is-no-reading.md): the first CPU tick is no reading and is not evaluated.
+- [0023](../decisions/0023-openhab-alert-thresholds-zero-is-off.md): `0` turns the four openHAB thresholds off.
+- [0024](../decisions/0024-openhab-alerts-evaluated-per-poll.md): the openHAB metrics are evaluated once per poll.
+- [0026](../decisions/0026-openhab-things-alert-is-one-count.md): one count for all Things, not one alert per Thing.
 
 ## Not here
 

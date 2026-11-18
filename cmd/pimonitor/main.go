@@ -179,6 +179,7 @@ func collectorConfig(cfg config.Config, notifier *alert.Notifier) collector.Conf
 		HistoryWindow:         cfg.HistoryWindow(),
 		AlertsEnabled:         cfg.Alerts.Enabled,
 		AlertFor:              cfg.AlertFor(),
+		OpenHABAlertFor:       cfg.OpenHABAlertFor(),
 		Thresholds:            cfg.Thresholds,
 		Notifier:              notifier,
 		ProcessesEnabled:      cfg.ProcessesEnabled,

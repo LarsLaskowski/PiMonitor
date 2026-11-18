@@ -201,3 +201,71 @@ func TestStyleCSS_AlertStylesReuseWarnCritVariables(t *testing.T) {
 		t.Error("style.css: expected the alert styles to reuse var(--warn)/var(--crit) rather than hardcoded colors")
 	}
 }
+
+// The openHAB alert badge and highlight (issue #184, AC10) have no JS test
+// runner (docs/UNIT_TESTS.md), so these guards scan the committed assets.
+
+func TestIndexHTML_OpenHABAlertBadge_AC10(t *testing.T) {
+	html := readAsset(t, "index.html")
+
+	start := strings.Index(html, `id="card-openhab"`)
+	if start < 0 {
+		t.Fatal(`index.html: expected the openHAB card id="card-openhab"`)
+	}
+	rest := html[start:]
+	h2 := rest[strings.Index(rest, "<h2>"):strings.Index(rest, "</h2>")]
+	want := `<span class="alert-badge hidden" id="badge-openhab"></span>`
+	if !strings.Contains(h2, want) {
+		t.Errorf("index.html: expected %q (hidden by default) in the openHAB card's h2, got %q", want, h2)
+	}
+}
+
+func TestAppJS_OpenHABAlertBadge_AC10(t *testing.T) {
+	js := readAsset(t, "app.js")
+	start := strings.Index(js, "const ALERT_BADGE_IDS = {")
+	if start < 0 {
+		t.Fatal("app.js: expected ALERT_BADGE_IDS")
+	}
+	ids := js[start : start+strings.Index(js[start:], "};")]
+
+	for _, metric := range []string{"openhab_down", "openhab_rss_percent", "openhab_things_offline"} {
+		if !strings.Contains(ids, metric+": ['badge-openhab']") {
+			t.Errorf("app.js: expected ALERT_BADGE_IDS to map %s to ['badge-openhab']", metric)
+		}
+	}
+}
+
+func TestAppJS_OpenHABAlertHighlight_AC10(t *testing.T) {
+	js := readAsset(t, "app.js")
+	apply := jsFunctionBody(js, "function applyOpenHABAlertLevels(")
+
+	checkAssetParts(t, []assetCheck{
+		{"applyOpenHABAlertLevels", apply, []string{
+			"openhab_rss_percent", "openhab_things_offline", "'metric-warn'", "'metric-crit'",
+			"classList.remove", "summary",
+		}},
+		{"renderAlerts", jsFunctionBody(js, "function renderAlerts("), []string{"applyOpenHABAlertLevels("}},
+		{"renderOpenHAB", jsFunctionBody(js, "function renderOpenHAB("), []string{
+			"applyOpenHABAlertLevels(",
+			// The card's immediate warning stays beside the debounced badge.
+			"card.classList.toggle('card-warn', warn)",
+			"st.state === 'installed_not_running' || st.state === 'running_unreachable' || notOnline.length > 0",
+		}},
+	})
+}
+
+// Thing data is untrusted: the highlight only toggles fixed classes and never
+// reads or renders a Thing string, and the alerts code adds no innerHTML.
+func TestAppJS_OpenHABAlertHighlightRendersNoThingText_AC10(t *testing.T) {
+	js := readAsset(t, "app.js")
+	apply := jsFunctionBody(js, "function applyOpenHABAlertLevels(")
+	if apply == "" {
+		t.Fatal("app.js: expected a function applyOpenHABAlertLevels")
+	}
+
+	checkAssetPartsAbsent(t, []assetCheck{
+		{"applyOpenHABAlertLevels", apply, []string{
+			"innerHTML", "textContent", "insertAdjacentHTML", ".label", ".uid", ".things", "status_detail", "createElement",
+		}},
+	})
+}

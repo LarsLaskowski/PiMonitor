@@ -15,6 +15,10 @@
       swap_crit_percent: 90,
       memory_warn_percent: 80,
       memory_crit_percent: 95,
+      openhab_rss_warn_percent: 50,
+      openhab_rss_crit_percent: 75,
+      openhab_things_offline_warn: 1,
+      openhab_things_offline_crit: 0,
     },
   };
   let lastCPUCount = 1;
@@ -366,6 +370,9 @@
     memory: ['badge-memory'],
     swap: ['badge-memory'],
     disk: ['badge-disks'],
+    openhab_down: ['badge-openhab'],
+    openhab_rss_percent: ['badge-openhab'],
+    openhab_things_offline: ['badge-openhab'],
   };
 
   const ALERT_METRIC_LABELS = {
@@ -421,6 +428,28 @@
     });
 
     renderAlertBanner(metricLevels);
+    openhabAlertLevels = metricLevels;
+    applyOpenHABAlertLevels();
+  }
+
+  // The latest debounced alert level per metric, kept so renderOpenHAB can
+  // colour the card it rebuilds without waiting for the next alerts poll.
+  let openhabAlertLevels = {};
+
+  // Colours the openHAB card's memory row and Things toggle by the alert level
+  // of openhab_rss_percent and openhab_things_offline; an "ok" metric gets no
+  // class. Only fixed classes are toggled: no openHAB text is read here.
+  function applyOpenHABAlertLevels() {
+    const targets = [
+      ['openhab_rss_percent', document.querySelector('#openhab-body [data-alert-metric="openhab_rss_percent"] .bar-pct')],
+      ['openhab_things_offline', document.querySelector('#openhab-body .openhab-things summary')],
+    ];
+    for (const [metric, el] of targets) {
+      if (!el) continue;
+      const level = openhabAlertLevels[metric];
+      el.classList.remove('metric-warn', 'metric-crit');
+      if (level === 'warn' || level === 'crit') el.classList.add('metric-' + level);
+    }
   }
 
   // A clickable card's accessible name comes entirely from its button's
@@ -1368,7 +1397,9 @@
         memory += ' (' + st.process.rss_percent_of_ram.toFixed(1) + ' % of RAM)';
       }
     }
-    rows.push(openhabRow('Process memory', memory));
+    const memoryRow = openhabRow('Process memory', memory);
+    memoryRow.dataset.alertMetric = 'openhab_rss_percent';
+    rows.push(memoryRow);
     if (st.jvm && st.jvm.heap_total_bytes > 0) {
       rows.push(openhabRow('JVM heap', fmtBytes(st.jvm.heap_used_bytes) + ' / ' + fmtBytes(st.jvm.heap_total_bytes),
         st.jvm.heap_used_bytes / st.jvm.heap_total_bytes));
@@ -1406,6 +1437,7 @@
     const extra = notOnline.length ? [openhabThingsToggle(notOnline)] : [];
     body.replaceChildren(stateLine, ...rows, ...chart, ...extra);
     if (chart.length) drawOpenHABChart(latestHistory);
+    applyOpenHABAlertLevels();
   }
 
   // The openHAB poll has its own cadence: the interval the server reports

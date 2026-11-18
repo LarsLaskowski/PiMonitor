@@ -37,6 +37,11 @@ type Thresholds struct {
 	SwapCritPercent   float64 `yaml:"swap_crit_percent" json:"swap_crit_percent"`
 	MemoryWarnPercent float64 `yaml:"memory_warn_percent" json:"memory_warn_percent"`
 	MemoryCritPercent float64 `yaml:"memory_crit_percent" json:"memory_crit_percent"`
+
+	OpenHABRSSWarnPercent    float64 `yaml:"openhab_rss_warn_percent" json:"openhab_rss_warn_percent"`
+	OpenHABRSSCritPercent    float64 `yaml:"openhab_rss_crit_percent" json:"openhab_rss_crit_percent"`
+	OpenHABThingsOfflineWarn int     `yaml:"openhab_things_offline_warn" json:"openhab_things_offline_warn"`
+	OpenHABThingsOfflineCrit int     `yaml:"openhab_things_offline_crit" json:"openhab_things_offline_crit"`
 }
 
 // Alerts configures the server-side threshold alert engine, which maps each
@@ -50,6 +55,9 @@ type Alerts struct {
 	// for at least this long before it is reported as an alert, suppressing
 	// short-lived spikes. Zero fires on the first crossing.
 	ForSeconds float64 `yaml:"for_seconds"`
+	// OpenHABForSeconds is the debounce window of the openHAB alerts, in
+	// seconds.
+	OpenHABForSeconds float64 `yaml:"openhab_for_seconds"`
 	// Webhooks are HTTP endpoints that receive a JSON POST on every alert
 	// fired/cleared transition. A single generic webhook covers Slack,
 	// Discord, Home Assistant, ntfy, etc. via their incoming-webhook formats.
@@ -295,10 +303,16 @@ func Default() Config {
 			SwapCritPercent:   90,
 			MemoryWarnPercent: 80,
 			MemoryCritPercent: 95,
+
+			OpenHABRSSWarnPercent:    50,
+			OpenHABRSSCritPercent:    75,
+			OpenHABThingsOfflineWarn: 1,
+			OpenHABThingsOfflineCrit: 0,
 		},
 		Alerts: Alerts{
 			Enabled:                   true,
 			ForSeconds:                30,
+			OpenHABForSeconds:         300,
 			Webhooks:                  nil,
 			NotifyMaxRetries:          3,
 			NotifyRetryBackoffSeconds: 1,
@@ -319,6 +333,12 @@ func Default() Config {
 // an alert.
 func (c Config) AlertFor() time.Duration {
 	return time.Duration(c.Alerts.ForSeconds * float64(time.Second))
+}
+
+// OpenHABAlertFor is the debounce window before an openHAB threshold crossing
+// is reported as an alert.
+func (c Config) OpenHABAlertFor() time.Duration {
+	return time.Duration(c.Alerts.OpenHABForSeconds * float64(time.Second))
 }
 
 // FastInterval is how often live metrics (CPU, load, temperature,
@@ -433,6 +453,9 @@ func (c Config) Validate() error {
 	if c.Alerts.ForSeconds < 0 {
 		return fmt.Errorf("alerts.for_seconds must be >= 0 (got %v)", c.Alerts.ForSeconds)
 	}
+	if c.Alerts.OpenHABForSeconds < 0 {
+		return fmt.Errorf("alerts.openhab_for_seconds must be >= 0 (got %v)", c.Alerts.OpenHABForSeconds)
+	}
 	if err := c.Alerts.validate(); err != nil {
 		return err
 	}
@@ -466,7 +489,10 @@ func (c Config) validateFinite() error {
 		{"thresholds.swap_crit_percent", t.SwapCritPercent},
 		{"thresholds.memory_warn_percent", t.MemoryWarnPercent},
 		{"thresholds.memory_crit_percent", t.MemoryCritPercent},
+		{"thresholds.openhab_rss_warn_percent", t.OpenHABRSSWarnPercent},
+		{"thresholds.openhab_rss_crit_percent", t.OpenHABRSSCritPercent},
 		{"alerts.for_seconds", c.Alerts.ForSeconds},
+		{"alerts.openhab_for_seconds", c.Alerts.OpenHABForSeconds},
 		{"alerts.notify_retry_backoff_seconds", c.Alerts.NotifyRetryBackoffSeconds},
 		{"alerts.notify_min_interval_seconds", c.Alerts.NotifyMinIntervalSeconds},
 	}
@@ -597,6 +623,26 @@ func (t Thresholds) validate() error {
 			return fmt.Errorf("thresholds.%s (%v) must be <= thresholds.%s (%v)", p.warnKey, p.warn, p.critKey, p.crit)
 		}
 	}
+	// The openHAB options treat 0 as "off", so warn <= crit only applies
+	// when both are set.
+	openHABPairs := []struct {
+		warnKey, critKey string
+		warn, crit       float64
+	}{
+		{"openhab_rss_warn_percent", "openhab_rss_crit_percent", t.OpenHABRSSWarnPercent, t.OpenHABRSSCritPercent},
+		{"openhab_things_offline_warn", "openhab_things_offline_crit", float64(t.OpenHABThingsOfflineWarn), float64(t.OpenHABThingsOfflineCrit)},
+	}
+	for _, p := range openHABPairs {
+		if p.warn < 0 {
+			return fmt.Errorf("thresholds.%s must be >= 0 (got %v)", p.warnKey, p.warn)
+		}
+		if p.crit < 0 {
+			return fmt.Errorf("thresholds.%s must be >= 0 (got %v)", p.critKey, p.crit)
+		}
+		if p.warn != 0 && p.crit != 0 && p.warn > p.crit {
+			return fmt.Errorf("thresholds.%s (%v) must be <= thresholds.%s (%v)", p.warnKey, p.warn, p.critKey, p.crit)
+		}
+	}
 	return nil
 }
 
@@ -627,7 +673,7 @@ func loadYAMLFile(path string, cfg *Config) error {
 // integerOptionNames are the YAML key paths of the int-typed options. The
 // decoder truncates a fractional value for them, so checkIntegerOptions
 // inspects each one before the real decode.
-var integerOptionNames = []string{"processes_top_n", "alerts.notify_max_retries", "openhab.poll_interval_seconds", "openhab.history_window_hours"}
+var integerOptionNames = []string{"processes_top_n", "alerts.notify_max_retries", "openhab.poll_interval_seconds", "openhab.history_window_hours", "thresholds.openhab_things_offline_warn", "thresholds.openhab_things_offline_crit"}
 
 // checkIntegerOptions decodes data a second time, with the same decoder and
 // so the same alias, merge-key and tag resolution, into float64 fields for the
@@ -639,6 +685,10 @@ func checkIntegerOptions(data []byte) error {
 		Alerts        struct {
 			NotifyMaxRetries *float64 `yaml:"notify_max_retries"`
 		} `yaml:"alerts"`
+		Thresholds struct {
+			OpenHABThingsOfflineWarn *float64 `yaml:"openhab_things_offline_warn"`
+			OpenHABThingsOfflineCrit *float64 `yaml:"openhab_things_offline_crit"`
+		} `yaml:"thresholds"`
 		OpenHAB struct {
 			PollIntervalSeconds *float64 `yaml:"poll_interval_seconds"`
 			HistoryWindowHours  *float64 `yaml:"history_window_hours"`
@@ -649,10 +699,12 @@ func checkIntegerOptions(data []byte) error {
 		return nil //nolint:nilerr
 	}
 	values := map[string]*float64{
-		"processes_top_n":               shadow.ProcessesTopN,
-		"alerts.notify_max_retries":     shadow.Alerts.NotifyMaxRetries,
-		"openhab.poll_interval_seconds": shadow.OpenHAB.PollIntervalSeconds,
-		"openhab.history_window_hours":  shadow.OpenHAB.HistoryWindowHours,
+		"processes_top_n":                        shadow.ProcessesTopN,
+		"alerts.notify_max_retries":              shadow.Alerts.NotifyMaxRetries,
+		"thresholds.openhab_things_offline_warn": shadow.Thresholds.OpenHABThingsOfflineWarn,
+		"thresholds.openhab_things_offline_crit": shadow.Thresholds.OpenHABThingsOfflineCrit,
+		"openhab.poll_interval_seconds":          shadow.OpenHAB.PollIntervalSeconds,
+		"openhab.history_window_hours":           shadow.OpenHAB.HistoryWindowHours,
 	}
 	for _, name := range integerOptionNames {
 		v := values[name]

@@ -33,7 +33,7 @@ here instead of restating them.
 - A key given twice in the same mapping is an error.
 - A value of the wrong YAML type is an error, for example a quoted string (`"5"`) for a number option or a list for a
   string option. An unquoted scalar is accepted for a string option and taken as its text.
-- A fractional or non-finite value for an integer option (`processes_top_n`, `alerts.notify_max_retries`, `openhab.poll_interval_seconds`, `openhab.history_window_hours`) is an error
+- A fractional or non-finite value for an integer option (`processes_top_n`, `alerts.notify_max_retries`, `openhab.poll_interval_seconds`, `openhab.history_window_hours`, `thresholds.openhab_things_offline_warn`, `thresholds.openhab_things_offline_crit`) is an error
   while the file is read, also when it arrives through an alias, a merge key or an explicit `!!float` tag; the
   decoder would otherwise truncate it.
 - Only the first YAML document of the file is read; further documents after a `---` separator are ignored.
@@ -106,7 +106,9 @@ checked at startup; a value outside it fails startup as described under *Validat
 
 Warn and critical cutoffs for the dashboard colors and the alert engine ([Alerts](alerts.md),
 [Dashboard](dashboard.md)). Every value must be ≥ 0, and each `_warn_` value must be ≤ its `_crit_` counterpart.
-There is no upper bound.
+There is no upper bound. The four `openhab_*` keys are the exception to the warn ≤ crit rule and to the meaning of
+`0`: a `0` turns that cutoff off, so warn ≤ crit is checked only when both are non-zero, `0` for both turns the metric
+off, and they are not used for any dashboard color ([0023](../decisions/0023-openhab-alert-thresholds-zero-is-off.md)).
 
 | Key | Type | Default | Unit |
 | --- | ---- | ------- | ---- |
@@ -120,6 +122,10 @@ There is no upper bound.
 | `thresholds.swap_crit_percent` | number | `90` | % |
 | `thresholds.memory_warn_percent` | number | `80` | % |
 | `thresholds.memory_crit_percent` | number | `95` | % |
+| `thresholds.openhab_rss_warn_percent` | number | `50` | % of the Pi's RAM used by the openHAB process; `0` is off |
+| `thresholds.openhab_rss_crit_percent` | number | `75` | % of the Pi's RAM used by the openHAB process; `0` is off |
+| `thresholds.openhab_things_offline_warn` | integer | `1` | offline Things; `0` is off |
+| `thresholds.openhab_things_offline_crit` | integer | `0` | offline Things; `0` is off (the default) |
 
 #### `openhab`
 
@@ -128,7 +134,7 @@ The values of this section are validated even while `openhab.enabled` is `false`
 
 | Key | Type | Default | Valid values | Meaning |
 | --- | ---- | ------- | ------------ | ------- |
-| `openhab.enabled` | string | `"auto"` | `auto`, `true`, `false` in any letter case, quoted or not; `yes`, `no`, `on`, `off`, `1`, `0` and the empty string are rejected | `auto` polls only when openHAB is detected; `true` always polls; `false` turns the feature off, and `GET /api/v1/openhab` answers `404`. |
+| `openhab.enabled` | string | `"auto"` | `auto`, `true`, `false` in any letter case, quoted or not; `yes`, `no`, `on`, `off`, `1`, `0` and the empty string are rejected | `auto` polls only when openHAB is detected; `true` always polls (with alerts on and no openHAB on the host, `openhab_down` then stays at `crit`); `false` turns the feature off, and `GET /api/v1/openhab` answers `404`. |
 | `openhab.base_url` | string | `"http://127.0.0.1:8080"` | an `http` URL (the scheme in any letter case) whose host is an IP literal in `127.0.0.0/8`, `::1` or `::ffff:127.x.y.z`, or `localhost`; a port of 1 to 65535 or none; no user info, no path other than `/`, no query, no fragment; short or numeric address forms (`127.1`, `2130706433`, `0x7f.0.0.1`, `0127.0.0.1`), a zone, a trailing dot and `https` are rejected | Root URL of openHAB's REST API. |
 | `openhab.api_token` | string | `""` | no whitespace or control character; empty means no token | openHAB API token, sent as a bearer token; `PIMONITOR_OPENHAB_TOKEN` overrides it. Never part of any response or log line. |
 | `openhab.poll_interval_seconds` | integer | `60` | 60 to 86400 | Time between openHAB polls. |
@@ -142,6 +148,7 @@ The values of this section are validated even while `alerts.enabled` is `false`.
 | --- | ---- | ------- | ------------ | ------- |
 | `alerts.enabled` | bool | `true` | — | Whether the alert engine runs ([Alerts](alerts.md)). |
 | `alerts.for_seconds` | number | `30` | ≥ 0; `0` fires on the first crossing | Debounce window ([Alerts](alerts.md)). |
+| `alerts.openhab_for_seconds` | number | `300` | ≥ 0; `0` fires on the first crossing | Debounce window of the three `openhab_*` alerts, counted per openHAB poll ([Alerts](alerts.md)); with `openhab.enabled: true` on a host without openHAB, `openhab_down` fires once it has held that long. |
 | `alerts.webhooks` | list | empty | entries as below | Webhook destinations ([Notifications](notifications.md)). |
 | `alerts.notify_max_retries` | integer | `3` | ≥ 0; `0` means one attempt | Retries of a failed delivery ([Notifications](notifications.md)). |
 | `alerts.notify_retry_backoff_seconds` | number | `1` | ≥ 0 | Delay before the first retry ([Notifications](notifications.md)). |
@@ -170,10 +177,13 @@ The values of this section are validated even while `alerts.enabled` is `false`.
   violation found ends startup.
 - The finiteness check runs first: a NaN or infinite value of any number option fails with
   `<option> must be a finite number`, naming the key as written in the file (`thresholds.cpu_warn_percent`,
-  `alerts.webhooks[0].timeout_seconds`), before any range is compared. The two integer options are checked while the
+  `alerts.webhooks[0].timeout_seconds`), before any range is compared. The integer options are checked while the
   file is read, before it is decoded: a non-finite value fails with the same message, a fractional one with
   `<option> must be a whole number (got <value>)`, for example
   `pimonitor: load config: processes_top_n must be a whole number (got 2.5)`.
+- The openHAB alert options fail with `thresholds.<key> must be >= 0 (got <value>)`,
+  `thresholds.<warn key> (<value>) must be <= thresholds.<crit key> (<value>)` (only when both are non-zero) and
+  `alerts.openhab_for_seconds must be >= 0 (got <value>)`, also while `alerts.enabled` is `false`.
 - An invalid `openhab` option fails with its own text, which never quotes the URL or the token:
   `openhab.enabled must be auto, true or false (got "<value>")`,
   `openhab.base_url must be an http URL with a loopback host (127.0.0.0/8, ::1 or localhost) and no user, path, query or fragment`,

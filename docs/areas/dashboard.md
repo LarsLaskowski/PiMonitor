@@ -126,7 +126,8 @@ client of the [HTTP API](http-api.md) like any third-party integration and has n
   the server lists as not ONLINE (at most 10, disabled ones left out) are counted in a toggle,
   `Things offline: <n>`, that is closed by default and holds only their labels (the UID when a Thing has no
   label); no status, status detail or description is shown. The toggle's state is kept per browser and survives
-  the card's refreshes. Values of [openHAB](openhab.md).
+  the card's refreshes. The card's warning state and the toggle's count are immediate and are not changed by the
+  alerts, which are debounced and add a badge and the colors described under *Alerts*. Values of [openHAB](openhab.md).
 - While the RSS or the heap series of the history holds at least two points, the openHAB card also shows a
   `Memory history` row, labelled with the largest value shown in the card's byte format (`812 MB`, `1.2 GB`), and a
   64 px chart: RSS as the primary line (accent color) and heap used as a second line (muted color), placed by time from
@@ -159,10 +160,15 @@ client of the [HTTP API](http-api.md) like any third-party integration and has n
 
 - When `GET /api/v1/alerts` reports alerting as disabled, no badge and no banner is shown.
 - Otherwise every state whose level is not `ok` lights a badge with its level on the card it belongs to: `cpu` on
-  CPU Usage, `temperature` on Temperature, `memory` and `swap` on Memory & Swap, every `disk` state on Filesystems.
+  CPU Usage, `temperature` on Temperature, `memory` and `swap` on Memory & Swap, every `disk` state on Filesystems,
+  and `openhab_down`, `openhab_rss_percent` and `openhab_things_offline` on the openHAB card (one badge, the worst of
+  the three).
   A card shows the worst level of its states, and the level is also added to the card button's accessible name.
 - A banner lists every metric with a non-`ok` state and its worst level, worst first, and takes the color of the
-  worst level. With no such metric the banner is hidden.
+  worst level. With no such metric the banner is hidden. The openHAB metrics appear under their raw names.
+- While `openhab_rss_percent` is at `warn` or `crit`, the openHAB card's process-memory value takes that level's color;
+  likewise the `Things offline: <n>` toggle for `openhab_things_offline`. At `ok` or without a state neither is
+  colored. The card only follows the debounced alert here, never the raw thresholds.
 - Badges and banner are recomputed from the latest report on every alerts poll, so a cleared condition disappears
   on the first poll that reports it `ok` or no longer reports it.
 

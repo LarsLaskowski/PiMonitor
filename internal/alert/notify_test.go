@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -1145,5 +1146,30 @@ func TestNotifier_LogEndpointForms(t *testing.T) {
 			assertRedacted(t, rec, tc.want)
 			assertNoSentinel(t, buf)
 		})
+	}
+}
+
+// openHABEvent is a fired openhab_down transition at the given time.
+func openHABEvent(at time.Time) Event {
+	return Event{Metric: MetricOpenHABDown, Kind: KindFired, From: LevelOK, To: LevelCrit, Value: 1, At: at}
+}
+
+// The openHAB feed and the fast-tick feed reach a worker in enqueue order,
+// not in timestamp order: an openHAB event can arrive after a fast-tick event
+// stamped later. A delivery of one feed must not prune the rate-limit window
+// of the other, so a second fired openhab_* event inside the first one's
+// window is still dropped.
+func TestNotifier_RateLimitAcrossFeeds_AC5(t *testing.T) {
+	n, w, ch := newRateLimitHarness(t, "")
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	n.dispatch(context.Background(), w, openHABEvent(base))
+	n.dispatch(context.Background(), w, firedEvent(base.Add(100*time.Second)))
+	n.dispatch(context.Background(), w, openHABEvent(base.Add(30*time.Second)))
+
+	got := deliveredOffsets(ch, base)
+	want := []time.Duration{0, 100 * time.Second}
+	if !slices.Equal(got, want) {
+		t.Fatalf("delivered offsets = %v, want %v (the openhab event 30s after the first is inside its 60s window)", got, want)
 	}
 }

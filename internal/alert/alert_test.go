@@ -50,7 +50,7 @@ func cpuEvents(r Report) []Event {
 // event on entry and one cleared event on exit.
 func TestEvaluate_FiredOnEntryClearedOnExit(t *testing.T) {
 	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-	e := New(testThresholds(), 2*time.Second)
+	e := New(testThresholds(), 2*time.Second, 0)
 
 	// ok, ok, crit (t=2 start), crit, crit (promoted at t=4), then back to
 	// ok (t=5 start), ok, ok (cleared at t=7).
@@ -88,7 +88,7 @@ func cpuState(t *testing.T, r Report) State {
 // A spike shorter than the "for" window must not fire any event.
 func TestEvaluate_DebounceSuppressesShortSpike(t *testing.T) {
 	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-	e := New(testThresholds(), 2*time.Second)
+	e := New(testThresholds(), 2*time.Second, 0)
 
 	// Single-sample spike to crit at t=2, back to ok at t=3 — never held
 	// for the 2s window.
@@ -105,7 +105,7 @@ func TestEvaluate_DebounceSuppressesShortSpike(t *testing.T) {
 // A zero "for" window fires on the first crossing (no debounce).
 func TestEvaluate_ZeroForFiresImmediately(t *testing.T) {
 	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-	e := New(testThresholds(), 0)
+	e := New(testThresholds(), 0, 0)
 
 	feed(e, start, 10, 99)
 
@@ -119,7 +119,7 @@ func TestEvaluate_ZeroForFiresImmediately(t *testing.T) {
 // the most recent level.
 func TestEvaluate_Escalation(t *testing.T) {
 	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-	e := New(testThresholds(), 0)
+	e := New(testThresholds(), 0, 0)
 
 	feed(e, start, 10, 85, 99)
 
@@ -139,7 +139,7 @@ func TestEvaluate_Escalation(t *testing.T) {
 // (the debounce is symmetric).
 func TestEvaluate_SymmetricDebounceKeepsAlert(t *testing.T) {
 	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-	e := New(testThresholds(), 2*time.Second)
+	e := New(testThresholds(), 2*time.Second, 0)
 
 	// Establish crit, then a one-sample dip to ok, then back to crit.
 	feed(e, start, 99, 99, 99, 10, 99, 99, 99)
@@ -158,7 +158,7 @@ func TestEvaluate_SymmetricDebounceKeepsAlert(t *testing.T) {
 // rather than resetting the window on every warn<->crit flip.
 func TestEvaluate_FlappingWarnCritStillFires(t *testing.T) {
 	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-	e := New(testThresholds(), 2*time.Second)
+	e := New(testThresholds(), 2*time.Second, 0)
 
 	// Alternate 85 (warn) and 99 (crit) each second; the value is >= warn
 	// (80) the entire time but never continuously >= crit (95).
@@ -180,7 +180,7 @@ func TestEvaluate_FlappingWarnCritStillFires(t *testing.T) {
 // final cleared event is emitted so no dangling firing alert remains.
 func TestEvaluate_PrunesVanishedDisk(t *testing.T) {
 	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-	e := New(testThresholds(), 0)
+	e := New(testThresholds(), 0, 0)
 
 	// /data enters crit.
 	e.Evaluate(Sample{
@@ -215,7 +215,7 @@ func TestEvaluate_PrunesVanishedDisk(t *testing.T) {
 // states must be left untouched — neither re-evaluated nor pruned.
 func TestEvaluate_InvalidDisksLeftUntouched(t *testing.T) {
 	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-	e := New(testThresholds(), 0)
+	e := New(testThresholds(), 0, 0)
 
 	e.Evaluate(Sample{
 		Timestamp:  start,
@@ -246,7 +246,7 @@ func TestEvaluate_InvalidDisksLeftUntouched(t *testing.T) {
 // a sustained crit does not emit a spurious cleared event.
 func TestEvaluate_InvalidMetricKeepsState(t *testing.T) {
 	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-	e := New(testThresholds(), 0)
+	e := New(testThresholds(), 0, 0)
 
 	// Temperature enters crit.
 	e.Evaluate(Sample{Timestamp: start, TemperatureC: 90, TemperatureValid: true})
@@ -276,7 +276,7 @@ func TestEvaluate_InvalidMetricKeepsState(t *testing.T) {
 // spuriously report ok.
 func TestEvaluate_MemoryEvaluated(t *testing.T) {
 	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-	e := New(testThresholds(), 0)
+	e := New(testThresholds(), 0, 0)
 
 	e.Evaluate(Sample{Timestamp: start, MemoryPercent: 99, MemoryValid: true})
 
@@ -310,7 +310,7 @@ func TestEvaluate_MemoryEvaluated(t *testing.T) {
 // Disk alerts are tracked per mountpoint, independently.
 func TestEvaluate_PerDiskState(t *testing.T) {
 	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-	e := New(testThresholds(), 0)
+	e := New(testThresholds(), 0, 0)
 
 	e.Evaluate(Sample{
 		Timestamp:  start,
@@ -345,7 +345,7 @@ func TestEvaluate_PerDiskState(t *testing.T) {
 // The rolling event history is bounded to maxEvents, dropping the oldest.
 func TestEvaluate_EventHistoryBounded(t *testing.T) {
 	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-	e := New(testThresholds(), 0)
+	e := New(testThresholds(), 0, 0)
 	e.maxEvents = 3
 
 	// Alternate ok/crit each second; every step is a transition, producing
@@ -366,12 +366,22 @@ func TestEvaluate_EventHistoryBounded(t *testing.T) {
 // A disabled/never-evaluated engine still reports a well-formed empty report
 // once evaluated; Report on a fresh engine has no states or events.
 func TestReport_FreshEngineEmpty(t *testing.T) {
-	e := New(testThresholds(), time.Second)
+	e := New(testThresholds(), time.Second, 0)
 	r := e.Report()
 	if !r.Enabled {
 		t.Fatal("Report().Enabled should be true for a constructed engine")
 	}
 	if len(r.States) != 0 || len(r.Events) != 0 {
 		t.Fatalf("expected empty report, got %+v", r)
+	}
+}
+
+func TestEngine_Evaluate_SwapFiresWithoutOpenHABWindow(t *testing.T) {
+	e := New(testThresholds(), 0, time.Hour)
+
+	got := e.Evaluate(Sample{Timestamp: time.Date(2026, 11, 18, 12, 0, 0, 0, time.UTC), SwapPercent: 95, SwapValid: true})
+
+	if len(got) != 1 || got[0].Metric != "swap" || got[0].To != LevelCrit || got[0].Value != 95 {
+		t.Fatalf("events = %+v, want one fired swap crit (95), unaffected by the openHAB window", got)
 	}
 }

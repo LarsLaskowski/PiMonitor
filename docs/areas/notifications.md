@@ -35,8 +35,12 @@ POST; the collector relies on it never to slow down metric collection.
   webhook delays only its own deliveries, never another webhook's, and never metric collection.
 - Handing events to the webhooks never blocks: when a webhook's queue is full, the event is dropped for that
   webhook only and a warning is logged.
-- A webhook's events are delivered one at a time, in the order the alert engine produced them. An event waits
-  until every earlier event of the same webhook has been delivered, rejected or given up.
+- A webhook's events are delivered one at a time, in the order they were handed to its queue (the order the alert
+  engine produced them within one feed). An event waits until every earlier event of the same webhook has been
+  delivered, rejected or given up.
+- Events come from two feeds: the fast tick (`cpu`, `temperature`, `memory`, `swap`, `disk`) and the openHAB poll
+  (`openhab_*`). The two finish independently, so an openHAB event can be queued after a fast-tick event with a later
+  `at`; delivery order is queue order, not `at` order ([Alerts](alerts.md#events)).
 
 ### Request
 
@@ -58,13 +62,14 @@ Without a `template`, the body is a JSON object with these fields:
 
 | Field | Content |
 | ----- | ------- |
-| `metric` | `cpu`, `temperature`, `memory`, `swap` or `disk` |
+| `metric` | `cpu`, `temperature`, `memory`, `swap`, `disk`, `openhab_down`, `openhab_rss_percent` or `openhab_things_offline` |
 | `resource` | the mountpoint for `disk`; omitted for the other metrics |
 | `kind` | `fired` or `cleared` |
 | `from`, `to` | the levels before and after: `ok`, `warn` or `crit` |
 | `value` | the reading of the event, as a JSON number |
 | `at` | the event time, an RFC 3339 timestamp with fractional seconds and the host's UTC offset |
 | `message` | a one-line summary, see below |
+| `things` | only for `openhab_things_offline`: up to 10 offline Things sorted by UID, each an object with `uid`, `label`, `status` and `status_detail`, every string cut to at most 256 bytes at a UTF-8 character boundary; `[]` when none is counted; absent for every other metric |
 
 `metric`, `resource`, `kind`, `from`, `to`, `value` and `at` carry the same values and encoding as the event in
 `GET /api/v1/alerts` ([`../API.md`](../API.md#get-apiv1alerts)).
@@ -79,7 +84,11 @@ resource, and the value rounded to one decimal — for example `cpu fired: ok ->
   per event and webhook; its output is sent as the body unchanged, without any check that it is valid JSON (or
   valid anything).
 - The template sees the fields `.Metric`, `.Resource` (empty string for non-disk metrics), `.Kind`, `.From`, `.To`,
-  `.Value`, `.At` and `.Message`, with the meanings of the default payload above.
+  `.Value`, `.At` and `.Message`, with the meanings of the default payload above, and `.Things`: the list of the
+  default payload's `things` (each entry has `.UID`, `.Label`, `.Status` and `.StatusDetail`), empty for every
+  metric but `openhab_things_offline`. For example `{{range .Things}}{{.UID}}: {{.Label}}\n{{end}}`.
+- Thing UIDs and labels come from openHAB and are untrusted. The default payload escapes them as JSON; a template
+  renders them unchanged unless it applies `json`. They leave the Pi to the webhook's endpoint.
 - The template language does no escaping. The function `json` renders its argument as one complete JSON value —
   a string including its surrounding quotes and with every special character escaped, a number as a number, a
   time as a quoted RFC 3339 string. A template whose body is JSON must wrap every interpolated value in `json` and
@@ -108,7 +117,8 @@ resource, and the value rounded to one decimal — for example `cpu fired: ok ->
 ### Rate limit
 
 - The rate limit is kept per webhook and per `metric` + `resource` pair; different metrics and different
-  mountpoints never limit each other, and one webhook's limit never affects another.
+  mountpoints never limit each other, and one webhook's limit never affects another. Expired entries are dropped per
+  feed, so an `openhab_*` event never drops the window of a fast-tick metric, nor the other way round.
 - A `fired` event is dropped (with a warning) when its `at` is less than `alerts.notify_min_interval_seconds` after
   the `at` of the last **successful** delivery of a `fired` event of the same metric and resource to the same
   webhook. An event exactly at the interval is delivered.

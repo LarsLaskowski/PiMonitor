@@ -19,6 +19,9 @@ import (
 	"sync"
 	"testing"
 	"time"
+	"unicode/utf8"
+
+	"github.com/larslaskowski/pimonitor/internal/alert"
 )
 
 // Anonymized excerpts of openHAB 5.2.4 responses (docs/decisions/0015).
@@ -1623,5 +1626,320 @@ func TestOpenHABCollector_Status_HistoryWindowHours_AC9(t *testing.T) {
 					got.State, got.HistoryWindowHours, body, tc.wantState, want)
 			}
 		})
+	}
+}
+
+// ohAlertRecorder is an OpenHABCollector.onAlert hook that keeps every sample.
+type ohAlertRecorder struct {
+	mu      sync.Mutex
+	samples []alert.OpenHABSample
+}
+
+func (r *ohAlertRecorder) hook(s alert.OpenHABSample) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.samples = append(r.samples, s)
+}
+
+func (r *ohAlertRecorder) all() []alert.OpenHABSample {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return slices.Clone(r.samples)
+}
+
+// pollAlert polls c once with a recording onAlert hook and returns the one
+// sample the poll handed to it.
+func pollAlert(t *testing.T, c *OpenHABCollector) alert.OpenHABSample {
+	t.Helper()
+	rec := &ohAlertRecorder{}
+	c.onAlert = rec.hook
+
+	c.Poll(context.Background())
+
+	got := rec.all()
+	if len(got) != 1 {
+		t.Fatalf("onAlert called %d times by one poll, want once", len(got))
+	}
+	return got[0]
+}
+
+// alertSampleCase is one row of TestOpenHABCollector_Poll_AlertSample_AC1.
+type alertSampleCase struct {
+	name          string
+	install, proc bool
+	always        bool
+	rootStatus    int
+	rootBody      string
+	token         string
+	wantInstalled bool
+	wantDown      bool
+}
+
+func TestOpenHABCollector_Poll_AlertSample_AC1(t *testing.T) {
+	const notOpenHAB = `{"hello":"world"}`
+	tests := []alertSampleCase{
+		{name: "AC1 ok with process", install: true, proc: true, wantInstalled: true},
+		{name: "AC1 ok without process", install: true, wantInstalled: true},
+		{name: "AC1 installed not running", install: true, rootStatus: http.StatusServiceUnavailable, wantInstalled: true, wantDown: true},
+		{name: "AC1 running unreachable on 503", install: true, proc: true, rootStatus: http.StatusServiceUnavailable, wantInstalled: true, wantDown: true},
+		{name: "AC1 E11 running unreachable on a refused token", install: true, proc: true, token: "tok",
+			rootStatus: http.StatusUnauthorized, wantInstalled: true, wantDown: true},
+		{name: "AC1 E11 running unreachable on a forbidden token", install: true, proc: true, token: "tok",
+			rootStatus: http.StatusForbidden, wantInstalled: true, wantDown: true},
+		{name: "AC1 E11 running unreachable on a non-openHAB root", install: true, proc: true,
+			rootStatus: http.StatusOK, rootBody: notOpenHAB, wantInstalled: true, wantDown: true},
+		{name: "AC1 enabled true without process and unreachable root is down", always: true,
+			rootStatus: http.StatusServiceUnavailable, wantInstalled: true, wantDown: true},
+		{name: "AC1 enabled true without process and answering root is not down", always: true, wantInstalled: true},
+		{name: "AC1 not installed", rootStatus: http.StatusServiceUnavailable},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			checkAlertSampleAC1(t, tc)
+		})
+	}
+}
+
+// checkAlertSampleAC1 builds the openHAB root and server described by tc, polls
+// once and asserts the Installed and Down flags of the alert sample.
+func checkAlertSampleAC1(t *testing.T, tc alertSampleCase) {
+	var paths []string
+	if tc.install {
+		paths = append(paths, "etc/openhab", "var/lib/openhab")
+	}
+	root := newOHRoot(t, paths...)
+	if tc.proc {
+		writeOHJava(t, root)
+	}
+	srv := newOHServer(t)
+	if tc.rootStatus != 0 {
+		body := tc.rootBody
+		if body == "" {
+			body = `{"error":{"message":"failure"}}`
+		}
+		srv.route("/rest/", ohJSON(tc.rootStatus, body))
+	}
+	opts := []func(*OpenHABConfig){allowPeerOwner}
+	if tc.always {
+		opts = append(opts, withAlways)
+	}
+	if tc.token != "" {
+		opts = append(opts, withToken(tc.token))
+	}
+	c, _ := newOHCollector(t, srv, root, 1<<30, opts...)
+
+	got := pollAlert(t, c)
+
+	if got.Installed != tc.wantInstalled || got.Down != tc.wantDown {
+		t.Fatalf("sample Installed, Down = %v, %v, want %v, %v", got.Installed, got.Down, tc.wantInstalled, tc.wantDown)
+	}
+}
+
+func TestOpenHABCollector_Poll_AlertSample_AC2(t *testing.T) {
+	const total = 4 << 30
+	wantPercent := 100 * float64(ohJavaRSSBytes) / float64(total)
+	tests := []struct {
+		name      string
+		proc      bool
+		memTotal  uint64
+		wantValid bool
+	}{
+		{"AC2 process and total RAM give the percentage", true, total, true},
+		{"AC2 no process gives no percentage", false, total, false},
+		{"AC2 total RAM 0 gives no percentage", true, 0, false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			root := newOHRoot(t, "etc/openhab")
+			if tc.proc {
+				writeOHJava(t, root)
+			}
+			c, _ := newOHCollector(t, newOHServer(t), root, tc.memTotal)
+
+			got := pollAlert(t, c)
+
+			if got.RSSValid != tc.wantValid {
+				t.Fatalf("RSSValid = %v, want %v", got.RSSValid, tc.wantValid)
+			}
+			if tc.wantValid && got.RSSPercent != wantPercent {
+				t.Fatalf("RSSPercent = %v, want %v (RSS %d of %d bytes)", got.RSSPercent, wantPercent, ohJavaRSSBytes, total)
+			}
+		})
+	}
+}
+
+// ohAlertThings converts an expected served Thing to its alert form.
+func ohAlertThings(in []OpenHABThing) []alert.OpenHABThing {
+	out := make([]alert.OpenHABThing, 0, len(in))
+	for _, th := range in {
+		out = append(out, alert.OpenHABThing{UID: th.UID, Label: th.Label, Status: th.Status, StatusDetail: th.StatusDetail})
+	}
+	return out
+}
+
+func ohSystemInfoWithStartLevel(level int) string {
+	return fmt.Sprintf(`{"systemInfo":{"freeMemory":65401520,"totalMemory":729808896,"uptime":362335,"startLevel":%d}}`, level)
+}
+
+// alertThingsCase is one row of TestOpenHABCollector_Poll_AlertThings_AC3.
+type alertThingsCase struct {
+	name       string
+	things     string
+	systemInfo http.HandlerFunc
+	thingsCall http.HandlerFunc
+	wantValid  bool
+	wantCount  int
+	wantList   []alert.OpenHABThing
+}
+
+func TestOpenHABCollector_Poll_AlertThings_AC3(t *testing.T) {
+	refused := ohJSON(http.StatusUnauthorized, ohUnauthorizedBody)
+	tests := []alertThingsCase{
+		{name: "AC3 E9 start level 100 counts UNKNOWN, hostile and handler-missing Things", things: ohManyThingsBody(t),
+			wantValid: true, wantCount: 15, wantList: ohAlertThings(ohOfflineNodes(1, 10))},
+		{name: "AC3 E2 start level 80 leaves UNKNOWN out", things: ohManyThingsBody(t),
+			systemInfo: ohJSON(http.StatusOK, ohSystemInfoWithStartLevel(80)),
+			wantValid:  true, wantCount: 14, wantList: ohAlertThings(ohOfflineNodes(1, 10))},
+		{name: "AC3 E2 refused systeminfo counts UNKNOWN", things: ohManyThingsBody(t), systemInfo: refused,
+			wantValid: true, wantCount: 15, wantList: ohAlertThings(ohOfflineNodes(1, 10))},
+		{name: "AC3 E3 disabled and ONLINE Things are not counted", things: ohThingsBody,
+			wantValid: true, wantCount: 1,
+			wantList: []alert.OpenHABThing{{UID: "hue:device:b1:lamp_2D1", Label: "Lamp: hall!", Status: "OFFLINE", StatusDetail: "NONE"}}},
+		{name: "AC3 all ONLINE gives count 0 and no list", things: mustJSON(t, []ohThing{newOHThing("b:on", "On", "ONLINE", "NONE", "")}),
+			wantValid: true},
+		{name: "AC3 E1 refused Things call is not valid", thingsCall: refused, wantValid: false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			checkAlertThingsAC3(t, tc)
+		})
+	}
+}
+
+// checkAlertThingsAC3 serves the routes described by tc, polls once and asserts
+// the Things fields of the alert sample.
+func checkAlertThingsAC3(t *testing.T, tc alertThingsCase) {
+	srv := newOHServer(t)
+	if tc.things != "" {
+		srv.route("/rest/things", ohJSON(http.StatusOK, tc.things))
+	}
+	if tc.thingsCall != nil {
+		srv.route("/rest/things", tc.thingsCall)
+	}
+	if tc.systemInfo != nil {
+		srv.route("/rest/systeminfo", tc.systemInfo)
+	}
+	c, _ := newOHCollector(t, srv, newOHRoot(t, "etc/openhab"), 1<<30)
+
+	got := pollAlert(t, c)
+
+	if got.ThingsValid != tc.wantValid {
+		t.Fatalf("ThingsValid = %v, want %v", got.ThingsValid, tc.wantValid)
+	}
+	if got.ThingsOffline != tc.wantCount || !slices.Equal(got.Things, tc.wantList) {
+		t.Fatalf("ThingsOffline, Things = %d, %+v, want %d, %+v", got.ThingsOffline, got.Things, tc.wantCount, tc.wantList)
+	}
+}
+
+func TestOpenHABCollector_Poll_AlertThingsRootFailing_AC3(t *testing.T) {
+	srv := newOHServer(t)
+	srv.failAll(http.StatusServiceUnavailable)
+	c, _ := newOHCollector(t, srv, newOHRoot(t, "etc/openhab"), 1<<30)
+
+	got := pollAlert(t, c)
+
+	if got.ThingsValid || got.ThingsOffline != 0 || len(got.Things) != 0 {
+		t.Fatalf("sample = %+v, want no valid Things when the root call failed", got)
+	}
+}
+
+func TestOpenHABCollector_Poll_AlertThingsCapped_AC8(t *testing.T) {
+	const maxBytes = 256
+	label := strings.Repeat("a", 255) + strings.Repeat("é", 23)
+	uid := "x:" + strings.Repeat("u", 400)
+	status := strings.Repeat("S", 300)
+	detail := strings.Repeat("é", 150)
+	body := mustJSON(t, []ohThing{newOHThing(uid, label, status, detail, "")})
+	srv := newOHServer(t)
+	srv.route("/rest/things", ohJSON(http.StatusOK, body))
+	c, _ := newOHCollector(t, srv, newOHRoot(t, "etc/openhab"), 1<<30)
+
+	rec := &ohAlertRecorder{}
+	c.onAlert = rec.hook
+	c.Poll(context.Background())
+
+	samples := rec.all()
+	if len(samples) != 1 || len(samples[0].Things) != 1 {
+		t.Fatalf("samples = %+v, want one sample with one Thing", samples)
+	}
+	got := samples[0].Things[0]
+	tests := []struct {
+		field, got, full string
+		wantLen          int
+	}{
+		{"label", got.Label, label, 255},
+		{"uid", got.UID, uid, maxBytes},
+		{"status", got.Status, status, maxBytes},
+		{"status_detail", got.StatusDetail, detail, maxBytes},
+	}
+	for _, tc := range tests {
+		t.Run("AC8 "+tc.field, func(t *testing.T) {
+			if !utf8.ValidString(tc.got) || !strings.HasPrefix(tc.full, tc.got) || len(tc.got) != tc.wantLen {
+				t.Fatalf("%s = %d bytes (valid UTF-8 %v, prefix %v), want a valid prefix of %d bytes",
+					tc.field, len(tc.got), utf8.ValidString(tc.got), strings.HasPrefix(tc.full, tc.got), tc.wantLen)
+			}
+		})
+	}
+	served := c.Status().Things.NotOnline
+	if len(served) != 1 || served[0].UID != uid || served[0].Label != label || served[0].Status != status || served[0].StatusDetail != detail {
+		t.Fatalf("served NotOnline = %+v, want the full unchanged strings", served)
+	}
+}
+
+func TestOpenHABCollector_Poll_AlertHook_AC5(t *testing.T) {
+	srv := newOHServer(t)
+	root := newOHRoot(t, "etc/openhab")
+	writeOHJava(t, root)
+	c, _ := newOHCollector(t, srv, root, 1<<30)
+	stamped := ohNow.Add(-90 * time.Minute)
+	c.onSample = func(openHABSample) time.Time { return stamped }
+	rec := &ohAlertRecorder{}
+	c.onAlert = func(s alert.OpenHABSample) {
+		_ = c.Status() // takes the read lock: the hook runs holding no lock
+		rec.hook(s)
+	}
+
+	c.Poll(context.Background())
+	c.Poll(context.Background())
+
+	got := rec.all()
+	if len(got) != 2 {
+		t.Fatalf("onAlert called %d times by two polls, want 2", len(got))
+	}
+	collected := c.Status().CollectedAt
+	if collected == nil || !collected.Equal(stamped) {
+		t.Fatalf("collected_at = %v, want %v", collected, stamped)
+	}
+	for i, s := range got {
+		if !s.Timestamp.Equal(stamped) {
+			t.Fatalf("sample %d Timestamp = %v, want collected_at %v", i, s.Timestamp, stamped)
+		}
+	}
+}
+
+func TestOpenHABCollector_Poll_AlertHookNotInstalled_AC6(t *testing.T) {
+	c, _ := newOHCollector(t, newOHServer(t), newOHRoot(t), 1<<30)
+	c.onSample = func(openHABSample) time.Time {
+		t.Fatal("onSample called for not_installed")
+		return time.Time{}
+	}
+
+	got := pollAlert(t, c)
+
+	if got.Installed || got.Down || got.RSSValid || got.ThingsValid {
+		t.Fatalf("sample = %+v, want Installed false and no valid figure", got)
+	}
+	if !got.Timestamp.Equal(ohNow) {
+		t.Fatalf("Timestamp = %v, want the clock's %v (no collected_at exists)", got.Timestamp, ohNow)
 	}
 }

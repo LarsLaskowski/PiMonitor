@@ -40,7 +40,11 @@ automation systems like openHAB). Runs as a systemd service.
   restarts and reboots - no database
 - **Threshold alerts** - a server-side engine maps each poll against the
   configured warn/critical thresholds into per-metric alert states with
-  debounced fired/cleared events, exposed via `GET /api/v1/alerts`
+  debounced fired/cleared events, exposed via `GET /api/v1/alerts`; a local
+  openHAB adds three rules: `openhab_down` (not running or not reachable),
+  `openhab_rss_percent` (its memory share of the Pi) and
+  `openhab_things_offline` (needs an openHAB API token), with `0` turning a
+  threshold off
 - **Alert webhooks** - optionally POST a JSON payload (with a per-webhook
   severity filter, custom body template, retry-with-backoff and basic
   rate-limiting) to one or more HTTP endpoints on each fired/cleared

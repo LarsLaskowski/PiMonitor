@@ -65,7 +65,12 @@ reporters and reviewers have context:
   the directory is missing, the lookup fails or the platform is not Linux, the token is not sent. It never appears in
   a log line, in `GET /api/v1/openhab`, in `GET /api/v1/config` or in any other response. With an
   `openhab.api_token` set, `GET /api/v1/openhab` serves Thing UIDs, labels and status descriptions that openHAB itself
-  serves only to authenticated users (`GET /metrics` serves their counts per status); set `api_key` if the LAN should not read them.
+  serves only to authenticated users (`GET /metrics` serves their counts per status); the same Thing UIDs and labels
+  (up to 10, each string cut to 256 bytes) also appear in `openhab_things_offline` events of `GET /api/v1/alerts` and in
+  webhook payloads, which leave the Pi for the configured endpoints; set `api_key` if the LAN should not read them.
+  After an upgrade with an `openhab.api_token` set and alerts on, every webhook whose `min_level` admits `warn`
+  receives the UIDs and labels of up to 10 offline Things in `openhab_things_offline` events; set both
+  `thresholds.openhab_things_offline_warn` and `thresholds.openhab_things_offline_crit` to `0` to stop them.
 - **Webhook URLs are often the webhook's credential** (Slack, Discord, ntfy tokens in the path or query). The full
   URLs live only in the configuration file (mode `640 root:pimonitor`). The service log names a webhook by its index
   in `alerts.webhooks` and the URL's scheme and host; the notifier never logs userinfo, path, query or fragment
