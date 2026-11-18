@@ -5,7 +5,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -625,6 +627,50 @@ func TestCollector_Notifier_NotWiredWhenAlertsDisabled(t *testing.T) {
 
 	if c.notifier != nil {
 		t.Fatal("expected notifier to stay unwired when AlertsEnabled is false")
+	}
+}
+
+// TestCollector_EvaluateOpenHABAlerts_Notifies_AC1 pins that the openHAB alert
+// hook hands the engine's events to the notifier: a down openHAB with no
+// debounce window posts exactly one openhab_down fired event.
+func TestCollector_EvaluateOpenHABAlerts_Notifies_AC1(t *testing.T) {
+	bodies := make(chan string, 4)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		data, _ := io.ReadAll(r.Body)
+		bodies <- string(data)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+	notifier, err := alert.NewNotifier(config.Alerts{Webhooks: []config.Webhook{{URL: srv.URL}}}, nil)
+	if err != nil {
+		t.Fatalf("NewNotifier: %v", err)
+	}
+	c := New(Config{
+		FastInterval:    time.Second,
+		SlowInterval:    time.Minute,
+		HistoryCapacity: 10,
+		AlertsEnabled:   true,
+		Notifier:        notifier,
+	}, nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	notifier.Start(ctx)
+	defer notifier.Stop()
+	defer cancel()
+
+	c.evaluateOpenHABAlerts(alert.OpenHABSample{Timestamp: time.Now(), Installed: true, Down: true})
+
+	select {
+	case body := <-bodies:
+		if !strings.Contains(body, `"metric":"openhab_down"`) || !strings.Contains(body, `"kind":"fired"`) {
+			t.Fatalf("AC1 webhook body = %s, want an openhab_down fired event", body)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("AC1 no webhook POST arrived within 5s")
+	}
+	select {
+	case body := <-bodies:
+		t.Fatalf("AC1 unexpected second POST: %s", body)
+	case <-time.After(200 * time.Millisecond):
 	}
 }
 
