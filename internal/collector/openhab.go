@@ -612,15 +612,15 @@ type openHABAlertThings struct {
 // openHABAlertFieldMax is the most bytes of each string of an alert Thing.
 const openHABAlertFieldMax = 256
 
-// cutUTF8 returns s cut to at most max bytes at a rune boundary.
-func cutUTF8(s string, max int) string {
-	if len(s) <= max {
+// cutUTF8 returns s cut to at most limit bytes at a rune boundary.
+func cutUTF8(s string, limit int) string {
+	if len(s) <= limit {
 		return s
 	}
-	for max > 0 && !utf8.RuneStart(s[max]) {
-		max--
+	for limit > 0 && !utf8.RuneStart(s[limit]) {
+		limit--
 	}
-	return s[:max]
+	return s[:limit]
 }
 
 // summarizeThings counts the Things and lists up to ten that are neither

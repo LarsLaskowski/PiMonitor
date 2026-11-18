@@ -58,19 +58,19 @@ func (e *Engine) EvaluateOpenHAB(s OpenHABSample) []Event {
 	if s.Down {
 		down = 1
 	}
-	if ev := e.evalMetric(MetricOpenHABDown, "", down, 1, 1, s.Timestamp, e.openHABFor, true); ev != nil {
+	if ev := e.evalMetric(MetricOpenHABDown, "", down, metricCutoffs{1, 1, e.openHABFor, true}, s.Timestamp); ev != nil {
 		emitted = append(emitted, *ev)
 	}
 	if s.RSSValid && (t.OpenHABRSSWarnPercent > 0 || t.OpenHABRSSCritPercent > 0) {
 		if ev := e.evalMetric(MetricOpenHABRSSPercent, "", s.RSSPercent,
-			t.OpenHABRSSWarnPercent, t.OpenHABRSSCritPercent, s.Timestamp, e.openHABFor, true); ev != nil {
+			metricCutoffs{t.OpenHABRSSWarnPercent, t.OpenHABRSSCritPercent, e.openHABFor, true}, s.Timestamp); ev != nil {
 			emitted = append(emitted, *ev)
 		}
 	}
 	if s.ThingsValid && (t.OpenHABThingsOfflineWarn > 0 || t.OpenHABThingsOfflineCrit > 0) {
 		things := copyThings(s.Things)
 		ev := e.evalMetric(MetricOpenHABThingsOffline, "", float64(s.ThingsOffline),
-			float64(t.OpenHABThingsOfflineWarn), float64(t.OpenHABThingsOfflineCrit), s.Timestamp, e.openHABFor, true)
+			metricCutoffs{float64(t.OpenHABThingsOfflineWarn), float64(t.OpenHABThingsOfflineCrit), e.openHABFor, true}, s.Timestamp)
 		e.states[MetricOpenHABThingsOffline+"\x00"].lastThings = things
 		if ev != nil {
 			ev.Things = copyThings(things)

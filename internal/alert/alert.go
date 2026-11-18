@@ -203,26 +203,34 @@ func (e *Engine) Evaluate(s Sample) []Event {
 
 	t := e.thresholds
 	if s.CPUValid {
-		record(e.evalMetric("cpu", "", s.CPUPercent, t.CPUWarnPercent, t.CPUCritPercent, s.Timestamp, e.forDur, false))
+		record(e.evalMetric("cpu", "", s.CPUPercent, metricCutoffs{t.CPUWarnPercent, t.CPUCritPercent, e.forDur, false}, s.Timestamp))
 	}
 	if s.TemperatureValid {
-		record(e.evalMetric("temperature", "", s.TemperatureC, t.TemperatureWarnC, t.TemperatureCritC, s.Timestamp, e.forDur, false))
+		record(e.evalMetric("temperature", "", s.TemperatureC, metricCutoffs{t.TemperatureWarnC, t.TemperatureCritC, e.forDur, false}, s.Timestamp))
 	}
 	if s.MemoryValid {
-		record(e.evalMetric("memory", "", s.MemoryPercent, t.MemoryWarnPercent, t.MemoryCritPercent, s.Timestamp, e.forDur, false))
+		record(e.evalMetric("memory", "", s.MemoryPercent, metricCutoffs{t.MemoryWarnPercent, t.MemoryCritPercent, e.forDur, false}, s.Timestamp))
 	}
 	if s.SwapValid {
-		record(e.evalMetric("swap", "", s.SwapPercent, t.SwapWarnPercent, t.SwapCritPercent, s.Timestamp, e.forDur, false))
+		record(e.evalMetric("swap", "", s.SwapPercent, metricCutoffs{t.SwapWarnPercent, t.SwapCritPercent, e.forDur, false}, s.Timestamp))
 	}
 	if s.DisksValid {
 		present := make(map[string]struct{}, len(s.Disks))
 		for _, d := range s.Disks {
 			present[d.Mountpoint] = struct{}{}
-			record(e.evalMetric("disk", d.Mountpoint, d.UsedPercent, t.DiskWarnPercent, t.DiskCritPercent, s.Timestamp, e.forDur, false))
+			record(e.evalMetric("disk", d.Mountpoint, d.UsedPercent, metricCutoffs{t.DiskWarnPercent, t.DiskCritPercent, e.forDur, false}, s.Timestamp))
 		}
 		emitted = append(emitted, e.pruneDisks(present, s.Timestamp)...)
 	}
 	return emitted
+}
+
+// metricCutoffs are the warn and crit cutoffs of one metric, the debounce
+// window they are confirmed over and whether a cutoff of 0 is off (zeroOff).
+type metricCutoffs struct {
+	warn, crit float64
+	window     time.Duration
+	zeroOff    bool
 }
 
 // evalMetric runs the debounce state machine for a single metric. Callers
@@ -235,13 +243,13 @@ func (e *Engine) Evaluate(s Sample) []Event {
 // boundaries are timed independently, a value continuously >= warn fires a
 // warn alert even while it dips in and out of crit.
 //
-// window is the debounce window. With zeroOff a cutoff of 0 (or less) is off:
-// the value is never on its above side, so warn 0 with crit set goes from ok
-// straight to crit, and both 0 never alerts.
+// cut.window is the debounce window. With cut.zeroOff a cutoff of 0 (or less)
+// is off: the value is never on its above side, so warn 0 with crit set goes
+// from ok straight to crit, and both 0 never alerts.
 //
 // It returns the emitted transition event, or nil when the debounced level is
 // unchanged.
-func (e *Engine) evalMetric(metric, resource string, value, warn, crit float64, now time.Time, window time.Duration, zeroOff bool) *Event {
+func (e *Engine) evalMetric(metric, resource string, value float64, cut metricCutoffs, now time.Time) *Event {
 	key := metric + "\x00" + resource
 	st := e.states[key]
 	if st == nil {
@@ -254,14 +262,14 @@ func (e *Engine) evalMetric(metric, resource string, value, warn, crit float64, 
 		e.states[key] = st
 	}
 	st.lastValue = value
-	aboveWarn, aboveCrit := value >= warn, value >= crit
-	if zeroOff {
-		aboveWarn = warn > 0 && aboveWarn
-		aboveCrit = crit > 0 && aboveCrit
+	aboveWarn, aboveCrit := value >= cut.warn, value >= cut.crit
+	if cut.zeroOff {
+		aboveWarn = cut.warn > 0 && aboveWarn
+		aboveCrit = cut.crit > 0 && aboveCrit
 	}
 	st.updateThresholdState(aboveWarn, aboveCrit, now)
 
-	held := func(since time.Time) bool { return now.Sub(since) >= window }
+	held := func(since time.Time) bool { return now.Sub(since) >= cut.window }
 	next := nextLevel(st.active,
 		st.critAbove && held(st.critSince),  // critConfirmed
 		st.warnAbove && held(st.warnSince),  // warnConfirmed
