@@ -30,3 +30,4 @@ are quoted in full.
 | 2026-11-18 16:25 | 6 Coverage skipped (G3) | Orchestrator | skipped — coverage gate passes (98.8 % of new lines, 169/171), no deferred tests open |
 | 2026-11-18 16:25 | 4 Skeleton skipped (G4) | Orchestrator | skipped — plan task 10: no new API (dashboard assets) |
 | 2026-11-18 16:26 | 5 Tests first (G4) | Tester | RESULT: DONE, four AC10 source-level tests in internal/web/alerts_test.go, all fail on current code. Deferred: none (sonnet/medium · 17,547 tokens · 7 tool uses · 40 s · 16 in · 4,404 out · 1,507,025 cache read · 18,179 cache write · 195,462 weighted · continued from 5 Tests first (G1)) |
+| 2026-11-18 16:26 | 6 Implement (G4) | Dev | RESULT: DONE, badge, ALERT_BADGE_IDS, applyOpenHABAlertLevels; go test ./... -race green (sonnet/medium · 11,094 tokens · 5 tool uses · 24 s · 12 in · 3,105 out · 778,775 cache read · 11,273 cache write · 107,506 weighted · continued from 6 Implement (G1)) |
