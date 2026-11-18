@@ -15,6 +15,10 @@
       swap_crit_percent: 90,
       memory_warn_percent: 80,
       memory_crit_percent: 95,
+      openhab_rss_warn_percent: 50,
+      openhab_rss_crit_percent: 75,
+      openhab_things_offline_warn: 1,
+      openhab_things_offline_crit: 0,
     },
   };
   let lastCPUCount = 1;
