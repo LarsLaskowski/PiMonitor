@@ -37,6 +37,11 @@ type Thresholds struct {
 	SwapCritPercent   float64 `yaml:"swap_crit_percent" json:"swap_crit_percent"`
 	MemoryWarnPercent float64 `yaml:"memory_warn_percent" json:"memory_warn_percent"`
 	MemoryCritPercent float64 `yaml:"memory_crit_percent" json:"memory_crit_percent"`
+
+	OpenHABRSSWarnPercent    float64 `yaml:"openhab_rss_warn_percent" json:"openhab_rss_warn_percent"`
+	OpenHABRSSCritPercent    float64 `yaml:"openhab_rss_crit_percent" json:"openhab_rss_crit_percent"`
+	OpenHABThingsOfflineWarn int     `yaml:"openhab_things_offline_warn" json:"openhab_things_offline_warn"`
+	OpenHABThingsOfflineCrit int     `yaml:"openhab_things_offline_crit" json:"openhab_things_offline_crit"`
 }
 
 // Alerts configures the server-side threshold alert engine, which maps each
@@ -50,6 +55,9 @@ type Alerts struct {
 	// for at least this long before it is reported as an alert, suppressing
 	// short-lived spikes. Zero fires on the first crossing.
 	ForSeconds float64 `yaml:"for_seconds"`
+	// OpenHABForSeconds is the debounce window of the openHAB alerts, in
+	// seconds.
+	OpenHABForSeconds float64 `yaml:"openhab_for_seconds"`
 	// Webhooks are HTTP endpoints that receive a JSON POST on every alert
 	// fired/cleared transition. A single generic webhook covers Slack,
 	// Discord, Home Assistant, ntfy, etc. via their incoming-webhook formats.
@@ -319,6 +327,12 @@ func Default() Config {
 // an alert.
 func (c Config) AlertFor() time.Duration {
 	return time.Duration(c.Alerts.ForSeconds * float64(time.Second))
+}
+
+// OpenHABAlertFor is the debounce window before an openHAB threshold crossing
+// is reported as an alert.
+func (c Config) OpenHABAlertFor() time.Duration {
+	return 0
 }
 
 // FastInterval is how often live metrics (CPU, load, temperature,

@@ -16,6 +16,8 @@ import (
 type Config struct {
 	// OpenHAB configures the optional openHAB status poll.
 	OpenHAB OpenHABConfig
+	// OpenHABAlertFor is the debounce window of the openHAB alerts.
+	OpenHABAlertFor time.Duration
 	// FastInterval is how often CPU, load average, temperature,
 	// memory/swap, disk, disk I/O, network, and wireless metrics are
 	// sampled.
