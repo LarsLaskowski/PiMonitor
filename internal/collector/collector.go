@@ -348,6 +348,9 @@ func New(cfg Config, log *slog.Logger) *Collector {
 	if cfg.OpenHAB.Enabled {
 		c.openhab = NewOpenHABCollector(cfg.OpenHAB, c.memoryTotal, log)
 		c.openhab.onSample = c.queueOpenHABSample
+		if c.alerts != nil {
+			c.openhab.onAlert = c.evaluateOpenHABAlerts
+		}
 		capacity := max(cfg.OpenHAB.HistoryCapacity, 1)
 		c.ohRSSHist = NewRingBuffer[HistoryPoint](capacity)
 		c.ohHeapHist = NewRingBuffer[HistoryPoint](capacity)
@@ -513,6 +516,17 @@ func (c *Collector) queueOpenHABSample(sample openHABSample) time.Time {
 		c.ohWaiting = append(c.ohWaiting[:0], c.ohWaiting[over:]...)
 	}
 	return sample.at
+}
+
+// evaluateOpenHABAlerts is the OpenHABCollector's onAlert hook. It hands the
+// poll's sample to the alert engine and the resulting events to the notifier.
+// It runs outside the bounded history queue, so every poll is evaluated
+// exactly once, and holds no lock of the collector: the engine has its own.
+func (c *Collector) evaluateOpenHABAlerts(sample alert.OpenHABSample) {
+	events := c.alerts.EvaluateOpenHAB(sample)
+	if c.notifier != nil && len(events) > 0 {
+		c.notifier.Notify(events)
+	}
 }
 
 // drainOpenHABSamples records the waiting openHAB samples in the series.
