@@ -609,9 +609,11 @@ Notes:
   process's resident memory as a percentage of the Pi's RAM) and
   `openhab_things_offline` (the number of Things that are not `ONLINE`,
   disabled ones and, during startup, `UNKNOWN` ones left out). They are absent
-  while no openHAB is detected, before the first poll finishes, and while their
-  figure is not available (`openhab_things_offline` needs an openHAB API token);
-  clients must ignore `metric` values they do not know. They are evaluated once
+  while no openHAB is detected, before the first poll finishes, while both of
+  their thresholds are `0`, and as long as their figure has never been available
+  (`openhab_things_offline` needs an openHAB API token); a poll whose figure is
+  missing leaves an existing state unchanged. Clients must ignore `metric`
+  values they do not know. They are evaluated once
   per finished openHAB poll (`openhab.poll_interval_seconds`) with the window
   `alerts.openhab_for_seconds`, not on every fast tick. A threshold of `0` turns
   its cutoff off for the four `thresholds.openhab_*` keys. When openHAB is
