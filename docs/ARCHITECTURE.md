@@ -41,6 +41,7 @@ flowchart LR
     VCGen["vcgencmd\n(optional, Pi-only)"] --> Collector
     OH["openHAB REST API\n(loopback only)"] --> Collector
     Collector -->|fast tick| Alerts[alert.Engine]
+    Collector -->|openHAB poll| Alerts
     Alerts -->|events| Notifier[alert.Notifier]
     Notifier -->|HTTP POST| Webhooks[("Slack / Discord /\nHome Assistant / ntfy / ...")]
     Collector --> History[(history.bin)]
@@ -208,7 +209,11 @@ Behavior: [Alerts](areas/alerts.md).
 plus a rolling list of `fired`/`cleared` transition events, served via
 `GET /api/v1/alerts`. It is fed synchronously from inside `Collector.fastTick`, while it
 holds its own separate mutex — this is safe because the engine never calls back into the
-collector, so evaluating it while the collector's own lock is held cannot deadlock.
+collector, so evaluating it while the collector's own lock is held cannot deadlock. The three `openhab_*` metrics are fed from the
+openHAB poll's own goroutine instead (`Engine.EvaluateOpenHAB`, once per finished poll, outside
+the bounded history hand-over queue and holding no collector lock) with a debounce window of their
+own; see [0024](decisions/0024-openhab-alerts-evaluated-per-poll.md). The notifier therefore
+receives events from two feeds.
 
 **Debounce is the core design element.** A raw threshold crossing does not immediately
 change the reported state; it must persist for the debounce window before being promoted,

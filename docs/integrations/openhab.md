@@ -192,6 +192,44 @@ Things to know:
 - `/api/v1/openhab` is a plain JSON document like the metrics: bind it with the same HTTP binding and `JSONPATH`
   transformations (for example `JSONPATH:$.things.by_status.OFFLINE`).
 
+## Alerts on openHAB itself
+
+With alerts on (`alerts.enabled`, the default) PiMonitor also raises alerts about the openHAB it polls, in
+[`GET /api/v1/alerts`](../API.md#get-apiv1alerts) and in the webhooks:
+
+- `openhab_down` is `crit` while openHAB is not running or its REST API does not answer.
+- `openhab_rss_percent` is `warn` or `crit` while openHAB's process uses at least `thresholds.openhab_rss_warn_percent`
+  (default 50) or `thresholds.openhab_rss_crit_percent` (default 75) percent of the Pi's RAM.
+- `openhab_things_offline` is `warn` or `crit` while at least `thresholds.openhab_things_offline_warn` (default 1) or
+  `thresholds.openhab_things_offline_crit` (default 0, off) Things are not ONLINE. Disabled Things are not counted, nor
+  are `UNKNOWN` ones while openHAB is still starting. The event lists up to 10 of them (UID, label, status, status
+  detail; each string cut to 256 bytes).
+
+A `0` turns one of these four thresholds off. Each alert must hold for `alerts.openhab_for_seconds` (default 300) of
+openHAB polls (`openhab.poll_interval_seconds`) before it fires or clears. The Things rule needs an openHAB API token
+(`openhab.api_token` or `PIMONITOR_OPENHAB_TOKEN`): without one openHAB refuses the Things call and the rule is not
+evaluated. With `openhab.enabled: true` on a machine without openHAB, `openhab_down` stays at `crit`; leave it at
+`auto` unless you want that.
+
+The Thing UIDs and labels reach the webhook's endpoint; a webhook that should not get them can use a `template` without
+`.Things`, or set both Things thresholds to `0`.
+
+An ntfy webhook that names the offline Things (a plain-text body, so no `json` function):
+
+```yaml
+alerts:
+  webhooks:
+    - url: "https://ntfy.sh/my-pimonitor-topic"
+      content_type: text/plain
+      template: |
+        {{.Message}}
+        {{range .Things}}{{.UID}} ({{.Label}}): {{.Status}} {{.StatusDetail}}
+        {{end}}
+```
+
+`.Things` is empty for every other metric, so the same template serves all alerts. Delivery details:
+[`docs/areas/notifications.md`](../areas/notifications.md).
+
 ## Prometheus alternative
 
 PiMonitor exposes a native `GET /metrics` endpoint in the Prometheus text

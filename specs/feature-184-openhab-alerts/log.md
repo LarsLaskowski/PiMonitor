@@ -33,3 +33,5 @@ are quoted in full.
 | 2026-11-18 16:26 | 6 Implement (G4) | Dev | RESULT: DONE, badge, ALERT_BADGE_IDS, applyOpenHABAlertLevels; go test ./... -race green (sonnet/medium · 11,094 tokens · 5 tool uses · 24 s · 12 in · 3,105 out · 778,775 cache read · 11,273 cache write · 107,506 weighted · continued from 6 Implement (G1)) |
 | 2026-11-18 16:26 | 6 Coverage skipped (G4) | Orchestrator | skipped — G4 changes only dashboard assets (no Go lines); the web tests and the gate of G3 still pass |
 | 2026-11-18 16:27 | 5 Tests first skipped (G5) | Orchestrator | skipped — G5 is documentation only, no production behaviour |
+| 2026-11-18 16:29 | 6 Implement (G5) | Dev | RESULT: DONE, documentation written (area docs, API.md, example yaml, integration guide, README, SECURITY.md, ARCHITECTURE.md); decision/figure/config checks pass (sonnet/medium · 50,645 tokens · 23 tool uses · 115 s · 46 in · 17,093 out · 4,213,237 cache read · 50,090 cache write · 569,447 weighted · continued from 6 Implement (G1)) |
+| 2026-11-18 16:29 | 6 Project guarantees (G5) | Orchestrator | task 14: wrote the two exact .squad/project.md insertions from the plan (openHAB API token, Outbound calls) |

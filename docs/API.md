@@ -558,6 +558,7 @@ polling this endpoint).
     { "metric": "cpu", "level": "ok", "value": 12.4, "since": "2026-07-12T18:00:00Z" },
     { "metric": "disk", "resource": "/", "level": "warn", "value": 82.1, "since": "2026-07-12T18:25:00Z" },
     { "metric": "memory", "level": "ok", "value": 45.2, "since": "2026-07-12T18:00:00Z" },
+    { "metric": "openhab_things_offline", "level": "warn", "value": 2, "since": "2026-07-12T18:20:00Z" },
     { "metric": "swap", "level": "ok", "value": 0, "since": "2026-07-12T18:00:00Z" },
     { "metric": "temperature", "level": "crit", "value": 78.5, "since": "2026-07-12T18:30:10Z" }
   ],
@@ -570,6 +571,18 @@ polling this endpoint).
       "to": "warn",
       "value": 82.1,
       "at": "2026-07-12T18:25:00Z"
+    },
+    {
+      "metric": "openhab_things_offline",
+      "kind": "fired",
+      "from": "ok",
+      "to": "warn",
+      "value": 2,
+      "at": "2026-07-12T18:26:00Z",
+      "things": [
+        { "uid": "hue:0210:bridge:lamp1", "label": "Hall lamp", "status": "OFFLINE", "status_detail": "COMMUNICATION_ERROR" },
+        { "uid": "mqtt:topic:broker:door", "label": "Front door", "status": "OFFLINE", "status_detail": "NONE" }
+      ]
     },
     {
       "metric": "temperature",
@@ -590,7 +603,30 @@ Notes:
 - `states` lists one entry per evaluated metric: `cpu`, `temperature`,
   `memory`, `swap`, and one `disk` entry per mounted filesystem (distinguished
   by `resource`, the mountpoint). `resource` is omitted for non-per-device
-  metrics.
+  metrics. With alerts on and openHAB polled, up to three more metrics exist:
+  `openhab_down` (value `1` while openHAB is not running or not reachable, `0`
+  otherwise; only `ok` and `crit`), `openhab_rss_percent` (the openHAB
+  process's resident memory as a percentage of the Pi's RAM) and
+  `openhab_things_offline` (the number of Things that are not `ONLINE`,
+  disabled ones and, during startup, `UNKNOWN` ones left out). They are absent
+  while no openHAB is detected, before the first poll finishes, and while their
+  figure is not available (`openhab_things_offline` needs an openHAB API token);
+  clients must ignore `metric` values they do not know. They are evaluated once
+  per finished openHAB poll (`openhab.poll_interval_seconds`) with the window
+  `alerts.openhab_for_seconds`, not on every fast tick. A threshold of `0` turns
+  its cutoff off for the four `thresholds.openhab_*` keys. When openHAB is
+  uninstalled, their states are removed, each with a final `cleared` event if it
+  was alerting.
+- An `openhab_things_offline` event (and no other) carries `things`: up to 10
+  of the counted Things sorted by `uid`, each with `uid`, `label`, `status` and
+  `status_detail`, every string cut to at most 256 bytes at a UTF-8 character
+  boundary; `[]` when none is counted. `value` is the count of all Things of
+  the poll. The strings come from openHAB and are untrusted. The list is
+  governed by `api_key` like the rest of this endpoint.
+- Events are listed in the order they were produced: within one openHAB poll
+  `openhab_down`, `openhab_rss_percent`, `openhab_things_offline`. `at` rises
+  within one metric, but between an openHAB event and a fast-tick event it is
+  not guaranteed to, because a poll and a fast tick finish independently.
 - A metric whose collection fails on a given tick is skipped rather than
   evaluated against a bogus zero, so its state is left unchanged (or absent
   if it has never been collected). In particular, on hardware without a
@@ -638,7 +674,11 @@ server:
     "swap_warn_percent": 50,
     "swap_crit_percent": 90,
     "memory_warn_percent": 80,
-    "memory_crit_percent": 95
+    "memory_crit_percent": 95,
+    "openhab_rss_warn_percent": 50,
+    "openhab_rss_crit_percent": 75,
+    "openhab_things_offline_warn": 1,
+    "openhab_things_offline_crit": 0
   }
 }
 ```

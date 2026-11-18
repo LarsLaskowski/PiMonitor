@@ -91,7 +91,8 @@ openhab:
   # "auto" (default) polls only while openHAB is installed (one of
   # /usr/share/openhab, /etc/openhab, /var/lib/openhab exists) or its Java
   # process runs; "true" always polls; "false" turns the feature off, and
-  # GET /api/v1/openhab then answers 404.
+  # GET /api/v1/openhab then answers 404. With "true" and no openHAB on this
+  # machine (and alerts on), the openhab_down alert fires and stays at crit.
   enabled: auto
   # openHAB's root URL. Must be http with a loopback host (127.0.0.0/8,
   # ::1 or localhost) and no path, query or user info: PiMonitor only ever
@@ -179,6 +180,18 @@ thresholds:
   swap_crit_percent: 90
   memory_warn_percent: 80
   memory_crit_percent: 95
+  # openHAB alert thresholds (they only act with openhab polling and
+  # alerts on; the dashboard does not color by them). Unlike the thresholds
+  # above, 0 turns a cutoff off; with both of a pair 0 the metric is not
+  # alerted on. warn must be <= crit when both are non-zero.
+  # Resident memory of the openHAB process, percent of the Pi's RAM.
+  openhab_rss_warn_percent: 50
+  openhab_rss_crit_percent: 75
+  # Things that are not ONLINE (disabled ones left out). Counting Things
+  # needs openhab.api_token (or PIMONITOR_OPENHAB_TOKEN); without a token
+  # openHAB refuses the call and this rule is not evaluated. Whole numbers.
+  openhab_things_offline_warn: 1
+  openhab_things_offline_crit: 0
 
 # Server-side threshold alert engine. On each poll it maps the current
 # metrics against the thresholds above into per-metric alert states
@@ -193,6 +206,10 @@ alerts:
   # (and momentary dips back to ok) don't flap. Set to 0 to fire on the
   # first crossing.
   for_seconds: 30
+  # Debounce window of the openHAB alerts (openhab_down, openhab_rss_percent,
+  # openhab_things_offline), counted per openHAB poll, so keep it well above
+  # openhab.poll_interval_seconds. 0 fires on the first poll.
+  openhab_for_seconds: 300
 
   # Optional HTTP webhooks. On every fired/cleared transition, PiMonitor
   # POSTs a JSON body to each webhook whose min_level the event reaches.

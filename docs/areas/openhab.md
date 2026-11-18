@@ -74,6 +74,8 @@ Each source is collected on its own; a failing source leaves only its values abs
   heap and a restart, if any. `collected_at` is taken when the finished poll hands these values to the history, a moment
   after its last request ([0020](../decisions/0020-openhab-points-recorded-by-next-fast-tick.md)). The poll sends no
   request beyond the ones below.
+- Every finished poll, `not_installed` included, is also evaluated once by the alert engine, with its own debounce window
+  `alerts.openhab_for_seconds` ([Alerts](alerts.md#when-the-engine-runs)); the poll sends no request for it.
 - One poll makes its requests one after the other. A poll that is still running at shutdown is cancelled.
 
 ### Requests and the loopback guard

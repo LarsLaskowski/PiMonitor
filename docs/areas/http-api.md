@@ -24,6 +24,12 @@ here.
   and needs `/api/v2/...`; a `500` for a response that cannot be encoded is none
   ([0022](../decisions/0022-unencodable-v1-response-answers-500.md)).
   Clients must ignore keys they do not know.
+- A new metric of the alert engine adds entries with a new `metric` value to `states` and `events` of
+  `GET /api/v1/alerts` and to the webhook payloads; this is no shape change, provided `API.md` and
+  [Notifications](notifications.md) list the value (`openhab_down`, `openhab_rss_percent` and
+  `openhab_things_offline` were added this way). Clients must ignore `metric` values they do not know; changing what an
+  existing value measures is a shape change
+  ([0025](../decisions/0025-new-metric-in-v1-alert-lists-is-no-shape-change.md)).
 - Optional query parameters and new endpoints are added to `v1` only when they are additive: a request that does
   not use them gets exactly the response it got before (`?since=` on the history endpoint, the per-metric
   sub-resources).
@@ -211,6 +217,7 @@ under it by design.
 ## Related decisions
 
 - [0022: A v1 response that cannot be encoded answers 500 in v1](../decisions/0022-unencodable-v1-response-answers-500.md)
+- [0025: A new metric in the v1 alert lists is no shape change](../decisions/0025-new-metric-in-v1-alert-lists-is-no-shape-change.md)
 - [0017: openHAB Thing counts are exported to Prometheus as the fixed set of seven statuses](../decisions/0017-openhab-thing-statuses-exported-as-fixed-set.md)
 - [0010: A missing CPU or memory reading is left out of Prometheus, the v1 snapshot keeps its 0](../decisions/0010-missing-reading-left-out-of-prometheus.md)
 
