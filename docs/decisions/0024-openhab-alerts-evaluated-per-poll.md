@@ -1,6 +1,6 @@
 # 0024: openHAB alert rules are evaluated once per finished poll, with their own window
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-18
 - **Area:** Alerts
 - **Source:** Issue #184

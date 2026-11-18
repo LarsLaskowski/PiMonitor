@@ -84,8 +84,8 @@ once in the [area document](../areas/README.md) of the record's area, and the re
 | [0020](0020-openhab-points-recorded-by-next-fast-tick.md) | openHAB history points are recorded by the next fast tick | Accepted | 2026-11-17 |
 | [0021](0021-non-finite-history-point-dropped-on-restore.md) | An unencodable point in history.bin is dropped on restore | Accepted | 2026-11-17 |
 | [0022](0022-unencodable-v1-response-answers-500.md) | A v1 response that cannot be encoded answers 500 in v1 | Accepted | 2026-11-17 |
-| [0023](0023-openhab-alert-thresholds-zero-is-off.md) | A zero openHAB alert threshold turns its cutoff off | Proposed | 2026-11-18 |
-| [0024](0024-openhab-alerts-evaluated-per-poll.md) | openHAB alert rules are evaluated once per finished poll, with their own window | Proposed | 2026-11-18 |
-| [0025](0025-new-metric-in-v1-alert-lists-is-no-shape-change.md) | A new metric in the v1 alert lists is no shape change | Proposed | 2026-11-18 |
-| [0026](0026-openhab-things-alert-is-one-count.md) | The openHAB Things alert is one count with a capped list | Proposed | 2026-11-18 |
+| [0023](0023-openhab-alert-thresholds-zero-is-off.md) | A zero openHAB alert threshold turns its cutoff off | Accepted | 2026-11-18 |
+| [0024](0024-openhab-alerts-evaluated-per-poll.md) | openHAB alert rules are evaluated once per finished poll, with their own window | Accepted | 2026-11-18 |
+| [0025](0025-new-metric-in-v1-alert-lists-is-no-shape-change.md) | A new metric in the v1 alert lists is no shape change | Accepted | 2026-11-18 |
+| [0026](0026-openhab-things-alert-is-one-count.md) | The openHAB Things alert is one count with a capped list | Accepted | 2026-11-18 |
 <!-- project:end index -->

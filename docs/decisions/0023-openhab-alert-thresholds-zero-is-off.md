@@ -1,6 +1,6 @@
 # 0023: A zero openHAB alert threshold turns its cutoff off
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-18
 - **Area:** Alerts
 - **Source:** Issue #184

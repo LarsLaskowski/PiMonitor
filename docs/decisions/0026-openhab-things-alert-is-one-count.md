@@ -1,6 +1,6 @@
 # 0026: The openHAB Things alert is one count with a capped list
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-18
 - **Area:** Alerts
 - **Source:** Issue #184

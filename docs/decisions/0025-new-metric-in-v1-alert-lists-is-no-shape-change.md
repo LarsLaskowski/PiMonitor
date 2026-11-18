@@ -1,6 +1,6 @@
 # 0025: A new metric in the v1 alert lists is no shape change
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-18
 - **Area:** HTTP API
 - **Source:** Issue #184
