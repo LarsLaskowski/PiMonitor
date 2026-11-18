@@ -375,3 +375,13 @@ func TestReport_FreshEngineEmpty(t *testing.T) {
 		t.Fatalf("expected empty report, got %+v", r)
 	}
 }
+
+func TestEngine_Evaluate_SwapFiresWithoutOpenHABWindow(t *testing.T) {
+	e := New(testThresholds(), 0, time.Hour)
+
+	got := e.Evaluate(Sample{Timestamp: time.Date(2026, 11, 18, 12, 0, 0, 0, time.UTC), SwapPercent: 95, SwapValid: true})
+
+	if len(got) != 1 || got[0].Metric != "swap" || got[0].To != LevelCrit || got[0].Value != 95 {
+		t.Fatalf("events = %+v, want one fired swap crit (95), unaffected by the openHAB window", got)
+	}
+}

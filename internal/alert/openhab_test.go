@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"text/template"
 	"time"
 
 	"github.com/larslaskowski/pimonitor/internal/config"
@@ -164,6 +165,20 @@ func TestEngine_EvaluateOpenHAB_RSS_AC2(t *testing.T) {
 	}
 }
 
+func TestEngine_EvaluateOpenHAB_NeverValidRSSHasNoState_AC2(t *testing.T) {
+	e := New(ohThresholds(), 0, 0)
+
+	for i := 0; i < 3; i++ {
+		s := OpenHABSample{Timestamp: ohAt(time.Duration(i)), Installed: true, RSSPercent: 99, RSSValid: false}
+		if got := e.EvaluateOpenHAB(s); len(got) != 0 {
+			t.Fatalf("AC2 sample %d produced %+v, want none", i, got)
+		}
+	}
+	if st, ok := ohStates(e.Report())[MetricOpenHABRSSPercent]; ok {
+		t.Fatalf("AC2 openhab_rss_percent state = %+v, want none when RSS was never valid", st)
+	}
+}
+
 func TestEngine_EvaluateOpenHAB_ThingsOffline_AC3(t *testing.T) {
 	e := New(ohThresholds(), 0, 0)
 	two := []OpenHABThing{ohThing("a:1"), ohThing("b:2")}
@@ -266,6 +281,23 @@ func TestEngine_EvaluateOpenHAB_WindowAndOrder_AC5(t *testing.T) {
 
 		checkOneEvent(t, "down", got, &wantTransition{KindFired, LevelOK, LevelCrit, 1})
 	})
+	t.Run("AC5 flap shorter than the window fires nothing", func(t *testing.T) {
+		e := New(ohThresholds(), 0, 2*minute)
+
+		runSteps(t, e, []ohStep{
+			{ohDown(0, true), nil},
+			{ohDown(1*minute, true), nil},
+			{ohDown(90*time.Second, false), nil},
+			{ohDown(3*minute, true), nil},
+			{ohDown(4*minute, true), nil},
+		})
+		if st := ohStates(e.Report())[MetricOpenHABDown]; st.Level != LevelOK {
+			t.Fatalf("level after flapping = %s, want ok", st.Level)
+		}
+		if evs := e.Report().Events; len(evs) != 0 {
+			t.Fatalf("report events = %+v, want none", evs)
+		}
+	})
 	t.Run("AC5 events of one poll come in fixed order", func(t *testing.T) {
 		e := New(ohThresholds(), 0, 0)
 		s := OpenHABSample{
@@ -352,6 +384,21 @@ func TestEngine_EvaluateOpenHAB_NotInstalledPrunes_AC6(t *testing.T) {
 			t.Fatalf("events = %+v, want one cleared warn->ok openhab_rss_percent (60)", got)
 		}
 	})
+	t.Run("AC6 never installed produces no event and no state", func(t *testing.T) {
+		e := New(ohThresholds(), 0, 0)
+
+		for i := 0; i < 3; i++ {
+			if got := e.EvaluateOpenHAB(OpenHABSample{Timestamp: ohAt(time.Duration(i) * minute)}); len(got) != 0 {
+				t.Fatalf("AC6 sample %d produced %+v, want none", i, got)
+			}
+		}
+		if states := ohStates(e.Report()); len(states) != 0 {
+			t.Fatalf("AC6 states = %+v, want none", states)
+		}
+		if evs := e.Report().Events; len(evs) != 0 {
+			t.Fatalf("AC6 report events = %+v, want none", evs)
+		}
+	})
 	t.Run("AC6 reinstall starts again at ok with fresh timers", func(t *testing.T) {
 		e := New(ohThresholds(), 0, minute)
 		e.EvaluateOpenHAB(allCrit(0))
@@ -408,10 +455,10 @@ func TestReport_JSONOpenHABThings_AC8(t *testing.T) {
 	if err := json.Unmarshal(data, &decoded); err != nil {
 		t.Fatalf("unmarshal report: %v", err)
 	}
-	if len(decoded.Events) != 4 {
-		t.Fatalf("report has %d events, want 4 (down, rss, things fired, things cleared): %s", len(decoded.Events), data)
+	if len(decoded.Events) != 5 {
+		t.Fatalf("report has %d events, want 5 (down, rss, things fired, down cleared, things cleared): %s", len(decoded.Events), data)
 	}
-	for _, i := range []int{0, 1} {
+	for _, i := range []int{0, 1, 3} {
 		if _, has := decoded.Events[i]["things"]; has {
 			t.Errorf("event %d (%s) has a things key, want none", i, decoded.Events[i]["metric"])
 		}
@@ -425,7 +472,87 @@ func TestReport_JSONOpenHABThings_AC8(t *testing.T) {
 			t.Errorf("things entry lacks key %q: %v", key, fired[0])
 		}
 	}
-	if got := string(decoded.Events[3]["things"]); got != "[]" {
+	if got := string(decoded.Events[4]["things"]); got != "[]" {
 		t.Errorf("cleared event things = %q, want []", got)
 	}
+}
+
+func ohThingsEvent(label string) Event {
+	return Event{
+		Metric: MetricOpenHABThingsOffline, Kind: KindFired, From: LevelOK, To: LevelWarn, Value: 1, At: ohStart,
+		Things: []OpenHABThing{{UID: "a:1", Label: label, Status: "OFFLINE", StatusDetail: "COMMUNICATION_ERROR"}},
+	}
+}
+
+func customWebhook(t *testing.T, text string) webhook {
+	t.Helper()
+	tmpl, err := template.New("test").Funcs(templateFuncs).Parse(text)
+	if err != nil {
+		t.Fatalf("parse template: %v", err)
+	}
+	return webhook{tmpl: tmpl}
+}
+
+func TestRenderBody_OpenHABThings_AC9(t *testing.T) {
+	hostile := "Lamp \"A\" \\ <b>\n'x'"
+
+	t.Run("AC9 default payload escapes a hostile label", func(t *testing.T) {
+		body, err := renderBody(webhook{}, ohThingsEvent(hostile))
+		if err != nil {
+			t.Fatalf("renderBody: %v", err)
+		}
+		var decoded struct {
+			Message string `json:"message"`
+			Things  []map[string]string
+		}
+		if err := json.Unmarshal(body, &decoded); err != nil {
+			t.Fatalf("default payload is not valid JSON: %v\n%s", err, body)
+		}
+		if len(decoded.Things) != 1 || decoded.Things[0]["label"] != hostile {
+			t.Fatalf("things = %+v, want the hostile label round-tripped", decoded.Things)
+		}
+		for _, key := range []string{"uid", "label", "status", "status_detail"} {
+			if decoded.Things[0][key] == "" {
+				t.Errorf("things entry lacks %q: %v", key, decoded.Things[0])
+			}
+		}
+	})
+	t.Run("AC9 message keeps the one-line format", func(t *testing.T) {
+		body, err := renderBody(webhook{}, ohThingsEvent("x"))
+		if err != nil {
+			t.Fatalf("renderBody: %v", err)
+		}
+		var decoded struct {
+			Message string `json:"message"`
+		}
+		if err := json.Unmarshal(body, &decoded); err != nil {
+			t.Fatalf("unmarshal: %v", err)
+		}
+		want := "openhab_things_offline fired: ok -> warn (1.0)"
+		if decoded.Message != want {
+			t.Fatalf("message = %q, want %q", decoded.Message, want)
+		}
+	})
+	t.Run("AC9 an event without things has no things key", func(t *testing.T) {
+		ev := ohThingsEvent("x")
+		ev.Things = nil
+		body, err := renderBody(webhook{}, ev)
+		if err != nil {
+			t.Fatalf("renderBody: %v", err)
+		}
+		if strings.Contains(string(body), `"things"`) {
+			t.Fatalf("payload %s has a things key, want none", body)
+		}
+	})
+	t.Run("AC9 a custom template reads .Things", func(t *testing.T) {
+		wh := customWebhook(t, `{{range .Things}}{{.UID}}|{{.Label}}|{{.Status}}|{{.StatusDetail}};{{end}}`)
+
+		body, err := renderBody(wh, ohThingsEvent("Lamp"))
+		if err != nil {
+			t.Fatalf("renderBody: %v", err)
+		}
+		if want := "a:1|Lamp|OFFLINE|COMMUNICATION_ERROR;"; string(body) != want {
+			t.Fatalf("body = %q, want %q", body, want)
+		}
+	})
 }
