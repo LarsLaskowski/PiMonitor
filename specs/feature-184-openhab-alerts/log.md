@@ -37,3 +37,4 @@ are quoted in full.
 | 2026-11-18 16:29 | 6 Project guarantees (G5) | Orchestrator | task 14: wrote the two exact .squad/project.md insertions from the plan (openHAB API token, Outbound calls) |
 | 2026-11-18 16:29 | 6 Coverage skipped (G5) | Orchestrator | skipped — documentation only; coverage gate passed after G3 |
 | 2026-11-18 16:29 | 6 Documentation | Orchestrator | written in 6 Implement (G5) |
+| 2026-11-18 16:29 | 7 Gate stamp | Orchestrator | FAIL on 4cdca3c3d8a4972a4c9ef16720940bc7975bbf3f (tier standard): Format check pass; Analyzer gate FAIL; Test with coverage pass; Coverage gate pass; decision-check.py pass; scope-check.py pass · figure-check.py 0 hit(s) |
