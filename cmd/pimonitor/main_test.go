@@ -98,6 +98,11 @@ func TestClientConfig_ThresholdsRoundTrip(t *testing.T) {
 			SwapCritPercent:   8,
 			MemoryWarnPercent: 9,
 			MemoryCritPercent: 10,
+
+			OpenHABRSSWarnPercent:    11,
+			OpenHABRSSCritPercent:    12,
+			OpenHABThingsOfflineWarn: 13,
+			OpenHABThingsOfflineCrit: 14,
 		},
 	}
 
@@ -125,6 +130,11 @@ func TestClientConfig_ThresholdsRoundTrip(t *testing.T) {
 		"swap_crit_percent":   8,
 		"memory_warn_percent": 9,
 		"memory_crit_percent": 10,
+
+		"openhab_rss_warn_percent":    11,
+		"openhab_rss_crit_percent":    12,
+		"openhab_things_offline_warn": 13,
+		"openhab_things_offline_crit": 14,
 	}
 	for key, wantVal := range want {
 		if gotVal, ok := decoded.Thresholds[key]; !ok || gotVal != wantVal {
