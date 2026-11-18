@@ -35,3 +35,5 @@ are quoted in full.
 | 2026-11-18 16:27 | 5 Tests first skipped (G5) | Orchestrator | skipped — G5 is documentation only, no production behaviour |
 | 2026-11-18 16:29 | 6 Implement (G5) | Dev | RESULT: DONE, documentation written (area docs, API.md, example yaml, integration guide, README, SECURITY.md, ARCHITECTURE.md); decision/figure/config checks pass (sonnet/medium · 50,645 tokens · 23 tool uses · 115 s · 46 in · 17,093 out · 4,213,237 cache read · 50,090 cache write · 569,447 weighted · continued from 6 Implement (G1)) |
 | 2026-11-18 16:29 | 6 Project guarantees (G5) | Orchestrator | task 14: wrote the two exact .squad/project.md insertions from the plan (openHAB API token, Outbound calls) |
+| 2026-11-18 16:29 | 6 Coverage skipped (G5) | Orchestrator | skipped — documentation only; coverage gate passed after G3 |
+| 2026-11-18 16:29 | 6 Documentation | Orchestrator | written in 6 Implement (G5) |
