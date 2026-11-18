@@ -77,6 +77,32 @@ func TestServerConfig_MapsFields(t *testing.T) {
 	}
 }
 
+// TestClientConfig_OpenHABThresholds_AC8 asserts that the default
+// configuration exposes the four openHAB thresholds in /api/v1/config.
+func TestClientConfig_OpenHABThresholds_AC8(t *testing.T) {
+	data, err := json.Marshal(clientConfig(config.Default(), "v1"))
+	if err != nil {
+		t.Fatalf("marshal ClientConfig: %v", err)
+	}
+	var decoded struct {
+		Thresholds map[string]float64 `json:"thresholds"`
+	}
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	want := map[string]float64{
+		"openhab_rss_warn_percent":    50,
+		"openhab_rss_crit_percent":    75,
+		"openhab_things_offline_warn": 1,
+		"openhab_things_offline_crit": 0,
+	}
+	for key, wantVal := range want {
+		if gotVal, ok := decoded.Thresholds[key]; !ok || gotVal != wantVal {
+			t.Errorf("AC8 thresholds[%q] = %v (present=%v), want %v", key, gotVal, ok, wantVal)
+		}
+	}
+}
+
 // TestClientConfig_ThresholdsRoundTrip guards against a field-by-field
 // mapping mistake (e.g. a copy-paste swap like assigning SwapWarnPercent to
 // DiskWarnPercent) going unnoticed between config.Thresholds and the JSON
