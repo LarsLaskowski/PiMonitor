@@ -2425,3 +2425,67 @@ func TestCollector_FastTick_NonFiniteProcValues_AC4(t *testing.T) {
 		t.Errorf("json.Marshal(history): %v, want nil", err)
 	}
 }
+
+func TestNew_OpenHABAlertsOnlyWithAlertsEnabled_AC6(t *testing.T) {
+	tests := []struct {
+		name          string
+		alerts        bool
+		openhab       bool
+		wantAlertHook bool
+	}{
+		{"AC6 alerts and openHAB enabled wire the hook", true, true, true},
+		{"AC6 alerts disabled leaves the hook unset", false, true, false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			c := New(Config{
+				FastInterval:    time.Second,
+				SlowInterval:    time.Minute,
+				HistoryCapacity: 10,
+				AlertsEnabled:   tc.alerts,
+				OpenHAB:         OpenHABConfig{Enabled: tc.openhab, BaseURL: "http://127.0.0.1:1", Interval: time.Minute},
+			}, nil)
+
+			if c.openhab == nil {
+				t.Fatal("openhab collector is nil, want it created")
+			}
+			if got := c.openhab.onAlert != nil; got != tc.wantAlertHook {
+				t.Fatalf("onAlert set = %v, want %v", got, tc.wantAlertHook)
+			}
+		})
+	}
+}
+
+// Each finished openHAB poll reaches the alert engine exactly once, in order,
+// also when the history's hand-over queue (capacity 1) drops the points of
+// earlier polls and no fast tick runs in between.
+func TestCollector_OpenHABPollsEvaluatedOnce_AC5(t *testing.T) {
+	srv := newOHServer(t)
+	root := newOHRoot(t, "etc/openhab")
+	clock := &ohClock{}
+	c := newOHHistoryCollector(t, srv, root, clock.now, withOHHistory(24, 1), func(cfg *Config) { cfg.AlertsEnabled = true })
+	base := time.Date(2026, 11, 18, 12, 0, 0, 0, time.UTC)
+	rootFailing := []bool{true, false, true}
+
+	for i, failing := range rootFailing {
+		if failing {
+			srv.failAll(http.StatusServiceUnavailable)
+		} else {
+			srv.route("/rest/", ohJSON(http.StatusOK, ohRootBody))
+		}
+		clock.set(base.Add(time.Duration(i) * time.Minute))
+
+		c.openhab.Poll(context.Background())
+	}
+
+	events := c.Alerts().Events
+	wantKinds := []string{alert.KindFired, alert.KindCleared, alert.KindFired}
+	if len(events) != len(wantKinds) {
+		t.Fatalf("events = %+v, want %d openhab_down events (one per poll)", events, len(wantKinds))
+	}
+	for i, ev := range events {
+		if ev.Metric != alert.MetricOpenHABDown || ev.Kind != wantKinds[i] || !ev.At.Equal(base.Add(time.Duration(i)*time.Minute)) {
+			t.Fatalf("event %d = %+v, want %s %s at poll %d's time", i, ev, alert.MetricOpenHABDown, wantKinds[i], i)
+		}
+	}
+}

@@ -250,3 +250,30 @@ func TestParseProcNetAddr_AC6(t *testing.T) {
 		})
 	}
 }
+
+func TestOpenHABCollector_Poll_AlertSampleOwnerCheck_AC1(t *testing.T) {
+	self := uint32(os.Getuid())
+	tests := []struct {
+		name     string
+		peer     *peerOwnerRecorder
+		wantDown bool
+	}{
+		{"AC1 owner of var/lib/openhab is not down", &peerOwnerRecorder{uid: self}, false},
+		{"AC1 E11 other owner refused is down", &peerOwnerRecorder{uid: self + 1}, true},
+		{"AC1 E11 failed owner lookup is down", &peerOwnerRecorder{err: errors.New("peer lookup failure")}, true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			root := newOHRoot(t, "etc/openhab", "var/lib/openhab")
+			writeOHJava(t, root)
+			c, _ := newOHCollector(t, newOHServer(t), root, 1<<30,
+				withToken("tok"), func(cfg *OpenHABConfig) { cfg.PeerOwner = tc.peer.owner })
+
+			got := pollAlert(t, c)
+
+			if !got.Installed || got.Down != tc.wantDown {
+				t.Fatalf("sample Installed, Down = %v, %v, want true, %v", got.Installed, got.Down, tc.wantDown)
+			}
+		})
+	}
+}
