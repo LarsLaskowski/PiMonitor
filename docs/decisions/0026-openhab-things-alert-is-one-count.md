@@ -27,5 +27,6 @@ them, sorted by UID (option 2). Which Things count and the list's fields are in 
 
 ## Consequences
 
-- At most one state and 10 Things per event; with the 100-event cap the engine holds at most 1,000 Things.
+- At most one state and 10 Things per event, each string cut to 256 bytes; with the 100-event cap the engine holds
+  at most 1,000 Things, about 1 MiB of Thing text, whatever a label's length in openHAB.
 - An operator who wants one alert per Thing uses openHAB's own rules or the Prometheus Thing counts.

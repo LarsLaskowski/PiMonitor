@@ -72,7 +72,7 @@ when it is down or stuck, which is exactly when the operator needs to hear about
 ## Non-functional requirements
 
 - N1: The feature adds at most three alert states and no request to openHAB; it never delays the fast or slow tick;
-  an event carries at most 10 Things; the event list stays capped at 100.
+  an event carries at most 10 Things, each string cut to 256 bytes; the event list stays capped at 100.
 - N2: New options and defaults: `thresholds.openhab_rss_warn_percent` 50, `thresholds.openhab_rss_crit_percent` 75,
   `thresholds.openhab_things_offline_warn` 1, `thresholds.openhab_things_offline_crit` 0 (off),
   `alerts.openhab_for_seconds` 300. A configuration without them keeps starting. After an upgrade with alerts on,
@@ -115,7 +115,8 @@ when it is down or stuck, which is exactly when the operator needs to hear about
   leaves `openhab_rss_percent` at `ok` (S5, E13, N2).
 - AC8: `GET /api/v1/config` reports the four new keys in `thresholds`; `GET /api/v1/alerts` reports the `openhab_*`
   states and events, and every `openhab_things_offline` event carries `things`: up to 10 entries with `uid`, `label`,
-  `status` and `status_detail`, sorted by UID, empty when none is counted (S3, S5, E9, N4).
+  `status` and `status_detail`, each at most 256 bytes (cut at a UTF-8 character boundary), sorted by UID, empty when
+  none is counted (S3, S5, E9, N1, N4).
 - AC9: The default webhook payload of an `openhab_things_offline` event carries the same `things` array, with a hostile
   label JSON-escaped, and its `message` follows the existing format (`openhab_things_offline fired: ok -> warn (2.0)`);
   a custom template sees `.Things` with `.UID`, `.Label`, `.Status`, `.StatusDetail`, empty for other metrics
@@ -171,11 +172,8 @@ when it is down or stuck, which is exactly when the operator needs to hear about
 - MAJOR 1 (RSS defaults fire on a healthy install): accepted — defaults 50/75 (N2), above the 33 % of the process
   sample (`writeOHJava`, `internal/collector/openhab_test.go`), which AC7 requires to stay `ok`. The issue's 25/40 are
   examples, so no Product Manager question.
-- 2 (count and list not from today's poll result): accepted — E9 says count and list come from all Things of the poll
-  and that the card's `Things offline: <n>` may differ; AC10 keeps the card's count. How the poll carries the full set
-  is the plan's.
-- 3 (time base of E5, event order): accepted — E5 and AC6 give the time the `not_installed` poll finished; E14 and AC5
-  keep `events` in production order, with `at` rising only within one metric.
+- 2 (count and list from the full set): accepted — E9; AC10 keeps the card's count.
+- 3 (time base of E5, event order): accepted — E5, AC6, E14 and AC5.
 - 4 (bounded hand-over queue): accepted — AC5 requires every poll evaluated once, also when the memory history drops
   waiting points; the plan puts the evaluation outside that queue.
 - 5 (finite check): accepted — E13 names both texts.
@@ -185,3 +183,4 @@ when it is down or stuck, which is exactly when the operator needs to hear about
   check included; tested with the fake server.
 - 8 (immediate card warning): accepted — AC10 keeps it.
 - 9 (`PIMONITOR_OPENHAB_TOKEN`): accepted — S3 and E1 name both.
+- Plan review (Security, blocking): Thing strings had no byte bound; N1 and AC8 now cut each to 256 bytes.

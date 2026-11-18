@@ -40,3 +40,5 @@ stamped, outside the history's queue; the engine debounces the openHAB metrics w
   not necessarily between an openHAB event and a fast-tick event.
 - A window shorter than the poll interval confirms on the second poll on a side; `0` confirms on the first.
 - The fast tick never touches an `openhab_*` state.
+- A webhook receives events in enqueue order, so an older openHAB event can follow a newer fast-tick event; the
+  notifier's rate-limit bookkeeping prunes old entries only within one feed, where events arrive in sample order.
