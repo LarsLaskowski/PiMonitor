@@ -56,6 +56,10 @@ Checks, in the work folder `specs/<folder>/`:
   says so when the log has a row of step 4 or later) its size is a warning only: an approved plan is not reopened for
   its size, also not when a merge of `main` brought a lower limit (`.squad/orchestration.md`, *Merge conflicts*).
 
+An area document that the plan's *Areas* names (`docs/areas/<name>.md`) and whose size plus the words the plan says the
+change adds (`+N words` on the line) passes `AREA_MAX_WORDS` (`squad_settings.py`, default 5000), or that is within
+500 words of it with no such statement, is a warning: the split is planned now (Censio#38).
+
 After a run with a `plan.md` the trigger of *Plan challenge* (`.squad/routing.md`) is printed with its reason,
 `Plan challenge: due — …` or `Plan challenge: not due — …`: due on tier `security`, and on tier `standard` when
 the plan has production code (no *Verification without tests*) and *Options considered* names an alternative
@@ -82,7 +86,8 @@ to fill in (`squad-issue`, step 10).
 
 With `--spec` only `spec.md` is checked: after the Lead's mode `spec`, before the spec challenge. A spec longer
 than `SPEC_BASE_WORDS` plus `SPEC_WORDS_PER_CRITERION` per acceptance criterion, at most `SPEC_MAX_WORDS`
-(`squad_settings.py`, default 300, 200 and 2500; the template's guidance comments do not count) is reported as a
+(`squad_settings.py`, default 300, 200 and 2500; the template's guidance comments and the appended *Challenge notes*
+and the *Challenge* section that answers them do not count) is reported as a
 warning: every later launch reads it, so the Lead sizes it to the feature.
 
 Usage, from the repository root:
@@ -108,6 +113,12 @@ PLAN_MAX_WORDS = getattr(settings, "PLAN_MAX_WORDS", PLAN_LIMITS)
 # the *Challenge* and *Security review* the Lead folds them into and leaves unchanged in every later launch.
 NOTES_HEADING = re.compile(r"^(#{2,6})[ \t]+(?:Challenge(?: notes)?|Security (?:notes|review))\b", re.I)
 PLAN_SIZE = re.compile(r"^Plan size:[ \t]*(\S.*)", re.M)
+# An area document past AREA_MAX_WORDS covers more than one area (`decision-check.py`); the plan sizes it before the
+# documentation is written (Censio#38).
+AREA_MAX_WORDS = getattr(settings, "AREA_MAX_WORDS", 5000)
+AREA_HEADROOM = 500
+AREA_PATH = re.compile(r"docs/areas/[\w.-]+\.md")
+AREA_ADDS = re.compile(r"\+\s*([\d,]+)\s*words?\b", re.I)
 SPEC_MAX_WORDS = getattr(settings, "SPEC_MAX_WORDS", 2500)
 SPEC_BASE_WORDS = getattr(settings, "SPEC_BASE_WORDS", 300)
 SPEC_WORDS_PER_CRITERION = getattr(settings, "SPEC_WORDS_PER_CRITERION", 200)
@@ -180,6 +191,9 @@ MANUAL_MEMBERS = ("Reviewer", "Security")
 # Members that never review a run's diff, so a `manual:` check naming one is refused (capitalised, as roles are written:
 # "the security headers" or "a dev server" names no member).
 NON_REVIEW_MEMBERS = ("Lead", "Dev", "Developer", "Tester", "Code Officer", "Devil's Advocate", "Orchestrator")
+# A `manual:` check the Tester runs over an input that must stay out of the repository (Censio#125): the Tester runs it
+# after step 6, as the one exception to NON_REVIEW_MEMBERS.
+PRIVATE_INPUT = re.compile(r"\b(?:private|never committed|not committed|outside the repository|must not enter)\b", re.I)
 MANAGER_NAMED = re.compile(r"\bProduct Manager\b|\bPM\b")
 PROSE_MANUAL = re.compile(r"\bmanual(?:ly)?\b", re.I)
 NEGATED = re.compile(r"\b(?:no|not|without|never|none)\b[^.]{0,20}?\bmanual", re.I)
@@ -695,7 +709,7 @@ def check_manual_owners(parts, plan, errors):
     members = review_members(plan)
     for criterion, (kind, check, _, _) in sorted(planned_verifications(parts).items()):
         owner = manual_owner(check) if kind == "manual" else None
-        if owner and owner not in members:
+        if owner and owner not in members and not tester_private_check(check):
             errors.append(f"plan.md: {criterion}: the `manual:` check names {owner}, which reviews no diff on this "
                           f"tier ({', '.join(members)} does): name a member of the review round or the Product Manager")
 
@@ -741,7 +755,7 @@ def check_spec_only(folder):
     criteria, _ = check_spec(spec, errors)
     check_placeholders(SPEC, spec, errors)
     check_control_characters(folder, errors)
-    words = len(strip_comments(spec).split())
+    words = sum(len(line.split()) for line in outside_notes(strip_comments(spec).splitlines()))
     limit = min(SPEC_MAX_WORDS, SPEC_BASE_WORDS + SPEC_WORDS_PER_CRITERION * len(criteria))
     if words > limit:
         return errors, [f"spec.md has {words} words, over {limit} for {len(criteria)} criteria (SPEC_BASE_WORDS "
@@ -786,7 +800,33 @@ def check(folder, approved=False):
             check_tasks(tasks, criteria, errors, signature_names(signatures_section(plan)), dropped)
             check_placeholders("tasks.md", tasks, errors)
     check_plan_size(plan, errors, warnings, approved)
+    check_area_sizes(plan, warnings)
     return errors, warnings
+
+
+def area_size_warning(path, adds):
+    """The warning for one area document a line of *Areas* names, or None: its current size plus the words the plan
+    says the change adds passes AREA_MAX_WORDS, or it is within AREA_HEADROOM of it with no such statement."""
+    if not os.path.isfile(path):
+        return None
+    current = len(read(path, []).split())
+    added = int(adds.group(1).replace(",", "")) if adds else None
+    if current + (added or 0) <= (AREA_MAX_WORDS if adds else AREA_MAX_WORDS - AREA_HEADROOM):
+        return None
+    states = f"{current} words now" + (f" and {added} added" if adds else "")
+    return (f"plan.md: {path} has {states} (AREA_MAX_WORDS {AREA_MAX_WORDS}): plan the split into a new area document "
+            "now (name and scope for the index, in the spec's Area documents), or state the words the change adds on "
+            "the line (`+N words`)")
+
+
+def check_area_sizes(plan, warnings):
+    """A warning for every area document the plan's *Areas* names that `area_size_warning` reports: the split into a new
+    area document is planned and in the spec's *Area documents* from the start, not found by `decision-check.py` once
+    the documentation is written (Censio#38)."""
+    for line in sections(plan).get("Areas", "").splitlines():
+        adds = AREA_ADDS.search(line)
+        found = (area_size_warning(path, adds) for path in sorted(set(AREA_PATH.findall(line))))
+        warnings.extend(warning for warning in found if warning)
 
 
 def template_lines():
@@ -1017,6 +1057,12 @@ def manual_owner(check):
     return next((member for member in MANUAL_MEMBERS + NON_REVIEW_MEMBERS if re.search(rf"\b{member}\b", check)), None)
 
 
+def tester_private_check(check):
+    """True when a `manual:` check is the Tester's own run over a private input: it names the Tester and the input that
+    stays out of the repository (`.squad/routing.md`, *Criteria verified only in CI*; `squad-next.py` names the launch)."""
+    return bool(re.search(r"\bTester\b", check)) and bool(PRIVATE_INPUT.search(check))
+
+
 def prose_manual_checks(plan):
     """The Lead's own lines outside the verification sections that name a manual check by the Product Manager (Censio
     #191: a manual-verification paragraph the matrix does not hold); a negated line ("no manual test") names none."""
@@ -1035,6 +1081,8 @@ def matrix_row(criterion, planned, settled, sources, head, changed=frozenset()):
     if criterion not in planned:
         return [criterion, "\u2014", "\u2014", "MISSING: no test or verification in plan.md"], True
     kind, check, names, _ = planned[criterion]
+    if kind == "manual" and tester_private_check(check):
+        return [criterion, kind, check, "to record: the Tester's row of step 6 over the private input"], False
     if kind == "manual" and manual_owner(check):
         return [criterion, kind, check, f"to record: {manual_owner(check)}'s verdict row of step 8"], False
     if kind != "unit":

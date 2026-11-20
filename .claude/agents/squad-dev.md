@@ -49,7 +49,8 @@ The orchestrator tells you which **mode** to run:
 2. Stage every new file you created, in every launch — skeleton, implementation, documentation or fix
    round — before you hand back (`git add <file>` is the one Git operation you may run, and staging is
    yours, not the orchestrator's: the *Coverage gate* only counts files Git tracks); a file the plan deletes is
-   removed and staged as *Git and GitHub* in `.squad/team.md` says. Run *Build*, *Test with
+   removed and staged as *Git and GitHub* in `.squad/team.md` says; where the permission check denies `git add`,
+   the report lists the new files as untracked and the orchestrator stages them with the step's commit. Run *Build*, *Test with
    coverage* and the *Coverage gate* from `stack.md`. When the change touches an input the container image's
    build is sensitive to, also run the *Image build check* and report its result (*Criteria verified only in
    CI* in `.squad/routing.md`). Report the coverage result; uncovered changed lines go to the Tester, or you make them testable (code that is hard

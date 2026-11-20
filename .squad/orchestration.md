@@ -103,8 +103,8 @@ A fix, delta or `revise` round of the same member within the same run continues 
 (`SendMessage` to its agent id, or the Agent tool's resume) with the findings and the new head SHA, instead of a fresh
 launch; so do the Lead's mode `plan` after mode `spec` and a feature's next task group (the member's last agent of the
 same mode, with the group's task rows). The first launch of any other mode is fresh, and so is a launch after a session
-restart (the agent id is gone) or after one that ended on an API error. An agent continued five times or past 300,000
-reported tokens, one that ran on another model than *Launch model* names, or one already continued in another mode,
+restart (the agent id is gone) or after one that ended on an API error. An agent continued five times or from 250,000
+reported tokens on (a round adds tens of thousands, and `squad-log.py` warns past 300,000), one that ran on another model than *Launch model* names, or one already continued in another mode,
 gets a fresh launch with a short hand-over — the plan or task group, what the earlier rounds settled, the open findings
 and the head SHA.
 `squad-next.py` names for every launch the agent it continues, by the step cell of its fresh launch, or why it is
@@ -250,8 +250,10 @@ change to a file outside the documentation.
 
 When `squad-security` in mode `plan` reports a required measurement as not run because a download or tool was
 denied (e.g. a vendor release binary refused by the permission classifier), the orchestrator asks the Product
-Manager once for exactly that download, runs the measurement itself once it is allowed, and passes the measured
-result with the plan to the Lead (mode `revise`). Security re-runs the review in round 2 against the revised
+Manager once for exactly that download, runs the measurement itself once it is allowed, writes each command with
+its quoted output into `measurements.md` at once, and passes the measured result with the plan to the Lead (mode
+`revise`). A plan that names the orchestrator as the owner of such a measurement (*Lead*, mode `plan`) has it run
+once the Product Manager allows that one download, before Security's plan review. Security re-runs the review in round 2 against the revised
 plan and the measurement. Not run is never approved, and the denial alone is no reason to skip the measurement.
 
 A measurement a member reports without the command it ran and its quoted output is unverified, whatever the

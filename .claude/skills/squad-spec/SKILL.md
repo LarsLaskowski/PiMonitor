@@ -16,7 +16,8 @@ cells in `log.md`); steps 4–12 follow `squad-issue` with the changes listed af
 
 1. **Intake.** With a GitHub issue, read it in full, including comments and labels, and decide bug or feature
    (`.squad/routing.md`, *Bug or feature*) — the user calling it a feature or invoking this skill settles
-   it; a bug fix switches to `squad-issue` now. A closed issue: stop and report that. A run that waits for
+   it; a bug fix switches to `squad-issue` now; a verification issue stops here
+   (*Bug or feature*). A closed issue: stop and report that. A run that waits for
    an outside author's agreement or the Product Manager's spec approval continues on its work branch
    (`.squad/orchestration.md`, *Outside authors*, *Spec approval*). Run
    `git fetch origin main --tags` (unshallowing a shallow clone as `squad-issue` step 1 says), create the branch off the latest `main` (or the branch the session

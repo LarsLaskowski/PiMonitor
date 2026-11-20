@@ -11,7 +11,7 @@ for it, and prints the next step of `.squad/routing.md` (*Pipeline*) for the run
   explicitly); fresh or continued (*Continuing a member*): a fix, delta or revise round continues the member's last
   agent, the Lead's mode `plan` after mode `spec` continues its spec agent, the next task group continues the member's
   last agent of the same mode, named by the step cell of its fresh launch — and the first launch of another mode, an
-  agent continued five times or past 300,000 tokens, or one that ran on another model than *Launch model* names is a
+  agent continued five times or from 250,000 tokens on, or one that ran on another model than *Launch model* names is a
   fresh launch (the cap and the model: with a short hand-over); what to hand over, with the exact verdict line of the
   Reviewer, the Devil's Advocate, Security and the Lead in mode `decide` to quote in the prompt, so the member does
   not depend on its agent file being current; and the `squad-log.py` command that logs it;
@@ -148,6 +148,10 @@ PR_ENDED = re.compile(r"\b(?:merged|closed)\b", re.I)
 ROUND_OF_SAME_MODE = re.compile(r"\b(?:fix|delta|revis)", re.I)
 READY = re.compile(r"\bready for review\b", re.I)
 EARLY_PR = re.compile(r"\bearly draft pr\b", re.I)
+EARLY_PR_DENIED = re.compile(r"\b(?:no|not|none|never|nor|without|neither)\W+(?:\w+\W+){0,3}$", re.I)
+EARLY_PR_DENIED_AFTER = (re.compile(r"^\s*(?:is|are|was)\s+(?:not|never)\b", re.I),
+                         re.compile(r"^\s*[:\u2014\u2013-]\s*(?:none|no|not|n/a)\b", re.I),
+                         re.compile(r"^\s*(?:is\s+)?unneeded\b", re.I))
 SPEC_SETTLED = re.compile(r"\bspec (?:approved|corrected)\b", re.I)
 CORRECTED = re.compile(r"\bspec corrected\b", re.I)
 NOTES = re.compile(r"^#{2,6}[ \t]+Challenge(?: notes)?\b", re.I | re.M)
@@ -157,7 +161,9 @@ NOTES_ROW = re.compile(r"\bnotes\b", re.I)
 MANUAL_FAILED = re.compile(r"\bFAIL(?:ED|S)?\b")
 MANUAL_GROUPS = 2
 CONTINUATION_CAP = 5
-CONTINUATION_TOKENS = 300_000
+# A continuation adds tens of thousands of tokens: from here on the next launch is fresh, so the round never ends past
+# the 300,000 where `squad-log.py` warns (Censio#38).
+FRESH_TOKENS = 250_000
 SPEC_APPROVAL = getattr(settings, "SPEC_APPROVAL", "lead")
 LOG_TOOL = "python3 .squad/tools/squad-log.py"
 NOTES_TOOL = ".squad/tools/squad-notes.py"
@@ -372,9 +378,9 @@ def pick_chain(run, agent, mode, rule):
 def spent(run, agent, chain):
     """Why the agent of `chain` is not continued again (*Continuing a member*), or None: the cap, a continuation in
     another mode, or another model than *Launch model* names."""
-    if chain["continuations"] >= CONTINUATION_CAP or chain["tokens"] >= CONTINUATION_TOKENS:
+    if chain["continuations"] >= CONTINUATION_CAP or chain["tokens"] >= FRESH_TOKENS:
         return (f"the agent of \"{chain['step']}\" was continued {chain['continuations']} time(s) at "
-                f"{chain['tokens']:,} tokens: from {CONTINUATION_CAP} continuations or {CONTINUATION_TOKENS:,} "
+                f"{chain['tokens']:,} tokens: from {CONTINUATION_CAP} continuations or {FRESH_TOKENS:,} "
                 "tokens on, a fresh launch with a short hand-over")
     if chain["mixed"]:
         return (f"the agent of \"{chain['step']}\" was continued in another mode at \"{chain['mixed']}\": it holds two "
@@ -773,7 +779,22 @@ def revision(run, challenge, reviews, security_due):
     rejected = bool(security) and security[-1] == "CHANGES_REQUIRED" and not answered
     major_open = bool(verdict[0]) and not [row for row in revisions if row.index > challenge[-1].index]
     return lead_revision(run, rejected, security.count("CHANGES_REQUIRED"), major_open) or \
-        confirmation(run, security_due and bool(answered), verdict, challenge)
+        fix_now_revision(run, reviews, revisions) or confirmation(run, security_due and bool(answered), verdict, challenge)
+
+
+FIX_NOW = re.compile(r"\bfix now\b", re.I)
+
+
+def fix_now_revision(run, reviews, revisions):
+    """The Lead's revision for the *Security notes* of an approved plan review that recommend `fix now`, before the
+    skeleton: the notes are appended to `plan.md` and the Lead would otherwise never see them (Censio#38)."""
+    approved = [row for row in reviews if security_verdict(row) == "APPROVED"]
+    if not approved or not FIX_NOW.search(run.section("Security notes")) or any(
+            row.index > approved[0].index for row in revisions):
+        return None
+    return heading(f"step {run.plan_step} — Lead revision for Security's `fix now` notes") + launch(
+        run, LEAD, "revise", f"{run.plan_step} Plan revise (security notes)", "the *Security notes* of plan.md that "
+        "recommend `fix now`: it writes each into the plan, or decides to file it as an issue and says why")
 
 
 def lead_revision(run, rejected, rejections, major_open):
@@ -788,7 +809,8 @@ def lead_revision(run, rejected, rejections, major_open):
     if major_open or rejected:
         return heading(f"step {run.plan_step} — Lead revision") + launch(
             run, LEAD, "revise", f"{run.plan_step} Plan revise", "all objections (minor ones included) and Security's "
-            "CHANGES_REQUIRED findings; a Security note that leaves the plan a choice too")
+            "CHANGES_REQUIRED findings; a Security note that leaves the plan a choice, and every *Security notes* entry "
+            "that recommends `fix now`, too")
     return None
 
 
@@ -1334,12 +1356,20 @@ def failed_gates(run, last):
     return lines + [THEN + f"commit and run {STAMP_TOOL} {run.name} again"]
 
 
+def early_pr_asked(line):
+    """A plan line that asks for an early draft PR: one mention that no negation of up to three words precedes
+    (`no early draft PR`, `without an early draft PR`, DockerUpdateGuard#505) counts."""
+    return any(not EARLY_PR_DENIED.search(line[:found.start()])
+               and not any(pattern.search(line[found.end():]) for pattern in EARLY_PR_DENIED_AFTER)
+               for found in EARLY_PR.finditer(line))
+
+
 def early_pr(run):
     if run.after_pr or run.plan is None or run.of(ORCHESTRATOR, {"7"}, word="draft"):
         return None
     template = plan_check().template_lines()
     own = [line for line in (run.plan or "").splitlines() if line.strip() and line.strip() not in template]
-    if not any(EARLY_PR.search(line) for line in own):
+    if not any(early_pr_asked(line) for line in own):
         return None
     return heading("step 7 — Early draft PR (the plan asks for one)") + [
         DO + "open the PR as a draft as create-pr step 8 says, without its review loop (specs/ stays, the working "
@@ -1419,13 +1449,55 @@ def manual_rework(run, decision):
         f"    {STAMP_TOOL} {run.name}"]
 
 
+def private_criteria(run):
+    """The criteria whose `manual:` check the Tester runs over a private input (`plan-check.py`, `tester_private_check`)."""
+    plan = plan_check()
+    planned = plan.planned_verifications(plan.sections(run.plan or ""))
+    return sorted((criterion for criterion, row in planned.items() if row[0] == "manual"
+                   and plan.tester_private_check(row[1])), key=plan.criterion_number)
+
+
+def private_check(run):
+    """Step 6, after the coverage pass and before the gate stamp: the Tester runs a manual criterion over an input that
+    must stay out of the repository, handed over by its location (Censio#125). A failed run goes to the Lead like a
+    failed manual test (*Loop limits*, *Manual criterion fails*) and, once the Dev has worked on its decision, runs
+    again."""
+    if run.after_pr or run.plan is None or not (criteria := private_criteria(run)):
+        return None
+    rows = run.of(TESTER, {"6"}, word="private")
+    if rows and not MANUAL_FAILED.search(rows[-1].result):
+        return None
+    if rows:
+        decided = run.of(LEAD, after=rows[-1].index)
+        if not decided:
+            failures = len(rows)
+            where = (f"task group {failures} of {MANUAL_GROUPS} for it" if failures <= MANUAL_GROUPS else
+                     f"after {MANUAL_GROUPS} added task groups")
+            return heading(f"step 6 — the Tester's private check failed ({where})") + launch(
+                run, LEAD, "decide", "6 Decide (private check)", "the failed check's rows and the plan: it adds a task "
+                "group for the options it takes" + (", or escalates relaxing the criterion to the Product Manager "
+                "(*Loop limits*)" if failures > MANUAL_GROUPS else ""))
+        if not run.of(DEV, after=decided[-1].index):
+            return heading("step 6 — the Dev's work the Lead's decision on the failed private check orders") + launch(
+                run, DEV, "implement", "6 Implement (private check)",
+                f"the Lead's decision (row \"{decided[0].step}\") on the failed private check, {BASE_HANDOVER}")
+    lines = launch(
+        run, TESTER, "coverage", run.step_cell("6", "Private check"),
+        f"the plan's manual check of {', '.join(criteria)} and where the private input is (ask the Product Manager if "
+        "the plan does not say); the input is never committed, copied or quoted in the report, only its result")
+    lines[-1] = lines[-1].replace("\"<the result>\"", "\"<PASS or FAIL per criterion, then the result>\"")
+    return heading(f"step 6 — the Tester's check of {', '.join(criteria)} over a private input") + lines + [
+        THEN + "the stamp follows once the row says PASS or FAIL"]
+
+
 def manual_criteria(run):
     """{criterion: the reviewer of the review set that runs its `manual:` check in step 8, or None (the Product
     Manager's test of step 7)}; a check that names a member outside the set stays the Product Manager's."""
     plan = plan_check()
     planned = plan.planned_verifications(plan.sections(run.plan or ""))
     members = {CELLS.get(agent, agent) for agent, _ in review_set(run)}
-    owners = {criterion: plan.manual_owner(row[1]) for criterion, row in planned.items() if row[0] == "manual"}
+    owners = {criterion: plan.manual_owner(row[1]) for criterion, row in planned.items()
+              if row[0] == "manual" and not plan.tester_private_check(row[1])}
     return {criterion: owners[criterion] if owners[criterion] in members else None
             for criterion in sorted(owners, key=plan.criterion_number)}
 
@@ -1747,8 +1819,8 @@ def finished(run):
 
 
 STAGES = (intake, escalation, waiting, no_change, spec_stage, plan_written, challenge_and_security, code_steps,
-          quick_edits, matrix_check, code_check, early_pr, manual_check, review, approval, pull_request, after_pr, wrap_up,
-          finished)
+          quick_edits, matrix_check, private_check, code_check, early_pr, manual_check, review, approval,
+          pull_request, after_pr, wrap_up, finished)
 
 
 def run_header(run):
