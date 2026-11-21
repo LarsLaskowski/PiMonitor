@@ -381,6 +381,20 @@ running units, but leaves an existing `/etc/pimonitor/config.yaml` untouched.
 > install the units by hand do you need to merge the changes from
 > [`packaging/pimonitor.service`](packaging/pimonitor.service) yourself.
 
+> **Upgrading to 1.3.0 on a Pi that runs openHAB.** `openhab.enabled`
+> defaults to `auto`, so after the upgrade PiMonitor finds a local openHAB
+> on its own: the dashboard shows the openHAB card, `GET /api/v1/openhab`
+> and the `/metrics` endpoint report it, and, with alerts on (the default),
+> the rules `openhab_down`, `openhab_rss_percent` and
+> `openhab_things_offline` are evaluated. Their events reach your webhooks
+> with these new `metric` values, so check a receiver or body template that
+> expects only the older metrics. Set `openhab.enabled: false` to keep the
+> previous behavior; a `0` turns a single openHAB threshold off (see
+> [`docs/integrations/openhab.md`](docs/integrations/openhab.md#alerts-on-openhab-itself)).
+> The `pimonitor.service` changes of 1.3.0 are comments only. A
+> `history.bin` written by 1.3.0 still loads in 1.2.0, which drops only the
+> openHAB series.
+
 1. **Get the new version.** Either download the binary (or release tarball)
    for your architecture from the
    [Releases](https://github.com/larslaskowski/pimonitor/releases) page, or
