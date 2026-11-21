@@ -384,9 +384,10 @@ running units, but leaves an existing `/etc/pimonitor/config.yaml` untouched.
 > **Upgrading to 1.3.0 on a Pi that runs openHAB.** `openhab.enabled`
 > defaults to `auto`, so after the upgrade PiMonitor finds a local openHAB
 > on its own: the dashboard shows the openHAB card, `GET /api/v1/openhab`
-> and the `/metrics` endpoint report it, and, with alerts on (the default),
-> the rules `openhab_down`, `openhab_rss_percent` and
-> `openhab_things_offline` are evaluated. Their events reach your webhooks
+> and, with `prometheus_enabled: true`, the `/metrics` endpoint report it,
+> and, with alerts on (the default), the rules `openhab_down` and
+> `openhab_rss_percent` are evaluated, and `openhab_things_offline` too once
+> an openHAB API token is configured. Their events reach your webhooks
 > with these new `metric` values, so check a receiver or body template that
 > expects only the older metrics. Set `openhab.enabled: false` to keep the
 > previous behavior; a `0` turns a single openHAB threshold off (see
