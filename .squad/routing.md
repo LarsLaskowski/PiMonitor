@@ -29,6 +29,14 @@ When the kind points to the other skill, switch to it now and say so in one line
 `log.md` names the kind and what decided it (`feature: user request`, `feature: label enhancement`,
 `bug: no feature label`).
 
+A **verification issue** asks for a manual check on real hardware, a real application or a real browser and names no
+behavior to change (the label `Manual`, or its title and body say so): the skills stop at intake and the orchestrator
+launches no member until the Product Manager's results are in. It hands the Product Manager a checklist taken from the
+issue's criteria, prepares what can be automated first (a headless browser run, a replay into a server), and then
+continues as a tier `docs` change, or a higher tier when a document the issue names is outside it (an area document):
+the Lead's result states the results, quoted, never inferred, as exact edits of the documents the issue names. A check
+that shows wrong behavior files a bug issue for it, and the run documents only the result.
+
 An issue whose change needs values only the Product Manager can produce (measurements on a real system, figures from
 a production host) runs with the skill its kind decides, but the Product Manager supplies the values before step 1;
 the orchestrator asks for them (*Escalation to the Product Manager*) and creates no branch until they are in. The
@@ -154,6 +162,10 @@ the plan names the fallback: who builds it otherwise and how it reaches the targ
 the Product Manager cannot build*). The manual test runs on the stamped head before the review set of step 8 (`squad-next.py` names it, logged as
 `7 Manual test`), so a document it corrects is reviewed once. A `manual:` check that names a member of the step-8
 review set (the Reviewer; Security on its tiers) runs in that member's round instead, its result in its report.
+A `manual:` check the Tester runs over an input that must stay out of the repository names the Tester and says the input
+is private (`manual: the Tester replays the private recording`); `squad-next.py` names the launch after step 6's
+coverage pass (`6 Private check`), and the input's location is handed over, never committed, copied or quoted. A failed check goes to the Lead like a
+failed manual test (*Manual criterion fails*).
 
 ### Operator environments and documented procedures
 
@@ -280,7 +292,8 @@ again. Each objection is ranked `major` (the plan would build the wrong thing or
   or report a deviation; the Reviewer checks them in round 1.
 - **Non-blocking findings of Security's `APPROVED` plan review** go verbatim into a *Security notes* section
   the same way — except a note that leaves the plan a choice ("document it, or reject"): the Lead decides it
-  in mode `revise` before the skeleton, in one launch with any major objection.
+  in mode `revise` before the skeleton, in one launch with any major objection; so is a note Security recommends
+  to `fix now` (`squad-next.py` names the launch), since Dev and Tester may not edit the plan.
 - **A note or minor objection whose fix is an exact edit of the challenged document itself** (`plan.md`,
   `spec.md`: the sentence as it stands and as it should read) is applied by the orchestrator when it appends the
   note, the way of *Verbatim documentation fixes* (`orchestration.md`; `specs/` only, logged, no launch): Dev and

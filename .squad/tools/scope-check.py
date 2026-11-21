@@ -13,7 +13,7 @@ included; BASE_REF from `.squad/tools/squad_settings.py`, default origin/main):
   inside its `<!-- project:… -->` blocks; `AGENTS.md` and its mirror are neither added nor deleted, and a project
   block they share is the same in both (a pull request from a fork changes neither file at all);
 - no changed Markdown file contains a control character (Unicode categories Cc, Cf, Zl, Zp other than tab
-  and line break);
+  and line break) or a carriage return that no line feed follows;
 - with `--no-specs` (after squad step 10, and in every review after the PR is open): no working record
   under `specs/` is left in the diff, only `specs/README.md` and `specs/_template/` may change;
 - with `--tier docs`: every changed file is product documentation as the `docs` tier defines it
@@ -76,6 +76,7 @@ DOCS_TIER = ["README.md", "SECURITY.md", ".squad/stack.md", ".squad/project.md",
              ".github/ISSUE_TEMPLATE/bug_report.md", ".github/pull_request_template.md"]
 DOCS_TIER_DIRS = ["docs/"]
 DOCS_TIER_EXCLUDED = ["docs/decisions/", "docs/areas/"]
+LONE_CR = re.compile(r"\r(?!\n)")
 PROJECT_BLOCK = re.compile(r"<!-- project:begin ([\w-]+) -->\n.*?<!-- project:end \1 -->\n?", re.S)
 PATCH_MAX_LINES = getattr(settings, "PATCH_MAX_LINES", 30)
 TEST_DOCUMENT = "docs/UNIT_TESTS.md"
@@ -130,6 +131,13 @@ class LocalSource:
 
     def after(self, path):
         return read_text(path) if os.path.isfile(path) else None
+
+    def raw_after(self, path):
+        """The text after, line endings untouched (`after` reads them as `\\n`)."""
+        if not os.path.isfile(path):
+            return None
+        with open(path, encoding="utf-8-sig", errors="replace", newline="") as handle:
+            return handle.read()
 
 
 def api_get(path, token, raw=False):
@@ -201,6 +209,8 @@ class PullRequestSource:
     def after(self, path):
         return self.contents(self.head_repository, path, self.head_sha)
 
+    raw_after = after
+
 
 def marked_file_changed_outside_blocks(path, source):
     before, after = source.before(path), source.after(path)
@@ -213,6 +223,14 @@ def control_character_error(path, source):
     text = source.after(path) if path.endswith(".md") else None
     found = control_characters(text) if text else None
     return f"{path}: control characters {', '.join(found)} (write them as text escapes)" if found else None
+
+
+def lone_cr_error(path, source):
+    """A carriage return that no line feed follows in a changed Markdown file: Git then stores the file as text with
+    CRLF it cannot diff and `git diff --check` reports every line (DockerUpdateGuard#489)."""
+    text = source.raw_after(path) if path.endswith(".md") else None
+    count = len(LONE_CR.findall(text)) if text else 0
+    return f"{path}: {count} carriage return(s) without a line feed (write line ends as LF or CRLF only)" if count else None
 
 
 def rule_file_added_or_deleted(path, source):
@@ -234,8 +252,8 @@ def file_errors(path, source, tier, no_specs, fork=False):
          f"{path}: not product documentation - tier docs allows no such file (raise the tier)"),
     ]
     errors = [message for applies, message in findings if applies]
-    control = control_character_error(path, source)
-    return errors + ([control] if control else [])
+    extra = [error for error in (control_character_error(path, source), lone_cr_error(path, source)) if error]
+    return errors + extra
 
 
 def patch_errors(base):

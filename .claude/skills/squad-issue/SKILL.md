@@ -56,7 +56,8 @@ every Git and GitHub action yourself, including follow-up issues the Lead decide
 ## Steps
 
 1. **Intake.** Read the issue in full, including comments and labels, and decide bug or feature first
-   (*Bug or feature*): a feature switches to `squad-spec` now, before any branch or work folder exists. Note
+   (*Bug or feature*): a feature switches to `squad-spec` now, before any branch or work folder exists; a
+   verification issue stops here (*Bug or feature*). Note
    the reported environment (versions, image tag or release, host OS, configuration). A closed issue: stop
    and report that. Run `git fetch origin main --tags` (in a shallow clone, `git rev-parse
    --is-shallow-repository` prints `true`: `git fetch --unshallow --tags origin`; a stamp that checks the decision

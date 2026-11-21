@@ -1,7 +1,7 @@
 {
   "repository": "LarsLaskowski/Squad-Spec-Repository-Template",
-  "tag": "v2026.11.12",
-  "commit": "db4969a1bdb4c290b343ea51e85394b26e563cf4",
+  "tag": "v2026.11.13",
+  "commit": "3d47e943ecbc0100dc91e7ad9f19596ecb4470f3",
   "profile": "go",
   "profiles": [
     "go"

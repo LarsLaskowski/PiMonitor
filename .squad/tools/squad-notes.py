@@ -137,10 +137,16 @@ def escape_controls(text):
 
 def notes(report):
     """The report without its closing `VERDICT:` line and the blank lines around it."""
-    lines = escape_controls(report.replace("\r\n", "\n")).strip().splitlines()
+    lines = escape_controls(lf_text(report)).strip().splitlines()
     while lines and (not lines[-1].strip() or VERDICT_LINE.match(lines[-1])):
         lines.pop()
     return "\n".join(line.rstrip() for line in lines)
+
+
+def lf_text(text):
+    """The text with every line end as LF; a carriage return no line feed follows is dropped, so writing the text back
+    with CRLF line ends never leaves `\\r\\r\\n` (DockerUpdateGuard#489)."""
+    return text.replace("\r\n", "\n").replace("\r", "")
 
 
 def with_notes(text, heading, body):
@@ -190,7 +196,7 @@ def main(argv=None):
     with open(path, "rb") as handle:
         raw = handle.read()
     eol = "\r\n" if b"\r\n" in raw else "\n"
-    text = with_notes(raw.decode("utf-8-sig").replace("\r\n", "\n"), HEADINGS[args.kind], body)
+    text = with_notes(lf_text(raw.decode("utf-8-sig")), HEADINGS[args.kind], body)
     with open(path, "wb") as handle:
         handle.write(text.replace("\n", eol).encode("utf-8"))
     print(f"{HEADINGS[args.kind]} of {os.path.relpath(path, root)}: {len(body.splitlines())} line(s) written verbatim")
@@ -209,7 +215,7 @@ def write_result(root, args):
         return 1
     with open(log, "rb") as handle:
         eol = "\r\n" if b"\r\n" in handle.read() else "\n"
-    body = "\n".join(line.rstrip() for line in escape_controls(report.replace("\r\n", "\n")).strip().splitlines())
+    body = "\n".join(line.rstrip() for line in escape_controls(lf_text(report)).strip().splitlines())
     path = os.path.join(os.path.dirname(log), "result.md")
     with open(path, "wb") as handle:
         handle.write((body + "\n").replace("\n", eol).encode("utf-8"))

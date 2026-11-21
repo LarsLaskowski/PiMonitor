@@ -77,13 +77,18 @@ The orchestrator tells you which **mode** to run:
     *Files*) —
     who writes it once the code is green, against that code; you state exact wording only where a criterion
     fixes the text;
+  - for every area document the change extends, the words it has now and the words the change adds, on the line of
+    *Areas* (`docs/areas/<name>.md (+N words)`): `plan-check.py` warns when the sum passes `AREA_MAX_WORDS`, and a
+    split into a new area document is then planned now and in the spec's *Area documents*, not left to
+    `decision-check.py` after the documentation is written;
   - for a feature, `tasks.md`: task groups in build order, each naming the spec's criteria it delivers, the
     tasks it waits for and a skeleton row for its *Signatures* (or "no new API");
   - the exact **signatures** of every new or changed API member (for the Dev's skeleton; no private member, and
     no backticks in a plan without API: the template's *Signatures*) and the existing files the skeleton must
     rewrite — a file you call final is one you read and found so; every new name and signature checked against the
     rules the *Analyzer gate* enforces on them (names, parameter count and names, nested types: `.squad/stack.md`,
-    *Writing code*, and the analyzer configuration), so step 4 renames and splits nothing;
+    *Writing code*, and the analyzer configuration), so step 4 renames and splits nothing; logic two types need identically is planned as one shared helper from the
+    start (the quality gate's duplication condition on new code is reported by no local analyzer);
   - the **test files**, named strictly by *Layout* in `.squad/stack.md` and `docs/UNIT_TESTS.md`, and the
     existing test call sites a changed signature affects, with who adapts them (*Loop limits*); a test kept
     unchanged has no input a new criterion handles differently, else it is adapted, with owner;
@@ -98,7 +103,9 @@ The orchestrator tells you which **mode** to run:
     build it runs on (*Criteria verified only in CI*); the files
     no unit test can cover, each with the reason, or "none" (*Code a unit test cannot cover*);
   - a claim about measured or library behavior that a security property or a test double rests on: marked
-    *unverified* with its measurement and owner (`.squad/team.md`, *Test doubles that model a real component*);
+    *unverified* with its measurement and owner (`.squad/team.md`, *Test doubles that model a real component*); a
+    measurement that executes a downloaded vendor binary names the orchestrator as its owner (a member's run is
+    denied), to run before Security's plan review (`.squad/orchestration.md`, *A denied measurement*);
   - for a guard against bypasses (a validation or allow-list on input that a parser or tool consumes): the
     forms that parser really accepts, enumerated from its source or documentation, and the guard's behavior
     on each — not only the example the issue names;
@@ -116,6 +123,10 @@ The orchestrator tells you which **mode** to run:
     decide whether the Devil's Advocate runs (*Plan challenge*), so do not invent alternatives and do not hide
     real ones: an alternative the issue, its comments, the spec's *Challenge* or a record on the topic raises is
     listed with why it lost, even when you reject it at once. Extending a record is no alternative.
+
+  A criterion or fact that states how a third-party component renders or behaves (markup, grid lines, label
+  formats) is checked against a rendered or executed result — a short probe the plan names — before the criterion
+  is final, or the criterion is worded so it does not rest on the unchecked detail.
 
   Two checks before you fix a criterion: content the issue supplies verbatim (an image, SVG, configuration,
   a fixture) is rendered or exercised once, and a mismatch between the literal content and the evident
