@@ -3,10 +3,9 @@
 Source: Issue #<number> | the user's description
 Status: Draft | Approved by Lead | Approved by Product Manager
 
-<!-- What the feature does for its users, before anyone decides how to build it. Written by the Lead in mode
-`spec`, challenged once by the Devil's Advocate, and from then on the only source of the acceptance criteria:
-`plan.md` and `tasks.md` refer to them by id. `.squad/tools/plan-check.py` checks that every section is filled;
-the guidance in these comments does not count. -->
+<!-- What the feature does for its users, before anyone decides how to build it. Once challenged, the only source of
+the acceptance criteria: `plan.md` and `tasks.md` refer to them by id. `.squad/tools/plan-check.py` checks that every
+section is filled; the guidance in these comments does not count. -->
 
 ## Problem
 

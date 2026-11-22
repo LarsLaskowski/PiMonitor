@@ -56,9 +56,10 @@ Checks, in the work folder `specs/<folder>/`:
   says so when the log has a row of step 4 or later) its size is a warning only: an approved plan is not reopened for
   its size, also not when a merge of `main` brought a lower limit (`.squad/orchestration.md`, *Merge conflicts*).
 
-An area document that the plan's *Areas* names (`docs/areas/<name>.md`) and whose size plus the words the plan says the
-change adds (`+N words` on the line) passes `AREA_MAX_WORDS` (`squad_settings.py`, default 5000), or that is within
-500 words of it with no such statement, is a warning: the split is planned now (Censio#38).
+An area document that the plan's *Areas* names (`docs/areas/<name>.md`) and whose size plus the words the plan says
+the change adds or removes (`+N words` or `-N words` on the line) passes `AREA_MAX_WORDS` (`squad_settings.py`,
+default 5000), or that is within 500 words of it with no such statement, is a warning: the split is planned now
+(Censio#38).
 
 After a run with a `plan.md` the trigger of *Plan challenge* (`.squad/routing.md`) is printed with its reason,
 `Plan challenge: due — …` or `Plan challenge: not due — …`: due on tier `security`, and on tier `standard` when
@@ -118,7 +119,9 @@ PLAN_SIZE = re.compile(r"^Plan size:[ \t]*(\S.*)", re.M)
 AREA_MAX_WORDS = getattr(settings, "AREA_MAX_WORDS", 5000)
 AREA_HEADROOM = 500
 AREA_PATH = re.compile(r"docs/areas/[\w.-]+\.md")
-AREA_ADDS = re.compile(r"\+\s*([\d,]+)\s*words?\b", re.I)
+# `+N words` (the change adds) or `-N words` (it removes: a split that makes the document shrink, Censio#236).
+# A minus sign touches its digits, so a dash that separates the path from the count ("storage.md - 300 words") is none.
+AREA_ADDS = re.compile(r"(?:(?P<plus>\+)\s*|(?<![\w.])[-\u2212\u2013](?=\d))(?P<n>[\d,]+)\s*words?\b", re.I)
 SPEC_MAX_WORDS = getattr(settings, "SPEC_MAX_WORDS", 2500)
 SPEC_BASE_WORDS = getattr(settings, "SPEC_BASE_WORDS", 300)
 SPEC_WORDS_PER_CRITERION = getattr(settings, "SPEC_WORDS_PER_CRITERION", 200)
@@ -801,7 +804,15 @@ def check(folder, approved=False):
             check_placeholders("tasks.md", tasks, errors)
     check_plan_size(plan, errors, warnings, approved)
     check_area_sizes(plan, warnings)
+    check_early_pr(plan, warnings)
     return errors, warnings
+
+
+def signed_words(adds):
+    """The words a `+N words` or `-N words` match of *Areas* adds (negative: removes), or None without a match."""
+    if adds is None:
+        return None
+    return int(adds.group("n").replace(",", "")) * (1 if adds.group("plus") else -1)
 
 
 def area_size_warning(path, adds):
@@ -810,13 +821,28 @@ def area_size_warning(path, adds):
     if not os.path.isfile(path):
         return None
     current = len(read(path, []).split())
-    added = int(adds.group(1).replace(",", "")) if adds else None
+    added = signed_words(adds)
     if current + (added or 0) <= (AREA_MAX_WORDS if adds else AREA_MAX_WORDS - AREA_HEADROOM):
         return None
     states = f"{current} words now" + (f" and {added} added" if adds else "")
     return (f"plan.md: {path} has {states} (AREA_MAX_WORDS {AREA_MAX_WORDS}): plan the split into a new area document "
             "now (name and scope for the index, in the spec's Area documents), or state the words the change adds on "
-            "the line (`+N words`)")
+            "the line (`+N words`, or `-N words` when it shrinks)")
+
+
+EARLY_PR_NAMED = re.compile(r"\bearly draft pr\b", re.I)
+EARLY_PR_LINE = re.compile(r"^\s*(?:[-*]\s*)?Early draft PR:\s*(?:yes|no)\b", re.I)
+
+
+def check_early_pr(plan, warnings):
+    """A warning when the plan names an early draft PR in prose and has no line `Early draft PR: yes` or `: no`:
+    `squad-next.py` reads only that line (`.squad/routing.md`, *Early draft PR*)."""
+    lines = [line for line in strip_comments(plan).splitlines() if line.strip() and line.strip() not in template_lines()]
+    if any(EARLY_PR_LINE.match(line) for line in lines):
+        return
+    if any(EARLY_PR_NAMED.search(line) for line in lines):
+        warnings.append("plan.md: names an early draft PR in prose; state it as a line `Early draft PR: yes` or "
+                        "`Early draft PR: no` (`.squad/routing.md`, *Early draft PR*), the only form squad-next.py reads")
 
 
 def check_area_sizes(plan, warnings):

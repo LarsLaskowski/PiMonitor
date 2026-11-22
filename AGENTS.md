@@ -1,17 +1,17 @@
 # AGENTS.md
 
-Project guidance for AI coding agents working in this repository. This one file holds the rules for all of
-them: Codex, Kimi Code and GitHub Copilot's coding agent read it directly, Claude Code through the
-`@AGENTS.md` import in [`CLAUDE.md`](/CLAUDE.md), and GitHub Copilot's code review and chat through
-[`.github/copilot-instructions.md`](/.github/copilot-instructions.md), which the template's `adopt-template`
-skill generates from it: everything from the first `##` heading on is identical in both files (Claude Code's
-`@` import lines aside), so a change to it is made in both, and `.squad/tools/config-check.py` fails when they
-differ. This file is a summary; the binding, detailed references are [`ARCHITECTURE.md`](/docs/ARCHITECTURE.md)
-(how the system is put together and why), [`CONTRIBUTING.md`](/docs/CONTRIBUTING.md) (workflow, PR
-conventions, versioning), [`UNIT_TESTS.md`](/docs/UNIT_TESTS.md) (test conventions — **unit tests are
-mandatory for new code**) and [`.squad/stack.md`](/.squad/stack.md) (toolchain and commands). Read them before
-making a non-trivial change; when this file and one of them appear to disagree, treat that as a sync bug to
-fix, not as license to pick either one.
+The rules for every AI coding agent working in this repository: Codex, Kimi Code and GitHub Copilot's coding
+agent read this file directly, Claude Code through the `@AGENTS.md` import in [`CLAUDE.md`](/CLAUDE.md), and
+GitHub Copilot's code review and chat through [`.github/copilot-instructions.md`](/.github/copilot-instructions.md),
+which the template's `adopt-template` skill generates from it: everything from the first `##` heading on is
+identical in both files (Claude Code's `@` import lines aside), so a change to it is made in both, and
+`.squad/tools/config-check.py` fails when they differ. This file is a summary; the binding, detailed references
+are [`ARCHITECTURE.md`](/docs/ARCHITECTURE.md) (how the system is put together and why),
+[`CONTRIBUTING.md`](/docs/CONTRIBUTING.md) (workflow, PR conventions, versioning),
+[`UNIT_TESTS.md`](/docs/UNIT_TESTS.md) (test conventions — **unit tests are mandatory for new code**) and
+[`.squad/stack.md`](/.squad/stack.md) (toolchain and commands). Read them before making a non-trivial change;
+when this file and one of them appear to disagree, treat that as a sync bug to fix, not as license to pick either
+one.
 
 ## What this project is
 
@@ -41,16 +41,15 @@ for how it fits together.
   on your own initiative.
 - **A change made outside the squad that touches a security area** — one listed in
   [`.squad/project.md`](/.squad/project.md) (*Security areas*), a CI workflow (any change to it: permissions,
-  secrets, triggers, the actions it uses), Docker or build configuration, or a dependency — is reviewed before it is merged: `create-pr` adds
-  Security's diff review to its review loop, and a pull request opened another way (by hand, from a plain
-  session) gets a `review-pr` run whose findings are worked in that pull request.
+  secrets, triggers, the actions it uses), Docker or build configuration, or a dependency — is reviewed before it
+  is merged: `create-pr` adds Security's diff review to its review loop, and a pull request opened another way
+  (by hand, from a plain session) gets a `review-pr` run whose findings are worked in that pull request.
 - Run *Format* from [`.squad/stack.md`](/.squad/stack.md) after editing code and before building; CI is
-  not meant to find formatting issues. In the squad skills the member that changed the files runs it on
-  them before handing back (`.squad/team.md`, *Shared rules*).
-- A changed file may not carry **any analyzer diagnostic of any severity**, including info-level ones that
-  never show up as build warnings but that the CI code analysis (e.g. SonarQube Cloud) reports. Check with
-  the *Analyzer gate* from `.squad/stack.md` and fix every finding before considering the work done (in
-  the squad skills, the Code Officer owns this).
+  not meant to find formatting issues (in the squad skills: `.squad/team.md`, *Shared rules*).
+- A changed file may not carry **any analyzer diagnostic of any severity**, including info-level ones the
+  build never shows as warnings but the CI code analysis (e.g. SonarQube Cloud) reports. Check with the
+  *Analyzer gate* from `.squad/stack.md` and fix every finding before the work is done (in the squad skills,
+  the Code Officer owns this).
 - New or changed production code needs unit tests until the *Coverage gate* in `.squad/stack.md` passes:
   **at least 80 % coverage** on new or changed lines (with the branch conditions the coverage report records, as
   SonarQube counts them) and line coverage overall (the thresholds live in
@@ -162,19 +161,17 @@ Project-specific workflow skills live under `.claude/skills/` and run in Claude 
 
 - `create-pr` — verify (format, build, tests, analyzer and coverage gates), review the change locally,
   then open a PR following [`.github/pull_request_template.md`](/.github/pull_request_template.md).
-- `squad-issue` — fix a bug reported in a GitHub issue with the squad: the Lead plans and picks a tier
-  (`docs` / `patch` / `tests` / `trivial` / `standard` / `security`), the Devil's Advocate challenges a plan once when
-  `.squad/routing.md` calls for it, Security reviews the plan whenever a security area is touched and the
-  diff of a change to a security control, the Tester writes failing tests first, the Dev implements until the
-  *Coverage gate* passes, the Code Officer clears analyzer diagnostics, the Reviewer reviews the diff, and
-  once the PR is approved by checklist (the Lead decides what is open) a PR referencing the issue opens.
+- `squad-issue` — fix a bug reported in a GitHub issue with the squad pipeline of
+  [`.squad/routing.md`](/.squad/routing.md): the Lead plans and picks a tier, the Devil's Advocate and Security
+  join where routing calls for them, the Tester writes failing tests first, the Dev implements until the
+  *Coverage gate* passes, the Code Officer clears analyzer diagnostics, the Reviewer reviews the diff, and once
+  the PR is approved by checklist a PR referencing the issue opens.
 - `squad-spec` — the same squad pipeline for a new feature, spec first: the Lead writes `spec.md` (scenarios,
   edge cases, the acceptance criteria) and the Devil's Advocate challenges it before `plan.md` and `tasks.md`
   are written against it, in a working folder under `specs/`; also for an issue the user calls a feature or that is
   labelled `feature`/`enhancement` (`.squad/routing.md`, *Bug or feature*).
-- `decision-consolidate` — merge unreleased decision records (Superseded chains, records of one decision) into
-  one record each, split a record that holds several decisions, delete the obsolete ones, lift behavior that sits
-  in records into the area documents and fix links and index; released records stay untouched.
+- `decision-consolidate` — fold, split and delete unreleased decision records, lift the behavior they state into
+  the area documents and fix links and index; released records stay untouched.
 - `review-pr` — review an open pull request against this project's stack, analyzer, security and
   unit-test conventions, and post the findings with an explicit verdict.
 
@@ -185,13 +182,15 @@ and the round semantics. The squad's members (`.squad/team.md`) run as subagents
 commits, pushes and posts. The pipeline, its limits and escalations are in [`.squad/routing.md`](/.squad/routing.md),
 the project's guarantees, security areas and integration surface in [`.squad/project.md`](/.squad/project.md).
 Working records stay under `specs/` on the work branch. A product PR never changes the squad or these
-instructions (`.squad/stack.md`, `.squad/project.md`, `.squad/tools/squad_settings.py` with the files a tool writes from it, and the project blocks of this file excepted); squad lessons become `squad` or `squad-upstream` issues in this repository (`.squad/orchestration.md`, *Squad
-lessons*). The user acts as Product Manager and is asked only in the cases `.squad/routing.md` lists (*Escalation to
-the Product Manager*), a feature's spec approval among them.
+instructions (`.squad/stack.md`, `.squad/project.md`, `.squad/tools/squad_settings.py` with the files a tool
+writes from it, and the project blocks of this file excepted); squad lessons become `squad` or `squad-upstream`
+issues in this repository (`.squad/orchestration.md`, *Squad lessons*). The user acts as Product Manager and is
+asked only in the cases `.squad/routing.md` lists (*Escalation to the Product Manager*), a feature's spec approval
+among them.
 
-The reasoning behind code decisions — why something was built the way it was — is recorded by the Lead
-as one decision record per decision in [`docs/decisions/`](/docs/decisions/README.md) (unreleased records are
-edited in place, released ones are append-only and superseded), not in `ARCHITECTURE.md`. What holds today —
+Why something was built the way it was is recorded by the Lead as one decision record per decision in
+[`docs/decisions/`](/docs/decisions/README.md) (unreleased records are edited in place, released ones are
+append-only and superseded), not in `ARCHITECTURE.md`. What holds today —
 formats, limits, error behavior, guarantees — is written once in the area document of the change in
 [`docs/areas/`](/docs/areas/README.md), which the same pull request updates. Read the relevant records and area
 documents before changing code they cover, and do not contradict an accepted record without changing it
@@ -202,9 +201,9 @@ Two rules these skills enforce that are easy to get wrong:
 - **A pull request documents the change, not how it was produced.** The internal review loop — its
   pass count, its findings, the commits that resolved them — never appears in the PR title, body or
   commit messages.
-- **A finding posted as a review comment gets worked in that pull request**, blocking or not, now, in
-  that pull request — never deferred to "the next change that touches this code". If it
-  really should not be fixed here, reply with the reason or open a linked issue now — then resolve the thread.
+- **A finding posted as a review comment gets worked in that pull request**, blocking or not, now — never
+  deferred to "the next change that touches this code". If it really should not be fixed here, reply with the
+  reason or open a linked issue now — then resolve the thread.
 
 ## Pull requests, contributing and architecture
 

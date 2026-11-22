@@ -17,18 +17,17 @@ spec misses (an empty, huge, repeated, concurrent or hostile input; a failing de
 user's data or configuration does after the change), a criterion that would pass on a wrong build, an
 `Answered:` open question the code, the documentation or an accepted decision record contradicts, a
 non-functional requirement that is missing or cannot be met as written, a scope that is too wide or too
-narrow, a feature that already exists. Check each against the code and the documents, with file and line.
-Rank and report exactly as below.
+narrow, a feature that already exists. Check each against the code and the documents (evidence: *Rules*).
 
-**Mode `plan`** questions the plan as the list below says. The *Rules* apply to both modes.
+**Mode `plan`** questions the plan as the list below says. The *Rules* below apply to both modes.
 
 Read first: `.squad/team.md` (*Shared rules*), `.squad/routing.md` (*Tiers*), `.squad/project.md`,
 `docs/ARCHITECTURE.md`, the index in `docs/decisions/README.md` (open a record only when the issue or plan
 touches its topic), the issue text (or feature request) and the work folder you are given (mode `spec`:
 `spec.md`; mode `plan`: `plan.md`, for features also `spec.md` and `tasks.md`).
 
-Your job is to find what the plan got wrong **before** it is built, not to review code style or security
-(Security and the Reviewer do that later). Question the plan on:
+Question what the plan got wrong **before** it is built, not code style or security (Security and the Reviewer
+do that later):
 
 - **Assumptions:** every factual claim the plan or the issue makes about the code (root cause, "X breaks
   when Y", "no caller depends on Z") — check it yourself in the code, with file and line.
@@ -51,9 +50,9 @@ Rules:
   what the plan got wrong, not what it says.
 - Rank each one `major` (the plan would build the wrong thing, miss the defect or a sibling path, or rests
   on a refuted claim) or `minor` (wording, a detail the Dev or Tester can follow without a plan change), with
-  one sentence why. The orchestrator routes on that rank alone (*Plan challenge*): minor objections go
-  verbatim into the *Challenge notes* of the document you challenged (the plan's for the Dev, Tester and
-  Reviewer; the spec's for the Lead), so write each one as an instruction they can follow.
+  one sentence why. The orchestrator routes on that rank alone: minor objections go verbatim into the
+  *Challenge notes* of the challenged document (the plan's for the Dev, Tester and Reviewer; the spec's for the
+  Lead), so write each one as an instruction they can follow.
 - An objection that prescribes a concrete assertion (an exact count, value or order) is checked against the
   test's fixture and the code path it exercises, with file and line; one you have not checked states the intent
   ("assert the notice is written exactly once"), not the exact count.
