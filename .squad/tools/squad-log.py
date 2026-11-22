@@ -272,7 +272,7 @@ def verdict_warning(member, step, row):
         return None
     found = ROW.match(row)
     result = found.group("result") if found else row
-    missing = squad_next().verdict_problem(member_agent(member), result)
+    missing = squad_next().verdict_problem(member_agent(member), result, step)
     if missing is None:
         return None
     start = result if len(result) <= VERDICT_QUOTE else result[:VERDICT_QUOTE] + "…"

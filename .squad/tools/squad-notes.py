@@ -34,6 +34,9 @@ import subprocess
 import sys
 import unicodedata
 
+EMPHASIS = re.compile(r"[*_`]")
+UNTAGGED_FIX_NOW = re.compile(r"\bfix now\b", re.I)
+RECOMMENDATION = re.compile(r"\bRecommendation:\s*(?:fix now|issue)\b", re.I)
 HEADINGS = {"challenge": "## Challenge notes", "security": "## Security notes"}
 RESULT = "result"
 VERDICT_LINE = re.compile(r"^\s*\**VERDICT:.*$")
@@ -149,6 +152,12 @@ def lf_text(text):
     return text.replace("\r\n", "\n").replace("\r", "")
 
 
+def untagged_fix_now(body):
+    """The lines of Security's notes that say `fix now` and carry no `Recommendation:` tag (`squad-security.md`)."""
+    plain = [(line, EMPHASIS.sub("", line)) for line in body.splitlines()]
+    return [line for line, text in plain if UNTAGGED_FIX_NOW.search(text) and not RECOMMENDATION.search(text)]
+
+
 def with_notes(text, heading, body):
     """The document with the notes under `heading`: below the section's last line when it exists, else as a new
     section at the end."""
@@ -200,6 +209,10 @@ def main(argv=None):
     with open(path, "wb") as handle:
         handle.write(text.replace("\n", eol).encode("utf-8"))
     print(f"{HEADINGS[args.kind]} of {os.path.relpath(path, root)}: {len(body.splitlines())} line(s) written verbatim")
+    if args.kind == "security":
+        for line in untagged_fix_now(body):
+            print(f"WARNING: a note names `fix now` without `Recommendation: fix now` or `Recommendation: issue`; "
+                  f"squad-next.py reads only that tag, so the Lead is not launched for it: \"{line.strip()[:100]}\"")
     return 0
 
 

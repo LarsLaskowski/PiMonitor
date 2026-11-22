@@ -5,11 +5,8 @@ description: Use when the user wants to tidy up the decision records in docs/dec
 
 # Consolidate decision records
 
-Unreleased decision records are edited in place (`docs/decisions/README.md`), so a `Superseded by` chain or
-several records of one decision that never shipped can be folded into one, and a record that grew into several
-decisions can be split. Released records are never touched.
-
-All output you create — branch name, commit message, PR title and body — is written in **English**.
+Unreleased decision records are edited in place (`docs/decisions/README.md`), so they can be folded and split;
+released records are never touched.
 
 ## Steps
 

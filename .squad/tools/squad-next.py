@@ -147,11 +147,9 @@ PR_ENDED = re.compile(r"\b(?:merged|closed)\b", re.I)
 # A continuation that a fix, delta or revise round makes in another mode is no change of mode.
 ROUND_OF_SAME_MODE = re.compile(r"\b(?:fix|delta|revis)", re.I)
 READY = re.compile(r"\bready for review\b", re.I)
-EARLY_PR = re.compile(r"\bearly draft pr\b", re.I)
-EARLY_PR_DENIED = re.compile(r"\b(?:no|not|none|never|nor|without|neither)\W+(?:\w+\W+){0,3}$", re.I)
-EARLY_PR_DENIED_AFTER = (re.compile(r"^\s*(?:is|are|was)\s+(?:not|never)\b", re.I),
-                         re.compile(r"^\s*[:\u2014\u2013-]\s*(?:none|no|not|n/a)\b", re.I),
-                         re.compile(r"^\s*(?:is\s+)?unneeded\b", re.I))
+# A plan line that asks for an early draft PR: `Early draft PR: yes` (`routing.md`, *Early draft PR*); anything else, `no`
+# included, does not. `plan-check.py` warns about a plan that names one in prose without the line.
+EARLY_PR_TAG = re.compile(r"^\s*(?:[-*]\s*)?Early draft PR:\s*yes\b", re.I)
 SPEC_SETTLED = re.compile(r"\bspec (?:approved|corrected)\b", re.I)
 CORRECTED = re.compile(r"\bspec corrected\b", re.I)
 NOTES = re.compile(r"^#{2,6}[ \t]+Challenge(?: notes)?\b", re.I | re.M)
@@ -159,6 +157,9 @@ NOTES_ROW = re.compile(r"\bnotes\b", re.I)
 # A `7 Manual test` row that reports a failure (`FAIL` in capitals), and the task groups a failed manual test may
 # add before the Lead escalates (*Loop limits*, *Manual criterion fails*).
 MANUAL_FAILED = re.compile(r"\bFAIL(?:ED|S)?\b")
+# The Tester's `6 Private check` row says the same in any case ("AC1 failed: ...").
+# The Tester's `6 Private check` row states `PASS` or `FAIL` in capitals per criterion; one `FAIL` fails the row.
+VERDICT_PASS = re.compile(r"\bPASS(?:ED|ES)?\b")
 MANUAL_GROUPS = 2
 CONTINUATION_CAP = 5
 # A continuation adds tens of thousands of tokens: from here on the next launch is fresh, so the round never ends past
@@ -184,8 +185,10 @@ VERDICT_FORMATS = {
     SECURITY: "`VERDICT: APPROVED` or `VERDICT: CHANGES_REQUIRED` (mode diff, approved with non-blocking findings: "
               "`VERDICT: APPROVED | NON-BLOCKING <n>`)",
 }
-DECIDE_FORMAT = ("`RESULT: DECIDED — <option>`; on review findings `FIX: <each change and its owner>` and `ISSUE: "
-                 "<each linked issue>` after the dash, `FIX:` in capitals whenever it orders a change")
+DECIDE_FORMAT = ("`RESULT: DECIDED — <option>`; on review findings `FIX: <Dev|Tester|orchestrator|Code Officer> — "
+                 "<change>` per `;`-separated item and `ISSUE: <each linked issue>` after the dash, `FIX:` in capitals "
+                 "whenever it orders a change")
+FIX_OWNER = re.compile(r"^\s*(?:FIX:\s*)?(dev|tester|orchestrator|code officer)\b", re.I)
 # A Lead decision that orders a change: `FIX:` in capitals, with its colon ("no FIX needed" orders none).
 FIX_ORDERED = re.compile(r"\bFIX:")
 # An orchestrator row of steps 4–6 that says it skipped the step (`4 Skeleton skipped`, `6 Implement skipped (G1)`).
@@ -435,9 +438,23 @@ def fix_ordered(result):
     return bool(FIX_ORDERED.search(result))
 
 
-def verdict_problem(agent, result):
-    """For `squad-log.py`: the exact verdict line the row of `agent` lacks, or None when it carries one (or the member
-    reports none)."""
+def row_format_problem(agent, result, step):
+    """The fixed format beyond the verdict line that a row lacks, or None: the Tester's `6 Private check` row states
+    `PASS` or `FAIL`, and every `FIX:` item of a Lead decision names its owner (`DECIDE_FORMAT`)."""
+    if agent == TESTER and re.search(r"private check", step or "", re.I) and private_verdict(result) is None:
+        return "a capital `PASS` or `FAIL` per criterion"
+    if agent == LEAD and fix_ordered(result) and not all(FIX_OWNER.match(item) for item in fix_items(result)
+                                                         if item.strip()):
+        return "`FIX: <Dev|Tester|orchestrator|Code Officer> — <change>` per `;`-separated item"
+    return None
+
+
+def verdict_problem(agent, result, step=None):
+    """For `squad-log.py`: the exact verdict line (or fixed format, `row_format_problem`) the row of `agent` lacks, or
+    None when it carries one (or the member reports none)."""
+    problem = row_format_problem(agent, result or "", step)
+    if problem:
+        return problem
     checks = {REVIEWER: REVIEW, ADVOCATE: OBJECTIONS, SECURITY: SECURITY_VERDICT, LEAD: RESULT}
     found = checks[agent].search(result or "") if agent in checks else None
     if agent not in checks or (found and not (agent == REVIEWER and partial_review(found, result))):
@@ -782,15 +799,31 @@ def revision(run, challenge, reviews, security_due):
         fix_now_revision(run, reviews, revisions) or confirmation(run, security_due and bool(answered), verdict, challenge)
 
 
-FIX_NOW = re.compile(r"\bfix now\b", re.I)
+# A Security note that recommends the fix in this change ends `Recommendation: fix now`; `Recommendation: issue` files it.
+FIX_NOW_TAG = re.compile(r"\bRecommendation:\s*fix now\b", re.I)
+# Markdown emphasis around the tag (`**Recommendation:** fix now`) is no part of it.
+EMPHASIS = re.compile(r"[*_`]")
+LOOSE_FIX_NOW = re.compile(r"\bfix now\b", re.I)
+RECOMMENDATION = re.compile(r"\bRecommendation:", re.I)
+
+
+def fix_now_asked(notes):
+    """True when a line of the *Security notes* carries the tag `Recommendation: fix now` (`squad-security.md`), or says
+    `fix now` and carries no `Recommendation:` tag at all: a note written before the tag existed recommends it
+    loosely, and `squad-notes.py` warns about such a line when it writes one. `Recommendation: issue` files it."""
+    lines = [EMPHASIS.sub("", line) for line in notes.splitlines()]
+    return any(FIX_NOW_TAG.search(line) or (LOOSE_FIX_NOW.search(line) and not RECOMMENDATION.search(line))
+               for line in lines)
 
 
 def fix_now_revision(run, reviews, revisions):
     """The Lead's revision for the *Security notes* of an approved plan review that recommend `fix now`, before the
     skeleton: the notes are appended to `plan.md` and the Lead would otherwise never see them (Censio#38)."""
-    approved = [row for row in reviews if security_verdict(row) == "APPROVED"]
-    if not approved or not FIX_NOW.search(run.section("Security notes")) or any(
-            row.index > approved[0].index for row in revisions):
+    answers = [row.index for row in revisions if re.search("security notes", row.step, re.I)]
+    approved = [row for row in reviews if security_verdict(row) == "APPROVED"
+                and not any(index < row.index for index in answers)]
+    if not approved or not fix_now_asked(run.section("Security notes")) or any(
+            row.index > approved[-1].index for row in revisions):
         return None
     return heading(f"step {run.plan_step} — Lead revision for Security's `fix now` notes") + launch(
         run, LEAD, "revise", f"{run.plan_step} Plan revise (security notes)", "the *Security notes* of plan.md that "
@@ -1029,7 +1062,8 @@ def code_steps(run):
     if run.code_free():
         return code_free_steps(run)
     for group, skeleton, docs_only in groups(run):
-        found = group_step(run, group, skeleton, docs_only)
+        tag = f" ({group})" if group else ""
+        found = decided_fix(run, group, tag) or group_step(run, group, skeleton, docs_only)
         if found:
             return found
     return documentation(run)
@@ -1100,6 +1134,72 @@ def group_step(run, group, skeleton, docs_only=False):
     if not coverage_ended(run, group):
         return coverage_pass(run, tag, rows, deferred_tests(run, group)) + [decide_pointer(run, tag)]
     return None
+
+
+def decide_rows(run, group):
+    """The step-6 Lead `decide` rows of the group, a private check's excepted: a row that names it, or in a feature a row
+    that names none (the launch of `--launch squad-lead decide` prints no group) after the latest row of steps 4–6
+    that does."""
+    rows = [row for row in run.of(LEAD, {"6"}, word="decide") if "private check" not in row.step.lower()]
+    found = []
+    for row in rows:
+        before = [other for other in run.rows if other.number in ("4", "5", "6") and other.index < row.index
+                  and GROUP.search(other.step)]
+        tag = GROUP.search(row.step) or (GROUP.search(before[-1].step) if before else None)
+        if not group or (tag is not None and tag.group(1) == group):
+            found.append(row)
+    return found
+
+
+def fix_items(result):
+    """The `;`-separated items of the `FIX:` part of a Lead decision (up to its `ISSUE:`)."""
+    return result[result.index("FIX:"):].split("ISSUE:")[0].split(";")
+
+
+def fix_owners(fix):
+    """(Dev, Tester) that the items of a `FIX:` line name as owners: the first words of an item, `FIX: Dev — x; Tester —
+    y` (`DECIDE_FORMAT`). A line that names no owner is the Dev's; one that names only the orchestrator or the Code
+    Officer is neither's."""
+    names = {match.group(1).lower() for item in fix.split(";") if (match := FIX_OWNER.match(item))}
+    return "dev" in names or not names, "tester" in names
+
+
+def decided_fix(run, group, tag):
+    """The launch of the work a step-6 Lead `decide` of the group orders with `FIX:`, before step 7 and also when the
+    Coverage gate passed (DockerUpdateGuard#520): the Dev, then the Tester when `FIX:` names both, each until a row of
+    its own follows the decision. A `FIX:` that names only the Tester goes to the Tester, one that names another owner
+    (the orchestrator, the Code Officer) and no Dev gets no launch; a decision with an item that names no owner
+    (`DECIDE_FORMAT`) is corrected while no Dev or Tester row follows it; a decision before the group's
+    implementation waits for it; tier `tests` has no Dev; the decision of a private check has its own route."""
+    decisions = decide_rows(run, group)
+    if not decisions or not fix_ordered(decisions[-1].result):
+        return None
+    decision = decisions[-1]
+    if run.base_tier != "tests" and not implement_ended(run, group):
+        return None
+    done = {who: any(row.index > decision.index for row in group_rows(run, who, "6", group)) for who in (DEV, TESTER)}
+    items = [item for item in fix_items(decision.result) if item.strip()]
+    if not all(FIX_OWNER.match(item) for item in items):
+        return None if any(done.values()) else fix_owner_missing(run, decision, tag)
+    dev, tester = fix_owners(";".join(items))
+    dev = dev and run.base_tier != "tests"
+    if dev and not done[DEV]:
+        who, mode, label = DEV, "implement", "Implement"
+    elif tester and not done[TESTER]:
+        who, mode, label = TESTER, "coverage", "Coverage"
+    else:
+        return None
+    return heading(f"step 6 — the work the Lead's decision orders{tag}") + launch(
+        run, who, mode, f"6 {label} (decide){tag}", f"the Lead's decision (row \"{decision.step}\") and its "
+        f"`FIX:` line, {BASE_HANDOVER}")
+
+
+def fix_owner_missing(run, decision, tag):
+    """The correction of a Lead decision whose `FIX:` has an item without its owner, from the Lead's report."""
+    return heading(f"step 6 — the Lead's decision orders a change without naming who makes it{tag}") + [
+        DO + "correct the row without a new launch, from the Lead's report: "
+        f"{LOG_TOOL} {run.name} --replace-last \"Lead\" --step \"{decision.step}\" --new-result \"RESULT: DECIDED — "
+        "FIX: <Dev|Tester|orchestrator|Code Officer> — <change>[; <owner> — <change>]\""]
 
 
 def decide_pointer(run, tag):
@@ -1357,25 +1457,38 @@ def failed_gates(run, last):
 
 
 def early_pr_asked(line):
-    """A plan line that asks for an early draft PR: one mention that no negation of up to three words precedes
-    (`no early draft PR`, `without an early draft PR`, DockerUpdateGuard#505) counts."""
-    return any(not EARLY_PR_DENIED.search(line[:found.start()])
-               and not any(pattern.search(line[found.end():]) for pattern in EARLY_PR_DENIED_AFTER)
-               for found in EARLY_PR.finditer(line))
+    """True for a plan line `Early draft PR: yes`."""
+    return bool(EARLY_PR_TAG.search(line))
 
 
 def early_pr(run):
     if run.after_pr or run.plan is None or run.of(ORCHESTRATOR, {"7"}, word="draft"):
         return None
-    template = plan_check().template_lines()
+    check = plan_check()
+    template = check.template_lines()
     own = [line for line in (run.plan or "").splitlines() if line.strip() and line.strip() not in template]
     if not any(early_pr_asked(line) for line in own):
-        return None
+        return early_pr_line_missing(run, own)
     return heading("step 7 — Early draft PR (the plan asks for one)") + [
         DO + "open the PR as a draft as create-pr step 8 says, without its review loop (specs/ stays, the working "
         "record waits for step 10), subscribe to its activity, wait for CI and run sonar-check.py pr <number> before "
         "step 8; findings are worked as in step 11",
         orchestrator_log(run, "7 Early draft PR", "<PR url>")]
+
+
+def early_pr_line_missing(run, own):
+    """The Lead's revision for a plan that names an early draft PR in prose and has no line `Early draft PR: yes` or
+    `: no` (a plan written before the line existed), once: `squad-next.py` reads only the line."""
+    check = plan_check()
+    if any(check.EARLY_PR_LINE.match(line) for line in (run.plan or "").splitlines()) or run.of(
+            LEAD, {"7"}, word="early draft"):
+        return None
+    if not any(check.EARLY_PR_NAMED.search(line) for line in own):
+        return None
+    return heading("step 7 — the plan names an early draft PR in prose, without the line `Early draft PR: yes|no`") + \
+        launch(run, LEAD, "revise", "7 Plan revise (early draft PR)", "the plan: add the line `Early draft PR: yes` "
+               "where the prose asks for one, `Early draft PR: no` where it declines; the scope stays, and the answer is "
+               "`RESULT: DONE`", rule=LAST)
 
 
 def manual_check(run):
@@ -1457,6 +1570,33 @@ def private_criteria(run):
                    and plan.tester_private_check(row[1])), key=plan.criterion_number)
 
 
+def private_verdict(result):
+    """`FAIL` when a `6 Private check` row holds a capital `FAIL` (`FAILED`, `FAILS`), else `PASS` when it holds a capital
+    `PASS`, else None: the row states no verdict and is corrected (`squad-log.py --replace-last`)."""
+    if MANUAL_FAILED.search(result):
+        return "FAIL"
+    return "PASS" if VERDICT_PASS.search(result) else None
+
+
+def failed_private_check(run, rows):
+    """The lines that follow a failed `6 Private check` row: the Lead's decision, then the Dev's work when the decision
+    orders a change; None once the check runs again."""
+    decided = run.of(LEAD, after=rows[-1].index)
+    if not decided:
+        failures = len(rows)
+        where = (f"task group {failures} of {MANUAL_GROUPS} for it" if failures <= MANUAL_GROUPS else
+                 f"after {MANUAL_GROUPS} added task groups")
+        return heading(f"step 6 — the Tester's private check failed ({where})") + launch(
+            run, LEAD, "decide", "6 Decide (private check)", "the failed check's rows and the plan: it adds a task "
+            "group for the options it takes" + (", or escalates relaxing the criterion to the Product Manager "
+            "(*Loop limits*)" if failures > MANUAL_GROUPS else ""))
+    if fix_ordered(decided[-1].result) and not run.of(DEV, after=decided[-1].index):
+        return heading("step 6 — the Dev's work the Lead's decision on the failed private check orders") + launch(
+            run, DEV, "implement", "6 Implement (private check)",
+            f"the Lead's decision (row \"{decided[0].step}\") on the failed private check, {BASE_HANDOVER}")
+    return None
+
+
 def private_check(run):
     """Step 6, after the coverage pass and before the gate stamp: the Tester runs a manual criterion over an input that
     must stay out of the repository, handed over by its location (Censio#125). A failed run goes to the Lead like a
@@ -1465,22 +1605,16 @@ def private_check(run):
     if run.after_pr or run.plan is None or not (criteria := private_criteria(run)):
         return None
     rows = run.of(TESTER, {"6"}, word="private")
-    if rows and not MANUAL_FAILED.search(rows[-1].result):
+    verdict = private_verdict(rows[-1].result) if rows else None
+    if rows and verdict is None:
+        return heading("step 6 — the Tester's private-check row states no PASS or FAIL") + [
+            DO + "correct the row without a new launch, from the Tester's report: "
+            f"{LOG_TOOL} {run.name} --replace-last \"Tester\" --step \"{rows[-1].step}\" --new-result "
+            "\"<PASS or FAIL per criterion in capitals, then the result>\""]
+    if rows and verdict == "PASS":
         return None
-    if rows:
-        decided = run.of(LEAD, after=rows[-1].index)
-        if not decided:
-            failures = len(rows)
-            where = (f"task group {failures} of {MANUAL_GROUPS} for it" if failures <= MANUAL_GROUPS else
-                     f"after {MANUAL_GROUPS} added task groups")
-            return heading(f"step 6 — the Tester's private check failed ({where})") + launch(
-                run, LEAD, "decide", "6 Decide (private check)", "the failed check's rows and the plan: it adds a task "
-                "group for the options it takes" + (", or escalates relaxing the criterion to the Product Manager "
-                "(*Loop limits*)" if failures > MANUAL_GROUPS else ""))
-        if not run.of(DEV, after=decided[-1].index):
-            return heading("step 6 — the Dev's work the Lead's decision on the failed private check orders") + launch(
-                run, DEV, "implement", "6 Implement (private check)",
-                f"the Lead's decision (row \"{decided[0].step}\") on the failed private check, {BASE_HANDOVER}")
+    if rows and (failed := failed_private_check(run, rows)):
+        return failed
     lines = launch(
         run, TESTER, "coverage", run.step_cell("6", "Private check"),
         f"the plan's manual check of {', '.join(criteria)} and where the private input is (ask the Product Manager if "
