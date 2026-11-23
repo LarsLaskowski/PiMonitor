@@ -89,6 +89,25 @@ mocking library — the project standardizes on the standard library `testing` p
 hand-written fakes, consistent with its overall "prefer the standard library" dependency
 policy (see [`CONTRIBUTING.md`](CONTRIBUTING.md)).
 
+## Test doubles
+
+The hand-written fakes and stubs the tests reuse (no mocking library unless *Test stack* says otherwise), one line
+each: the double, where it lives and what it stands in for; how it behaves is read in its code.
+
+- `fakeMetrics` and `newTestServer` (`internal/httpapi/handlers_test.go`) — the `MetricsProvider` behind a real
+  `Server`
+- `writeTempFile`, `fakeProcess`/`writeFakeProcess`, `writeFakeVcgencmd` (`internal/collector/testhelpers_test.go`)
+  — fixture files, a fake `/proc/<pid>` tree and a stub `vcgencmd` script
+- `writeThermalZone`, `writeHwmonChip`/`writeHwmonChannel`, `writeCPUFreqCore`, `writeMountsFixture`,
+  `writeWirelessFixture` (the matching `internal/collector/*_test.go`) — fake `/sys` and `/proc` files
+- `feed` (`internal/alert/alert_test.go`) — drives the alert engine with explicit, increasing timestamps
+- `httptest.NewServer` handlers in `internal/alert/notify_test.go` — the webhook endpoints
+- `ohServer`/`newOHServer`, `newOHRoot`, `writeOHProcess`/`writeOHJava`, `newOHCollector`
+  (`internal/collector/openhab_test.go`) — the openHAB REST API as an `httptest` server recording URIs and
+  Authorization headers, a fake root with install paths and `/proc/<pid>` JVMs, and the collector built against
+  them; `peerOwnerRecorder` and `writeProcNet` (`openhab_linux_test.go`) — a recording `PeerOwnerFunc` and fake
+  `/proc/net/tcp*`
+
 ## Where tests live
 
 - Tests are colocated with the code they test, as `<file>_test.go` next to `<file>.go`,
