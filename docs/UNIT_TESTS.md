@@ -79,7 +79,7 @@ not be merged; see the checklist in [`.github/pull_request_template.md`](../.git
 | --- | --- |
 | Test framework | Go standard library `testing` only (`go test ./...`) |
 | Assertions | Plain `if got != want { t.Fatalf(...) }` / `t.Errorf(...)` — no assertion or matcher library |
-| Mocking | No mocking framework. Fixtures (temp files via `t.TempDir()`, in-memory fixture strings) and small hand-written fakes (e.g. `fakeMetrics` in `httpapi`) instead |
+| Mocking | No mocking framework. Fixtures (temp files via `t.TempDir()`, in-memory fixture strings) and small hand-written fakes (e.g. `fakeMetrics` in `httpapi`), listed under *Test doubles*, instead |
 | HTTP testing | `net/http/httptest` (`httptest.NewRecorder`, `httptest.NewRequest`) |
 | Race/coverage | `go test ./... -race -cover` (CI); `-race` is not run by `make test` locally, run it explicitly when touching concurrent code (`collector`, `alert`) |
 | Lint | `golangci-lint run` (`make lint`): golangci-lint's default linters plus `gocognit`, configured in `.golangci.yml`; use the version CI pins. The squad runs it through the *Analyzer gate* (`.squad/stack.md`) |
