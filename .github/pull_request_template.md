@@ -47,6 +47,7 @@ Please provide a summary of the tests affected by this work and any unique strat
 - [ ] Each decision with lasting weight has its [decision record](../docs/decisions/README.md), committed with the change.
 - [ ] I have read the [CONTRIBUTING](../docs/CONTRIBUTING.md) documentation and followed the project's code style guidelines.
 - [ ] New dependencies, if any, were added the way *Dependencies* in `.squad/stack.md` prescribes.
+- [ ] The PR carries its release-notes label ([CONTRIBUTING](../docs/CONTRIBUTING.md)); a change that breaks existing users carries `breaking-change` and says so in the Description.
 <!-- project:begin checklist -->
 - [ ] Reviewer Notes name the touched routes, config keys, collectors or packaging files, and a smoke test on a Pi
       (or what only real hardware can verify).

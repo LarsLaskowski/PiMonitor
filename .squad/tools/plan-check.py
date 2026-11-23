@@ -59,7 +59,9 @@ Checks, in the work folder `specs/<folder>/`:
 An area document that the plan's *Areas* names (`docs/areas/<name>.md`) and whose size plus the words the plan says
 the change adds or removes (`+N words` or `-N words` on the line) passes `AREA_MAX_WORDS` (`squad_settings.py`,
 default 5000), or that is within 500 words of it with no such statement, is a warning: the split is planned now
-(Censio#38).
+(Censio#38). A line of the plan that names `.squad/project.md` and says it gains more than `PROJECT_MAX_GROWTH` words
+(`+N words`; `squad_settings.py`, default 200), or names *Test doubles* of `docs/UNIT_TESTS.md` and says it gains more
+than `TEST_DOUBLES_MAX_GROWTH` (default 100), is a warning too: the new entries are planned as pointers.
 
 After a run with a `plan.md` the trigger of *Plan challenge* (`.squad/routing.md`) is printed with its reason,
 `Plan challenge: due — …` or `Plan challenge: not due — …`: due on tier `security`, and on tier `standard` when
@@ -118,6 +120,16 @@ PLAN_SIZE = re.compile(r"^Plan size:[ \t]*(\S.*)", re.M)
 # documentation is written (Censio#38).
 AREA_MAX_WORDS = getattr(settings, "AREA_MAX_WORDS", 5000)
 AREA_HEADROOM = 500
+# The words a change may add to .squad/project.md, which five members read on every launch; the plan states them on the
+# file's line of *Documentation updates* (`.squad/project.md (+N words)`).
+PROJECT_MAX_GROWTH = getattr(settings, "PROJECT_MAX_GROWTH", 200)
+TEST_DOUBLES_MAX_GROWTH = getattr(settings, "TEST_DOUBLES_MAX_GROWTH", 100)
+# (what a line names, how the warning names it, the limit's setting and value), first match per line.
+GROWTH_LIMITS = (
+    (re.compile(r"docs/UNIT_TESTS\.md\b.*?\bTest doubles\b", re.I), "docs/UNIT_TESTS.md (Test doubles)",
+     "TEST_DOUBLES_MAX_GROWTH", TEST_DOUBLES_MAX_GROWTH),
+    (re.compile(r"\.squad/project\.md"), ".squad/project.md", "PROJECT_MAX_GROWTH", PROJECT_MAX_GROWTH),
+)
 AREA_PATH = re.compile(r"docs/areas/[\w.-]+\.md")
 # `+N words` (the change adds) or `-N words` (it removes: a split that makes the document shrink, Censio#236).
 # A minus sign touches its digits, so a dash that separates the path from the count ("storage.md - 300 words") is none.
@@ -804,6 +816,7 @@ def check(folder, approved=False):
             check_placeholders("tasks.md", tasks, errors)
     check_plan_size(plan, errors, warnings, approved)
     check_area_sizes(plan, warnings)
+    check_project_growth(plan, warnings)
     check_early_pr(plan, warnings)
     return errors, warnings
 
@@ -834,15 +847,25 @@ EARLY_PR_NAMED = re.compile(r"\bearly draft pr\b", re.I)
 EARLY_PR_LINE = re.compile(r"^\s*(?:[-*]\s*)?Early draft PR:\s*(?:yes|no)\b", re.I)
 
 
-def check_early_pr(plan, warnings):
-    """A warning when the plan names an early draft PR in prose and has no line `Early draft PR: yes` or `: no`:
-    `squad-next.py` reads only that line (`.squad/routing.md`, *Early draft PR*)."""
+def early_pr_unstated(plan):
+    """True when the Lead's own text names an early draft PR in prose but no line of its own states `Early draft PR:
+    yes` or `: no`: the template's line `Early draft PR: no`, kept unchanged, counts as unset then (#464), since the
+    prose may ask for one. `squad-next.py` asks the Lead for the line; a plan that declines writes `Early draft PR:
+    no — <why>`, which is its own line."""
     lines = [line for line in strip_comments(plan).splitlines() if line.strip() and line.strip() not in template_lines()]
     if any(EARLY_PR_LINE.match(line) for line in lines):
-        return
-    if any(EARLY_PR_NAMED.search(line) for line in lines):
-        warnings.append("plan.md: names an early draft PR in prose; state it as a line `Early draft PR: yes` or "
-                        "`Early draft PR: no` (`.squad/routing.md`, *Early draft PR*), the only form squad-next.py reads")
+        return False
+    return any(EARLY_PR_NAMED.search(line) for line in lines)
+
+
+def check_early_pr(plan, warnings):
+    """A warning when the plan names an early draft PR in prose without a line of its own `Early draft PR: yes` or
+    `: no` (`early_pr_unstated`): `squad-next.py` reads only that line (`.squad/routing.md`, *Early draft PR*)."""
+    if early_pr_unstated(plan):
+        warnings.append("plan.md: names an early draft PR in prose; state it as a line `Early draft PR: yes`, or "
+                        "`Early draft PR: no — <why>` where it declines (the template's bare `: no` line counts as "
+                        "unset next to such prose; `.squad/routing.md`, *Early draft PR*), the only form squad-next.py "
+                        "reads")
 
 
 def check_area_sizes(plan, warnings):
@@ -853,6 +876,26 @@ def check_area_sizes(plan, warnings):
         adds = AREA_ADDS.search(line)
         found = (area_size_warning(path, adds) for path in sorted(set(AREA_PATH.findall(line))))
         warnings.extend(warning for warning in found if warning)
+
+
+def growth_warning(line):
+    """The warning for a line of the plan that states `.squad/project.md` or the *Test doubles* of
+    `docs/UNIT_TESTS.md` gain more words than their limit (GROWTH_LIMITS), or None."""
+    for pattern, label, name, limit in GROWTH_LIMITS:
+        if pattern.search(line):
+            added = signed_words(AREA_ADDS.search(line))
+            if added is None or added <= limit:
+                return None
+            return (f"plan.md: {label} (+{added} words) passes {name} {limit}: plan the new entries as pointers that "
+                    "name the files and link the area document or decision record, within the limit "
+                    "(.squad/routing.md, *Scope of a product PR*)")
+    return None
+
+
+def check_project_growth(plan, warnings):
+    """A warning for every line of the plan that `growth_warning` reports."""
+    found = (growth_warning(line) for line in strip_comments(plan).splitlines())
+    warnings.extend(warning for warning in found if warning)
 
 
 def template_lines():

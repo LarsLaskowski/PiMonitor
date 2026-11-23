@@ -48,7 +48,8 @@ description: Use when the user asks to open/create a pull request for changes on
      dependency items included
    - wrap the body in a HEREDOC so the formatting survives
    - set one label on the PR (`issue_write`, method `update`, `labels`) for the release notes
-     (`.github/release.yml`): `breaking-change` for a change that breaks existing users, else `enhancement` for a
+     (`.github/release.yml`): `breaking-change` for a change that breaks existing users (a configuration, input,
+     API or stored data that worked before is refused or means something else), else `enhancement` for a
      feature, `security` for a security fix, `bug` for a bug fix (with a linked issue: the matching label of the
      issue, else judge from the change); none for anything else (it lands under *Other
      changes*), `ignore-for-release` for a change that is not worth a release note, among them every change of the

@@ -31,9 +31,14 @@ it. This script checks, without arguments:
 - no bullet of a seeded file is still a seed's placeholder text with the braces removed (`- its interface` in
   `.squad/project.md`, from the seed's `- {{TODO: its interface}}`; `SEEDED_BULLETS`).
 
-A warning, which does not fail the check, names `.squad/project.md` when it is longer than `PROJECT_MAX_WORDS` words
-(`squad_settings.py`, default 1500): five members read it on every launch, so its entries point to the area
-documents and decision records instead of restating them. The warnings of `decision-check.py` (sizes of records and
+Warnings, which do not fail the check, name an entry of `.squad/project.md` (a bullet, a numbered item or a table
+row) with more than `PROJECT_ENTRY_MAX_PROSE` prose words (`squad_settings.py`, default 50; code spans and Markdown
+links do not count), and `.squad/project.md` when it gained more than `PROJECT_MAX_GROWTH` words (default 200) against
+the merge base with BASE_REF (`squad_settings.py`, default origin/main; skipped without one, or when the file is new
+there): five members read it on every launch, so its entries point to the area documents and decision records instead
+of restating them, and a change adds pointers, not copies. The same entry check and `TEST_DOUBLES_MAX_GROWTH` (default
+100) apply to the *Test doubles* section of `docs/UNIT_TESTS.md`, and a *Test doubles* section still in
+`.squad/project.md` is named: it belongs in the test document. The warnings of `decision-check.py` (sizes of records and
 area documents, release tags it cannot see) are shown as well.
 
 The front matter is parsed with PyYAML where it is installed. Without it, a built-in parser reads the YAML that
@@ -43,6 +48,10 @@ quote, a value starting with a reserved character or `- `, a line that is no `ke
 
 Usage, from anywhere inside the repository:
     python3 .squad/tools/config-check.py
+    python3 .squad/tools/config-check.py --project   # only the warnings about .squad/project.md and Test doubles
+
+With `--project` only the warnings about `.squad/project.md` and the *Test doubles* of `docs/UNIT_TESTS.md` are
+printed, and the exit code is 0: `gate-stamp.py` runs it in step 7 when the branch changes one of them.
 
 Exit code 0 when everything is valid, 1 otherwise.
 """
@@ -72,7 +81,12 @@ RULES_IMPORT = re.compile(r"^@AGENTS\.md[ \t]*$", re.M)
 PROJECT_FILE = os.path.join(SQUAD_DIR, "project.md")
 SETTINGS_FILE = os.path.join(SQUAD_DIR, "tools", "squad_settings.py")
 REQUIRED_FILES = [os.path.join(SQUAD_DIR, "stack.md"), PROJECT_FILE, SETTINGS_FILE]
-PROJECT_MAX_WORDS = 1500
+PROJECT_MAX_GROWTH = 200
+PROJECT_ENTRY_MAX_PROSE = 50
+# The test doubles' section of the test document, which the Tester keeps (`.squad/team.md`, *Files*).
+UNIT_TESTS_FILE = os.path.join("docs", "UNIT_TESTS.md")
+TEST_DOUBLES = "Test doubles"
+TEST_DOUBLES_MAX_GROWTH = 100
 # No quantifier overlaps another one, so matching stays linear (no backtracking).
 PLACEHOLDER = re.compile(r"\{\{TODO:([^{}]*)\}\}")
 IMPORT_LINE = re.compile(r"^@[^\s@]\S*[ \t]*\n", re.M)
@@ -103,6 +117,8 @@ SEEDED_BULLETS = {
         "the component list in `docs/ARCHITECTURE.md`",
         "the client and its DTOs — the external shape must not leak past it",
         "the fake/stub in the tests",
+    ),
+    UNIT_TESTS_FILE: (
         "`FakeX` — what it stands in for",
     ),
     "SECURITY.md": (
@@ -115,9 +131,18 @@ SEEDED_BULLETS = {
 }
 # Seed bullets of earlier template versions, still recognized in a repository adopted then (the seed is never refreshed).
 EARLIER_SEED_BULLETS = {
-    PROJECT_FILE: ("guarantee — [decision NNNN](../docs/decisions/NNNN-title.md)",),
+    PROJECT_FILE: ("guarantee — [decision NNNN](../docs/decisions/NNNN-title.md)", "`FakeX` — what it stands in for"),
 }
 BULLET = re.compile(r"^[ \t]*+[-*+][ \t]++(\S.*)$", re.M)
+# The entries of the size checks: a list item (bullet or numbered), a table row and the rule line under a table's
+# header, a heading; a code span and a Markdown link, which the prose words leave out.
+LIST_ITEM = re.compile(r"^[ \t]*+(?:[-*+]|\d{1,9}[.)])[ \t]++(\S.*+)")
+TABLE_ROW = re.compile(r"^[ \t]*+\|")
+TABLE_RULE = re.compile(r"[ \t|:-]++")
+HEADING = re.compile(r"(#{1,6})[ \t]++(.*+)")
+CODE_SPAN = re.compile(r"`[^`\n]*+`")
+LINK = re.compile(r"!?\[[^\]\n]*+\]\([^)\n]*+\)")
+PROSE_WORD = re.compile(r"\w")
 
 try:
     import yaml
@@ -381,20 +406,169 @@ def check_settings_file(errors):
         errors.append(f"{SETTINGS_FILE}: does not load ({type(error).__name__}: {error})")
 
 
-def check_project_size(warnings):
-    """`.squad/project.md` past PROJECT_MAX_WORDS: a warning that says how to shorten it."""
+def setting(name, default):
+    """A value of `squad_settings.py`, or the default when the file lacks it, is missing or does not load (that is
+    check_settings_file's finding)."""
+    try:
+        return getattr(load_settings(), name, default)
+    except Exception:  # noqa: BLE001  (a missing or broken settings file leaves the default)
+        return default
+
+
+def git_text(*args):
+    """The output of a read-only git command, or None when it fails (no repository, no such ref or file)."""
+    try:
+        done = subprocess.run(["git", *args], capture_output=True, text=True, encoding="utf-8", check=False)
+    except OSError:
+        return None
+    return done.stdout if done.returncode == 0 else None
+
+
+def base_text(path):
+    """The file's text at the merge base of BASE_REF and HEAD; None without a merge base or when the file is new."""
+    base = (git_text("merge-base", setting("BASE_REF", "origin/main"), "HEAD") or "").strip()
+    if not base:
+        return None
+    text = git_text("show", f"{base}:{path.replace(os.sep, '/')}")
+    return text.replace("\r\n", "\n") if text is not None else None
+
+
+def word_count(text):
+    """Words split at white space, the count `--project` prints (`wc -w` differs: a stand-alone dash, Censio#156)."""
+    return len(text.split())
+
+
+def prose_words(text):
+    """The words of an entry outside its code spans and Markdown links (a table row's pipes are no words)."""
+    prose = LINK.sub(" ", CODE_SPAN.sub(" ", text))
+    return sum(1 for word in prose.split() if PROSE_WORD.search(word))
+
+
+def entry_start(line):
+    """(kind, text) of a line that starts an entry: a bullet, a numbered item or a table row (not a table's rule
+    line); None for any other line."""
+    item = LIST_ITEM.match(line)
+    if item:
+        return "item", item.group(1)
+    if TABLE_ROW.match(line) and not TABLE_RULE.fullmatch(line):
+        return "row", line.strip()
+    return None
+
+
+def entries(text):
+    """[section heading, kind, text] of every entry of a Markdown text; a list item's continuation lines belong to it,
+    fenced code blocks and HTML comment lines hold none."""
+    found, section, current, fenced = [], "", None, False
+    for line in text.split("\n"):
+        if line.lstrip().startswith(("```", "~~~")):
+            fenced, current = not fenced, None
+            continue
+        heading = None if fenced else HEADING.match(line)
+        start = None if fenced or heading else entry_start(line)
+        if heading:
+            section, current = heading.group(2).strip(), None
+        elif start:
+            current = [section, *start]
+            found.append(current)
+        elif current and current[1] == "item" and line.strip() and not line.lstrip().startswith("<!--"):
+            current[2] += " " + line.strip()
+        else:
+            current = None
+    return found
+
+
+def double_row(kind, entry):
+    """True for an entry of *Test doubles* that names a double: a table row, or a list item that starts with a code
+    span or a bold label (Seluna: `**GitHub API double** — …`); the section's rule bullets, plain text, are no double
+    rows (Vandox keeps rules there)."""
+    return kind == "row" or entry.lstrip().startswith(("`", "**"))
+
+
+def check_entries(path, text, warnings, keep=None, before=None):
+    """Every entry of `text` (the file at `path`) with more prose words than PROJECT_ENTRY_MAX_PROSE; with `keep`,
+    only the entries it accepts (kind, text); with `before`, only the entries not in that text verbatim (the ones the
+    branch writes)."""
+    limit = setting("PROJECT_ENTRY_MAX_PROSE", PROJECT_ENTRY_MAX_PROSE)
+    old = {" ".join(entry.split()) for _, _, entry in entries(before)} if before is not None else set()
+    for section, kind, entry in entries(text):
+        if (keep and not keep(kind, entry)) or " ".join(entry.split()) in old:
+            continue
+        words = prose_words(entry)
+        if words > limit:
+            first = " ".join(entry.strip("|-*+ ").split()[:8])
+            warnings.append(f"{path} ({section or 'before the first heading'}, \"{first} …\"): {words} prose words in "
+                            f"one entry (PROJECT_ENTRY_MAX_PROSE {limit}) - make it a pointer: name the files, types or "
+                            "endpoints and link the area document or decision record, which state the behavior, "
+                            "values and limits")
+
+
+def check_project_size(warnings, new_only=False, counts=None):
+    """`.squad/project.md`: every entry past PROJECT_ENTRY_MAX_PROSE prose words (with `new_only`, only those the branch
+    writes), and the words the branch adds past PROJECT_MAX_GROWTH; `counts` gets its words and growth."""
     if not os.path.isfile(PROJECT_FILE):
         return
-    try:
-        limit = getattr(load_settings(), "PROJECT_MAX_WORDS", PROJECT_MAX_WORDS)
-    except Exception:  # noqa: BLE001  (a missing or broken settings file leaves the default; check_settings_file reports it)
-        limit = PROJECT_MAX_WORDS
-    words = len(read_text(PROJECT_FILE).split())
-    if words > limit:
-        warnings.append(f"{PROJECT_FILE}: {words} words (PROJECT_MAX_WORDS {limit}), and five members read it on every "
-                        "launch - make every entry a pointer: one line per security area, guarantee and test double "
-                        "that names the files and links its area document or decision record; move behavior, values "
-                        "and limits into the area document and the reasons into the record (its introduction)")
+    text = read_text(PROJECT_FILE)
+    before = base_text(PROJECT_FILE)
+    check_entries(PROJECT_FILE, text, warnings, before=before if new_only else None)
+    if counts is not None:
+        counts.append(size_line(PROJECT_FILE, word_count(text), None if before is None else word_count(before)))
+    limit = setting("PROJECT_MAX_GROWTH", PROJECT_MAX_GROWTH)
+    if before is not None and word_count(text) - word_count(before) > limit:
+        warnings.append(f"{PROJECT_FILE}: gained {word_count(text) - word_count(before)} words against the merge base "
+                        f"(PROJECT_MAX_GROWTH {limit}), and five members read it on every launch - write the new "
+                        "entries as pointers: one line per security area, guarantee or coupling point that names the "
+                        "files and links its area document or decision record")
+
+
+def doubles_text(text):
+    """The *Test doubles* sections of a Markdown text, each to the next heading of its level or a higher one (a
+    repository with several profiles has one per profile), or None without one."""
+    lines, level = [], None
+    for line in text.split("\n"):
+        heading = HEADING.match(line)
+        if heading and (level is None or len(heading.group(1)) <= level):
+            level = len(heading.group(1)) if heading.group(2).strip().startswith(TEST_DOUBLES) else None
+        if level is not None:
+            lines.append(line)
+    return "\n".join(lines) if lines else None
+
+
+def doubles_before():
+    """(words, text) of the test doubles at the merge base: the sections of the test document and of
+    `.squad/project.md` added up, so the move from one to the other is no growth (a test document can have a section
+    of its own already, Vandox); None without a merge base or when neither file is there."""
+    tests, project = base_text(UNIT_TESTS_FILE), base_text(PROJECT_FILE)
+    if tests is None and project is None:
+        return None
+    sections = "\n".join(filter(None, (doubles_text(tests or ""), doubles_text(project or ""))))
+    return word_count(sections), sections
+
+
+def size_line(name, now, before):
+    """The words of a file or section now and its growth against the merge base, as `--project` prints them."""
+    growth = "no merge base" if before is None else f"{now - before:+d} against the merge base"
+    return f"{name}: {now} words ({growth})"
+
+
+def check_test_doubles(warnings, new_only=False, counts=None):
+    """A *Test doubles* section left in `.squad/project.md`; in the test document's, every double row past
+    PROJECT_ENTRY_MAX_PROSE prose words (with `new_only`, only those the branch writes) and the words the branch adds
+    past TEST_DOUBLES_MAX_GROWTH; `counts` gets the section's words and growth."""
+    if os.path.isfile(PROJECT_FILE) and doubles_text(read_text(PROJECT_FILE)) is not None:
+        warnings.append(f"{PROJECT_FILE}: has a *{TEST_DOUBLES}* section - move it verbatim to {UNIT_TESTS_FILE}, where "
+                        "the Tester keeps it (a refresh does: adopt-template step 1)")
+    section = doubles_text(read_text(UNIT_TESTS_FILE)) if os.path.isfile(UNIT_TESTS_FILE) else None
+    if section is None:
+        return
+    before, old_text = doubles_before() or (None, "")
+    check_entries(UNIT_TESTS_FILE, section, warnings, keep=double_row, before=old_text if new_only else None)
+    if counts is not None:
+        counts.append(size_line(f"{UNIT_TESTS_FILE} (*{TEST_DOUBLES}*)", word_count(section), before))
+    limit = setting("TEST_DOUBLES_MAX_GROWTH", TEST_DOUBLES_MAX_GROWTH)
+    if before is not None and word_count(section) - before > limit:
+        warnings.append(f"{UNIT_TESTS_FILE} (*{TEST_DOUBLES}*): gained {word_count(section) - before} words against the "
+                        f"merge base (TEST_DOUBLES_MAX_GROWTH {limit}) - one line per double: where it lives and what it "
+                        "stands in for; how it behaves is read in its code")
 
 
 def check_project_files(errors):
@@ -453,9 +627,27 @@ def check_decisions(errors, warnings):
         errors.append(f"{script} failed: {result.stderr.strip() or 'no output'}")
 
 
-def main():
+def project_only():
+    """`--project`: print the words of `.squad/project.md` and of the test doubles with their growth against the merge
+    base, and the warnings about what the branch writes there (an older entry is left to the full run); always exit
+    code 0."""
+    warnings, counts = [], []
+    check_project_size(warnings, new_only=True, counts=counts)
+    check_test_doubles(warnings, new_only=True, counts=counts)
+    for line in counts:
+        print(line)
+    for warning in warnings:
+        print(f"{WARNING_PREFIX}{warning}")
+    print(f"Checked {PROJECT_FILE} and the {TEST_DOUBLES} of {UNIT_TESTS_FILE}: {len(warnings)} warning(s)")
+    return 0
+
+
+def main(argv=None):
+    argv = sys.argv[1:] if argv is None else argv
     # Resolve paths from the repository root, whatever the current directory is.
     os.chdir(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
+    if "--project" in argv:
+        return project_only()
     errors, warnings = [], []
     agents = sorted(glob.glob(os.path.join(AGENTS_DIR, "*.md")))
     for path in agents:
@@ -468,6 +660,7 @@ def main():
     check_project_files(errors)
     check_settings_file(errors)
     check_project_size(warnings)
+    check_test_doubles(warnings)
     check_decisions(errors, warnings)
 
     if not agents or not skills:

@@ -33,7 +33,11 @@ code*):
   `scope-check.py`, with `--require-history`: a released record it cannot check (a shallow clone, release tags not
   fetched, a remote that cannot be asked) fails it, with the fix `decision-check.py` names. A verbatim stamp runs it
   the same way. In a shallow clone that check cannot pass, so the stamp refuses before any gate runs and names the
-  command that fetches the history (`git fetch --unshallow --tags origin`).
+  command that fetches the history (`git fetch --unshallow --tags origin`);
+- every tier: when the branch changes `.squad/project.md` or `docs/UNIT_TESTS.md`,
+  `config-check.py --project` runs after the gates: no gate, its warnings (an entry with too much prose, more growth
+  than `PROJECT_MAX_GROWTH` or `TEST_DOUBLES_MAX_GROWTH`) are printed for the run to work (`.squad/routing.md`, *Scope
+  of a product PR*).
 
 The tier is the *Tier* line of `plan.md`, or for `docs` and `patch` (no `plan.md`) what the Lead's first step-2 row
 names (`Tier: patch`, `tier docs`). Each gate's command is the first code span of its row in the *Commands* tables of
@@ -103,6 +107,7 @@ PRODUCTION_PATHSPECS = getattr(settings, "COVERAGE_PATHSPECS", [])
 SPECS = "specs"
 OUTSIDE_SPECS = ["--", ".", ":(exclude)specs"]
 QUOTE_PATHS = "core.quotePath=false"
+SQUAD_TOOLS = os.path.join(".squad", "tools")
 STACK = os.path.join(".squad", "stack.md")
 ORCHESTRATOR = "Orchestrator"
 STAMP_STEP = "7 Gate stamp"
@@ -135,6 +140,9 @@ FIGURE = "figure-check.py"
 DECISION = "decision-check.py"
 # The files whose change runs decision-check.py in the full gates too: the records and the area documents.
 RECORD_PATHSPECS = ["docs/decisions/", "docs/areas/"]
+# The files whose change runs config-check.py's project checks (no gate): project.md and the test document.
+PROJECT_CHECK = "config-check.py --project"
+PROJECT_PATHSPECS = [".squad/project.md", "docs/UNIT_TESTS.md"]
 VERBATIM = ", verbatim"
 CHECK = "check"
 PASSED = "pass"
@@ -466,7 +474,7 @@ def run_gates(run, root, stream, full=None):
 
 def figure_hits(root, stream):
     """The number of hits of figure-check.py (its warnings, also printed), or None when it did not run."""
-    done = subprocess.run(["python3", os.path.join(".squad", "tools", FIGURE)], cwd=root, capture_output=True,
+    done = subprocess.run(["python3", os.path.join(SQUAD_TOOLS, FIGURE)], cwd=root, capture_output=True,
                           text=True, check=False)
     print(done.stdout + done.stderr, file=stream or sys.stdout, end="", flush=True)
     return len(WARNING_LINE.findall(done.stdout)) if done.returncode == 0 else None
@@ -506,7 +514,8 @@ def run_context(root, name, rows, after_pr):
                       "patch")
     base = merge_base(root)
     return {"tier": tier, "plan": plan, "kinds": changed_kinds(root, base), "after_pr": after_pr,
-            "records": bool(changed(root, base, RECORD_PATHSPECS))}
+            "records": bool(changed(root, base, RECORD_PATHSPECS)),
+            "project": bool(changed(root, base, PROJECT_PATHSPECS))}
 
 
 def run_logged(run, root, name, sha, stream):
@@ -537,6 +546,24 @@ def head_refusal(root):
                       "that head (.squad/orchestration.md, *Commits*)")
 
 
+def print_dry_run(run, figure, project):
+    """The gates and their commands, and the checks that are no gate, without running them."""
+    for label, commands in run:
+        print(f"{label}: " + " && ".join(f"`{command}`" for command in commands))
+    for check, due in ((FIGURE, figure), (PROJECT_CHECK, project)):
+        if due:
+            print(f"{check} (no gate)")
+
+
+def project_warnings(root, stream):
+    """Print the warnings of `config-check.py --project` (the entries and growth of `.squad/project.md` and of the
+    *Test doubles* of `docs/UNIT_TESTS.md`): no gate, worked in this run (`.squad/routing.md`, *Scope of a product
+    PR*)."""
+    done = subprocess.run(["python3", os.path.join(SQUAD_TOOLS, "config-check.py"), "--project"], cwd=root,
+                          capture_output=True, text=True, check=False)
+    print(done.stdout + done.stderr, file=stream or sys.stdout, end="", flush=True)
+
+
 def stamp_command(options, root, name, log_path, after_pr, stream=None):
     """Run the gates and append the stamp row; the exit code."""
     if not options.dry_run:
@@ -549,14 +576,13 @@ def stamp_command(options, root, name, log_path, after_pr, stream=None):
     if not options.dry_run:
         shallow_refusal(root, run)
     if options.dry_run:
-        for label, commands in run:
-            print(f"{label}: " + " && ".join(f"`{command}`" for command in commands))
-        if figure:
-            print(f"{FIGURE} (no gate)")
+        print_dry_run(run, figure, context.get("project"))
         return 0
     sha = head(root)
     results = run_logged(run, root, name, sha, stream)
     hits = figure_hits(root, stream) if figure else None
+    if context.get("project"):
+        project_warnings(root, stream)
     if head(root) != sha:
         results.append(("HEAD", f"moved to {head(root)} while the gates ran"))
     verdict = "PASS" if all(status == PASSED for _, status in results) else "FAIL"

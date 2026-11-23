@@ -30,8 +30,11 @@ COVERAGE_REPORT_GLOB = "coverage.out"
 COVERAGE_PATHSPECS = ["*.go"]
 COVERAGE_EXCLUDES = ["*_test.go"]
 
-# Size warnings (config-check.py, decision-check.py): a file past its limit is reported with the split it needs.
-PROJECT_MAX_WORDS = 1500  # .squad/project.md, read by five members on every launch
+# Size warnings (config-check.py, plan-check.py, decision-check.py): a file or a change past its limit is reported with
+# what it needs.
+PROJECT_MAX_GROWTH = 200  # words .squad/project.md may gain in one change (against the merge base with BASE_REF)
+PROJECT_ENTRY_MAX_PROSE = 50  # prose words of one entry of .squad/project.md or *Test doubles* (no code spans, links)
+TEST_DOUBLES_MAX_GROWTH = 100  # words *Test doubles* in docs/UNIT_TESTS.md may gain in one change
 AREA_MAX_WORDS = 5000  # each area document in docs/areas/
 RECORD_MAX_WORDS = 1500  # each unreleased decision record
 RECORD_MAX_OPTIONS = 8  # the options under *Options considered* of an unreleased decision record

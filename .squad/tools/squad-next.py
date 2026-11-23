@@ -31,7 +31,7 @@ a row without one is named, and both ways are printed. A Reviewer's verdict line
 (`VERDICT: APPROVE on <sha>`); one that names none, or a commit whose code differs from the stamp of its round (a
 later commit that touched only `specs/` holds the same code), ties the round to no stamp, and the Reviewer is
 continued on the stamp's SHA. The Orchestrator's verbatim rows after a round subtract the findings they name by tag
-(`[BLOCKING, verbatim]`, `[NON-BLOCKING, verbatim]`; a row without a tag counts as one blocking finding), so a
+(`[BLOCKING, verbatim]`, `[NON-BLOCKING, verbatim]`; `squad-log.py` refuses a row without one), so a
 non-blocking finding applied verbatim needs no Lead launch, and a word "blocking" in its prose counts nothing; a
 Lead `decide` row that orders a change (`FIX:` in capitals, with its colon) sends its owners, the gates and a delta
 round before step 9. A new stamp whose code differs from the reviewed one only in the `Status` lines of decision
@@ -1130,7 +1130,7 @@ def group_step(run, group, skeleton, docs_only=False):
             f"{BASE_HANDOVER}") + [
             "  Not due when steps 4 and 5 left the group no production code to write (the skeleton was the whole "
             "change): " + orchestrator_log(run, f"6 Implement skipped{tag}", "skipped — <what steps 4–5 did>").strip(),
-            decide_pointer(run, tag)]
+            decide_pointer(run, tag)] + deferred_note(run, group)
     if not coverage_ended(run, group):
         return coverage_pass(run, tag, rows, deferred_tests(run, group)) + [decide_pointer(run, tag)]
     return None
@@ -1226,6 +1226,16 @@ def documentation_group(run, group, tag):
             run, TESTER, "coverage", f"6 Test documentation{tag}", "the group's task rows of the Tester (test "
             f"documentation; rows under .squad/ as exact text in the report), {BASE_HANDOVER}")
     return None
+
+
+def deferred_note(run, group):
+    """The line that tells, before the Dev's row, that the deferred tests make the Tester's coverage pass due
+    (Censio#244: a coverage skip logged right after the Dev); squad-log.py refuses that skip."""
+    deferred = deferred_tests(run, group)
+    if not deferred or deferral_settled(run, group):
+        return []
+    return [f"  After it: the Tester's coverage pass for the deferred tests ({deferred}), also when the gate passes; "
+            "no coverage skip row"]
 
 
 def coverage_pass(run, tag, rows, deferred=""):
@@ -1477,18 +1487,23 @@ def early_pr(run):
 
 
 def early_pr_line_missing(run, own):
-    """The Lead's revision for a plan that names an early draft PR in prose and has no line `Early draft PR: yes` or
-    `: no` (a plan written before the line existed), once: `squad-next.py` reads only the line."""
-    check = plan_check()
-    if any(check.EARLY_PR_LINE.match(line) for line in (run.plan or "").splitlines()) or run.of(
-            LEAD, {"7"}, word="early draft"):
+    """The Lead's revision for a plan that names an early draft PR in prose without a line of its own `Early draft PR:
+    yes` or `: no` (`plan-check.py`'s `early_pr_unstated`: a plan written before the line existed, or one that kept the
+    template's `: no`, #464). A revision that still leaves no line gets one more, the Lead continued; after that the run
+    goes on without the draft PR."""
+    if not plan_check().early_pr_unstated(run.plan or ""):
         return None
-    if not any(check.EARLY_PR_NAMED.search(line) for line in own):
+    revisions = run.of(LEAD, {"7"}, word="early draft")
+    if len(revisions) >= 2:
         return None
+    task = ("the plan: add the line `Early draft PR: yes` where the prose asks for one, `Early draft PR: no — <why>` "
+            "where it declines (the template's bare `: no` line counts as unset next to such prose); the scope stays, "
+            "and the answer is `RESULT: DONE`")
+    if revisions:
+        return heading("step 7 — the Lead's revision left the plan without its own line `Early draft PR: yes|no`") + \
+            launch(run, LEAD, "revise", "7 Plan revise (early draft PR line)", task, rule=LAST)
     return heading("step 7 — the plan names an early draft PR in prose, without the line `Early draft PR: yes|no`") + \
-        launch(run, LEAD, "revise", "7 Plan revise (early draft PR)", "the plan: add the line `Early draft PR: yes` "
-               "where the prose asks for one, `Early draft PR: no` where it declines; the scope stays, and the answer is "
-               "`RESULT: DONE`", rule=LAST)
+        launch(run, LEAD, "revise", "7 Plan revise (early draft PR)", task, rule=LAST)
 
 
 def manual_check(run):
@@ -1594,6 +1609,15 @@ def failed_private_check(run, rows):
         return heading("step 6 — the Dev's work the Lead's decision on the failed private check orders") + launch(
             run, DEV, "implement", "6 Implement (private check)",
             f"the Lead's decision (row \"{decided[0].step}\") on the failed private check, {BASE_HANDOVER}")
+    if not fix_ordered(decided[-1].result) and lead_result(decided[-1]) != "ESCALATE" \
+            and not [row for row in run.rows if row.index > decided[-1].index]:
+        # #464: a decision that orders code without `FIX:` would rerun the check on unchanged code.
+        return heading("step 6 — the Lead's decision on the failed private check names no `FIX:`") + [
+            DO + "when the Lead's report orders a change, correct the row without a new launch: "
+            f"{LOG_TOOL} {run.name} --replace-last \"Lead\" --step \"{decided[-1].step}\" --new-result \"RESULT: "
+            "DECIDED — FIX: <Dev|Tester|orchestrator|Code Officer> — <change>\"",
+            "  Only when it orders no change (another input, the same code) the check runs again:"] + \
+            private_launch(run, private_criteria(run))
     return None
 
 
@@ -1615,13 +1639,18 @@ def private_check(run):
         return None
     if rows and (failed := failed_private_check(run, rows)):
         return failed
+    return heading(f"step 6 — the Tester's check of {', '.join(criteria)} over a private input") + \
+        private_launch(run, criteria) + [THEN + "the stamp follows once the row says PASS or FAIL"]
+
+
+def private_launch(run, criteria):
+    """The Tester's launch of the private check of `criteria`."""
     lines = launch(
         run, TESTER, "coverage", run.step_cell("6", "Private check"),
         f"the plan's manual check of {', '.join(criteria)} and where the private input is (ask the Product Manager if "
         "the plan does not say); the input is never committed, copied or quoted in the report, only its result")
     lines[-1] = lines[-1].replace("\"<the result>\"", "\"<PASS or FAIL per criterion, then the result>\"")
-    return heading(f"step 6 — the Tester's check of {', '.join(criteria)} over a private input") + lines + [
-        THEN + "the stamp follows once the row says PASS or FAIL"]
+    return lines
 
 
 def manual_criteria(run):
@@ -1817,9 +1846,10 @@ def review_outcome(run, rows, blocking, nonblocking):
             "justification, split into a follow-up issue, abort, or escalate")
     if nonblocking and not decided:
         return heading("step 8 — non-blocking findings (*Non-blocking findings*)") + [
-            "  Verbatim ones: *Verbatim documentation fixes*; all others in one Lead launch, before the round's fix round:"
-        ] + launch(run, LEAD, "decide", run.step_cell("8", "Decide"), "the round's non-blocking findings (and, for "
-                   "context, its blocking ones)")
+            "  Verbatim ones: *Verbatim documentation fixes*, logged as " + verbatim_row(run),
+            "  All others in one Lead launch, before the round's fix round:"] + launch(
+            run, LEAD, "decide", run.step_cell("8", "Decide"), "the round's non-blocking findings (and, for context, "
+            "its blocking ones)")
     ordered = bool(decided) and fix_ordered(decided[-1].result)
     if not blocking and not ordered:
         return None
@@ -1830,7 +1860,7 @@ def review_outcome(run, rows, blocking, nonblocking):
     if run.base_tier in ("docs", "patch"):
         return heading(f"step 8 — {what} (tiers docs and patch)") + [
             DO + "fix them yourself, commit and run the gate stamp again; then a delta round"]
-    verbatim = ["  A fix marked verbatim: apply it yourself (*Verbatim documentation fixes*)"]
+    verbatim = ["  A fix marked verbatim: apply it yourself (*Verbatim documentation fixes*), then " + verbatim_row(run)]
     if not blocking:
         return heading("step 8 — the Lead ordered fixes: their owner, then steps 6–7 and a mandatory delta round") + \
             owner_fixes(run, "8", "the Lead's decide row") + verbatim
@@ -1840,6 +1870,14 @@ def review_outcome(run, rows, blocking, nonblocking):
         purpose="code and documentation") + launch(
         run, TESTER, "coverage", run.step_cell("8", FIX_TESTS), "the blocking findings on tests, the head SHA",
         purpose="tests") + verbatim
+
+
+def verbatim_row(run):
+    """The exact row of a verbatim fix, each finding named by the Reviewer's tag (Censio#244): an untagged row counts
+    as one blocking finding (`verbatim_findings`)."""
+    return (f"{LOG_TOOL} {run.name} \"{run.step_cell('8', 'Verbatim fix')}\" Orchestrator \"verbatim: [BLOCKING, "
+            "verbatim] <file:line>; [NON-BLOCKING, verbatim] <file:line>\" (one tag per finding, as the Reviewer "
+            "wrote it; a plan-ordered one `[NON-BLOCKING, plan, verbatim]`)")
 
 
 def owner_fixes(run, number, source):
@@ -1882,7 +1920,8 @@ def approval(run):
         "  A decision open (a plan deviation, a Lead decision of steps 3–8, an unplanned change to docs/ARCHITECTURE.md "
         "or .squad/project.md):"] + launch(run, LEAD, "approve-pr", run.step_cell("9", "PR approval"),
                                            "the base ref, the gate output, the review outcome and the open points one "
-                                           "by one (after the PR also the finished check-run list)")
+                                           "by one (after the PR also the finished check-run list)") + [
+        "  The Lead's `RESULT: APPROVED` row ends the step (with the record status stamped): no checklist row after it"]
 
 
 def settled_by_decision(run, verdict):

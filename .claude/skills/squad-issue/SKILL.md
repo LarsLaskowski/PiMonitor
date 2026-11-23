@@ -152,8 +152,9 @@ create the follow-up issues the Lead decides on.
     from that commit. Then remove the work folder as `squad-next.py` prints (`git rm -r`, `scope-check.py --no-specs`,
     commit "Remove squad working record", push). Later log rows go into that comment: pipe its log table into
     `squad-log.py … --stdin` and paste the log it prints back (nothing is restored into the repository). Open the PR
-    as `create-pr` step 8 says, without its review loop; a PR the session already has for the branch
-    (`list_pull_requests` with `head: "<owner>:<branch>"`) gets its title and body updated instead
+    as `create-pr` step 8 says, without its review loop and with its release-notes label (`breaking-change` when the
+    body, the plan or a decision record says the change breaks existing users); a PR the session already has for the
+    branch (`list_pull_requests` with `head: "<owner>:<branch>"`) gets its title, body and that label updated instead
     (`update_pull_request`, `draft: true`). The body describes the bug, the fix and the reproducing test (or that the
     fix is not verifiable without a real external system), `Closes #<number>` under Issues and the decision records,
     the matrix as *Test Plan*; Next Steps lists **only linked GitHub issues** (create them now, the verification

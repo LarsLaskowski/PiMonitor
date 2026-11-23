@@ -8,9 +8,10 @@ reads the report of the agent's latest round — the message of its `SubagentHan
 from `<session>/subagents/agent-<id>.jsonl` of the session `CLAUDE_CODE_SESSION_ID` (or `--session`), as `squad-log.py
 --agent-id` reads its usage. Outside Claude Code the report is piped in with `--stdin`. A report without a `VERDICT:`
 line is refused: it is narration, not the report. Its closing `VERDICT:` line stays out (the log row carries it);
-everything else is written as the member wrote it, under `## Challenge notes` or `## Security notes` at the end of the
-document, or below that section's last line when the document has it already. The line ending follows the file. A
-control character (Unicode categories Cc, Cf, Zl, Zp other than tab and line break) is written as its text escape
+everything else is written as the member wrote it, its headings moved down to level 3 and below so none ends the
+section, under `## Challenge notes` or `## Security notes` at the end of the document, or below that section's last
+line when the document has it already. The line ending follows the file. A control character (Unicode categories
+Cc, Cf, Zl, Zp other than tab and line break) is written as its text escape
 `U+XXXX`, as `squad-log.py` writes it, so the appended notes never fail `plan-check.py` (PiMonitor#238: a quoted
 U+FEFF).
 
@@ -146,6 +147,37 @@ def notes(report):
     return "\n".join(line.rstrip() for line in lines)
 
 
+def demoted(body):
+    """The notes with their headings moved down so the highest is level 3, the structure kept (level 6 at most):
+    a level-1 or level-2 heading of the report would end the notes section, and `plan-check.py` would count what
+    follows as the Lead's plan text (Censio#241). Lines inside a code fence are left alone."""
+    lines, fence, levels = body.splitlines(), None, []
+    for line in lines:
+        fence = toggled_fence(line, fence)
+        heading = None if fence else re.match(r"^(#{1,6})[ \t]", line)
+        if heading:
+            levels.append(len(heading.group(1)))
+    shift = max(0, 3 - min(levels, default=3))
+    if not shift:
+        return body
+    out, fence = [], None
+    for line in lines:
+        fence = toggled_fence(line, fence)
+        heading = None if fence else re.match(r"^(#{1,6})([ \t].*)$", line)
+        out.append("#" * min(6, len(heading.group(1)) + shift) + heading.group(2) if heading else line)
+    return "\n".join(out)
+
+
+def toggled_fence(line, fence):
+    """The open code fence (its marker) after `line`, None outside one; the fence line itself counts as inside."""
+    marker = re.match(r"^\s*(```+|~~~+)", line)
+    if marker is None:
+        return fence
+    if fence is None:
+        return marker.group(1)
+    return None if marker.group(1).startswith(fence) else fence
+
+
 def lf_text(text):
     """The text with every line end as LF; a carriage return no line feed follows is dropped, so writing the text back
     with CRLF line ends never leaves `\\r\\r\\n` (DockerUpdateGuard#489)."""
@@ -198,7 +230,7 @@ def main(argv=None):
         print("The report carries no VERDICT line: it is not the member's report (the Devil's Advocate and Security "
               "end theirs with one); nothing written")
         return 1
-    body = notes(report)
+    body = demoted(notes(report))
     if not body:
         print("The report holds no notes besides its VERDICT line: nothing written")
         return 1
