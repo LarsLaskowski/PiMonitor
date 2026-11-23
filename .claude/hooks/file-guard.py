@@ -151,8 +151,8 @@ def tester_verdict(rel, tree):
         return None
     return (f"the Tester writes only the test paths ({', '.join(pathspecs) or 'none'}: COVERAGE_TEST_PATHSPECS in "
             f"{SETTINGS}, by default its COVERAGE_EXCLUDES), the Markdown files under their directories and "
-            f"{TEST_DOCUMENT}; .squad/project.md (*Test doubles*): report the rows verbatim, the orchestrator writes "
-            "them")
+            f"{TEST_DOCUMENT} (its *Test doubles* rows included); an edit of .squad/project.md or .squad/stack.md: "
+            "report the text verbatim, the orchestrator writes it")
 
 
 def ownership_verdict(agent, rel, tree):

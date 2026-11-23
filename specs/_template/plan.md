@@ -106,7 +106,8 @@ each, with the words it adds or removes (`docs/areas/<name>.md (+N words)`, `(-N
 
 `README.md` (configuration table, env vars), `docs/*.md` including the area documents and
 `docs/ARCHITECTURE.md`, and what the PR template's checklist asks for (a changelog entry, say) — or "none": each file
-and what changes in it, for the Dev (test documentation: the Tester).
+and what changes in it, for the Dev (test documentation: the Tester); an edit of `.squad/project.md` or of *Test
+doubles* with the words it adds (`.squad/project.md (+N words)`, `docs/UNIT_TESTS.md (Test doubles +N words)`).
 
 ## Architecture check
 

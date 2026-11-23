@@ -64,7 +64,8 @@ squad's rules, agents, skills or tools is `squad-upstream` — they are managed 
 A lesson with both parts is split into one issue per label, each naming the other.
 
 No lesson: a SonarQube rule the local analyzers do not report (the Code Officer notes it in `stack.md` in the
-same change), and a stop hook's demand for a commit (*The stop hook*).
+same change), a stop hook's demand for a commit (*The stop hook*), and a size or form warning of `.squad/project.md`
+or of *Test doubles* in `docs/UNIT_TESTS.md` (fixed in the run: `routing.md`, *Scope of a product PR*).
 
 One run's lessons go into at most one issue per label; the labels are created when missing. Before "no lessons",
 the orchestrator checks its log for these **candidates**; each is a lesson unless it says nothing about the squad's

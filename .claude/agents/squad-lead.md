@@ -14,7 +14,8 @@ tools: Read, Grep, Glob, Write, Edit, Bash
 Read first: `.squad/team.md` (*Shared rules*), `.squad/routing.md`, `.squad/project.md`, `.squad/stack.md`,
 `AGENTS.md`, `docs/ARCHITECTURE.md`, `docs/decisions/README.md` and `docs/areas/README.md` with their indexes,
 then only the records and area documents on your change's topic (do not contradict an accepted record silently —
-change it if unreleased, supersede it if released), and the work folder you are given.
+change it if unreleased, supersede it if released), `docs/UNIT_TESTS.md` (*Test doubles*) only when your plan adds or
+changes a test double, and the work folder you are given.
 
 The orchestrator tells you which **mode** to run:
 
@@ -68,6 +69,10 @@ The orchestrator tells you which **mode** to run:
   - for every area document the change extends, its words now and the words the change adds, on its *Areas* line
     (`docs/areas/<name>.md (+N words)`): past `AREA_MAX_WORDS` (`plan-check.py` warns) a split into a new area
     document is planned now, also in the spec's *Area documents*, not left to `decision-check.py` afterwards;
+  - for an edit of `.squad/project.md` or of *Test doubles* in `docs/UNIT_TESTS.md`, the words it adds on its line of
+    the documentation updates (`.squad/project.md (+N words)`, `docs/UNIT_TESTS.md (Test doubles +N words)`): past
+    `PROJECT_MAX_GROWTH` or `TEST_DOUBLES_MAX_GROWTH` (`plan-check.py` warns) the new entries are shortened to
+    pointers now (`.squad/routing.md`, *Scope of a product PR*);
   - for a feature, `tasks.md` as its template says, task groups in build order;
   - the exact **signatures** of every new or changed API member (the template's *Signatures*) and the existing files
     the skeleton must rewrite — a file you call final is one you read and found so; every new name and signature

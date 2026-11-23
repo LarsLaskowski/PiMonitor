@@ -207,6 +207,11 @@ VERDICT_QUOTE = 80  # characters of a result a verdict warning quotes
 STEP_NUMBER = re.compile(r"^\s*(\d+)")
 ROUND_OF_SAME_MODE = re.compile(r"\b(?:fix|delta|revis)", re.I)
 SPECS_PREFIX = "specs/"
+# The tag a verbatim row names a finding by (`[BLOCKING, verbatim]`, `[NON-BLOCKING, plan, verbatim]`), and a row that
+# says it skipped its step; the same patterns as `squad-next.py`'s.
+VERBATIM_TAG = re.compile(r"\[(?:NON-)?BLOCKING, (?:plan, )?verbatim\]", re.I)
+SKIPPED = re.compile(r"\bskip", re.I)
+VERBATIM_FIX = re.compile(r"\bverbatim\b(?:\s+\w+){0,2}\s+fix", re.I)
 FOLDER_NAME = re.compile(r"\w[\w.-]*")
 FIX_STEP = re.compile(r"^\s*11\b")
 TEMPLATE_VALUE = re.compile(r"[\w./-]{1,100}")
@@ -1159,7 +1164,36 @@ def no_row_message(folder, member, replace, step):
     return f"No row of {member} {where}{state} a launch trailer in {folder}{hint}"
 
 
-def row_command(parser, path, args, launch):
+def refused_row(root, path, args):
+    """The reason an Orchestrator row cannot be written as given, or None (Censio#244): a verbatim row that names no
+    finding by its tag (`squad-next.py` would count it as one blocking finding), and a step-6 coverage skip while the
+    group's step-5 Tester row names deferred tests (only the Tester's pass ends that coverage step)."""
+    if args.member != "Orchestrator":
+        return None
+    step = cell(args.step)
+    # Only a review round's findings have tags: a step-7 shortening of `.squad/project.md` entries has none.
+    verbatim = re.match(r"(?:8|11)\b", step) and not SKIPPED.search(step) and (
+        re.search(r"verbatim", step, re.I) or VERBATIM_FIX.search(args.result))
+    if verbatim and not VERBATIM_TAG.search(args.result):
+        return ("a verbatim row names each finding it applied by its tag, as the Reviewer wrote it: \"verbatim: "
+                "[BLOCKING, verbatim] <file:line>; [NON-BLOCKING, verbatim] <file:line>\" (a plan-ordered one "
+                "`[NON-BLOCKING, plan, verbatim]`); without a tag squad-next.py counts the row as one blocking finding")
+    if not (re.match(r"6\b", step) and re.search(r"coverage", step, re.I) and SKIPPED.search(f"{step} {args.result}")):
+        return None
+    with open(path, encoding="utf-8-sig") as handle:
+        raw = parse_rows(handle.read())
+    next_tool = squad_next()
+    run = next_tool.Run(root, args.folder.strip().rstrip("/").removeprefix(SPECS_PREFIX), raw, False)
+    found = next_tool.GROUP.search(step)
+    group = found.group(1) if found else None
+    deferred = next_tool.deferred_tests(run, group)
+    if not deferred or next_tool.coverage_ended(run, group):
+        return None
+    return (f"the step-5 Tester row names deferred tests ({deferred}): the Tester's coverage pass is due for them, "
+            "also when the gate passes, and only its step-6 row ends the step; run squad-next.py for the launch")
+
+
+def row_command(parser, root, path, args, launch):
     if args.step is None or args.member is None or args.result is None:
         parser.error("a row needs <step> <member> <result> (or --summary, --amend-last or --replace-last)")
     if TWO_MEMBERS.search(args.member):
@@ -1170,6 +1204,9 @@ def row_command(parser, path, args, launch):
                      "--seconds or alone for a pending row), on the row or with --amend-last")
     if args.at_step is not None or args.unreported:
         parser.error("--step and --unreported go with --amend-last or --replace-last")
+    refused = refused_row(root, path, args)
+    if refused:
+        parser.error(refused)
     launch = share_of_round(path, args.member, launch, args.continued, origin=args.continued_from)
     if args.continued and launch is None:
         return 1
@@ -1357,7 +1394,7 @@ def run(parser, args, root, path):
         return amend_command(parser, path, args.folder, args.amend_last or args.replace_last, launch,
                              replace=bool(args.replace_last), continued=args.continued, step=args.at_step,
                              origin=args.continued_from)
-    return row_command(parser, path, args, launch)
+    return row_command(parser, root, path, args, launch)
 
 
 def removed_log(root, folder):
