@@ -3,6 +3,7 @@ package collector
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -145,12 +146,19 @@ func TestDefaultExcludedFSTypes_FiltersNetworkFS(t *testing.T) {
 	}
 }
 
+// devStatfs returns a fake statfs that reports the same sizes for every path
+// and the device ID devs holds for it (zero for a path not in devs).
+func devStatfs(devs map[string]uint64) statfsFunc {
+	return func(path string) (fsStats, error) {
+		return fsStats{Bsize: 4096, Blocks: 1000, Bfree: 250, Bavail: 200, Dev: devs[path]}, nil
+	}
+}
+
 func TestDiskCollector_Collect(t *testing.T) {
 	mountsPath := writeMountsFixture(t, mountsFixture)
 
-	fakeStatfs := func(path string) (fsStats, error) {
-		return fsStats{Bsize: 4096, Blocks: 1000, Bfree: 250, Bavail: 200}, nil
-	}
+	// Each mountpoint is its own filesystem (distinct device ID).
+	fakeStatfs := devStatfs(map[string]uint64{"/boot/firmware": 1, "/mnt/usb": 2})
 
 	c := &DiskCollector{
 		mountsPath:     mountsPath,
@@ -285,7 +293,7 @@ func TestDiskCollector_Collect_DeduplicatesMountpoints(t *testing.T) {
 		excludedFSType: defaultExcludedFSTypes,
 		statfs: func(path string) (fsStats, error) {
 			statCalls.Add(1)
-			return fsStats{Bsize: 4096, Blocks: 1000, Bfree: 250, Bavail: 200}, nil
+			return devStatfs(map[string]uint64{"/data": 1, "/": 2})(path)
 		},
 	}
 
@@ -374,7 +382,7 @@ nas-fallback /mnt/hung ext4 rw,relatime 0 0
 			<-release // simulate statfs blocking on a dead NFS server
 			return fsStats{}, os.ErrDeadlineExceeded
 		}
-		return fsStats{Bsize: 4096, Blocks: 1000, Bfree: 250, Bavail: 200}, nil
+		return devStatfs(map[string]uint64{"/": 1, "/mnt/usb": 2})(path)
 	}
 
 	current := time.Now()
@@ -427,4 +435,106 @@ nas-fallback /mnt/hung ext4 rw,relatime 0 0
 	if got := hungCalls.Load(); got != 2 {
 		t.Fatalf("expected retry after cooldown, got %d statfs attempts", got)
 	}
+}
+
+// dedupeCase is one row of TestDiskCollector_Collect_DeduplicatesFilesystems.
+type dedupeCase struct {
+	name   string
+	mounts string
+	devs   map[string]uint64
+	fail   map[string]bool
+	want   []string
+}
+
+func collectMountpoints(t *testing.T, tc dedupeCase) []Disk {
+	t.Helper()
+	fake := devStatfs(tc.devs)
+	c := &DiskCollector{
+		mountsPath:     writeMountsFixture(t, tc.mounts),
+		excludedFSType: defaultExcludedFSTypes,
+		statfs: func(path string) (fsStats, error) {
+			if tc.fail[path] {
+				return fsStats{}, os.ErrNotExist
+			}
+			return fake(path)
+		},
+	}
+	disks, err := c.Collect()
+	if err != nil {
+		t.Fatalf("Collect: %v", err)
+	}
+	return disks
+}
+
+func TestDiskCollector_Collect_DeduplicatesFilesystems(t *testing.T) {
+	rootDev := uint64(179<<8 | 2)
+	bootDev := uint64(179<<8 | 1)
+	cases := []dedupeCase{
+		{
+			name: "AC1 systemd bind mounts of root are reported once",
+			mounts: `/dev/mmcblk0p2 / ext4 rw,relatime 0 0
+/dev/mmcblk0p2 /var/tmp ext4 rw,relatime 0 0
+/dev/mmcblk0p2 /var/lib/pimonitor ext4 rw,relatime 0 0
+/dev/mmcblk0p1 /boot/firmware vfat rw,relatime 0 0
+`,
+			devs: map[string]uint64{"/": rootDev, "/var/tmp": rootDev, "/var/lib/pimonitor": rootDev, "/boot/firmware": bootDev},
+			want: []string{"/", "/boot/firmware"},
+		},
+		{
+			name: "AC3 shortest mountpoint wins regardless of position",
+			mounts: `/dev/sda1 /srv/data ext4 rw,relatime 0 0
+/dev/sdb1 /mnt/x ext4 rw,relatime 0 0
+/dev/sda1 /srv ext4 rw,relatime 0 0
+`,
+			devs: map[string]uint64{"/srv/data": 1, "/mnt/x": 2, "/srv": 1},
+			want: []string{"/mnt/x", "/srv"},
+		},
+		{
+			name: "AC3 first of equally long mountpoints wins",
+			mounts: `/dev/sda1 /aa ext4 rw,relatime 0 0
+/dev/sda1 /bb ext4 rw,relatime 0 0
+`,
+			devs: map[string]uint64{"/aa": 1, "/bb": 1},
+			want: []string{"/aa"},
+		},
+		{
+			name: "AC5 failing statfs takes no part",
+			mounts: `/dev/mmcblk0p2 / ext4 rw,relatime 0 0
+/dev/mmcblk0p2 /var/lib/pimonitor ext4 rw,relatime 0 0
+/dev/mmcblk0p2 /var/tmp ext4 rw,relatime 0 0
+`,
+			devs: map[string]uint64{"/": rootDev, "/var/lib/pimonitor": rootDev, "/var/tmp": rootDev},
+			fail: map[string]bool{"/": true},
+			want: []string{"/var/tmp"},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			disks := collectMountpoints(t, tc)
+			got := make([]string, 0, len(disks))
+			for _, d := range disks {
+				got = append(got, d.Mountpoint)
+			}
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Fatalf("mountpoints = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestDiskCollector_Collect_DeduplicatesFilesystems_KeepsFigures(t *testing.T) {
+	t.Run("AC1 kept entry carries its device, type and figures", func(t *testing.T) {
+		dev := uint64(179<<8 | 2)
+		disks := collectMountpoints(t, dedupeCase{
+			mounts: "/dev/mmcblk0p2 /var/tmp ext4 rw 0 0\n/dev/mmcblk0p2 / ext4 rw 0 0\n",
+			devs:   map[string]uint64{"/": dev, "/var/tmp": dev},
+		})
+		if len(disks) != 1 {
+			t.Fatalf("got %d disks, want 1: %+v", len(disks), disks)
+		}
+		d := disks[0]
+		if d.Mountpoint != "/" || d.Device != "/dev/mmcblk0p2" || d.FSType != "ext4" || d.TotalBytes != 4096*1000 {
+			t.Errorf("disk = %+v, want / on /dev/mmcblk0p2 ext4 with %d bytes", d, 4096*1000)
+		}
+	})
 }
