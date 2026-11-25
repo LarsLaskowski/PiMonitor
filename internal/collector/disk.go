@@ -264,13 +264,21 @@ func (c *DiskCollector) Collect() ([]Disk, error) {
 }
 
 // dedupeFilesystems reports a filesystem mounted at several mountpoints once,
-// at its shortest mountpoint, identified by the device ID. The result is
-// never nil.
+// at its shortest mountpoint (the first of equally long ones), identified by
+// the device ID. The order of the candidates is kept. The result is never nil.
 func dedupeFilesystems(candidates []fsDisk) []Disk {
-	// Skeleton stub: passes every candidate through, so existing tests stay green.
-	disks := make([]Disk, 0, len(candidates))
-	for _, c := range candidates {
-		disks = append(disks, c.disk)
+	winner := make(map[uint64]int, len(candidates))
+	for i, c := range candidates {
+		w, seen := winner[c.dev]
+		if !seen || len(c.disk.Mountpoint) < len(candidates[w].disk.Mountpoint) {
+			winner[c.dev] = i
+		}
+	}
+	disks := make([]Disk, 0, len(winner))
+	for i, c := range candidates {
+		if winner[c.dev] == i {
+			disks = append(disks, c.disk)
+		}
 	}
 	return disks
 }

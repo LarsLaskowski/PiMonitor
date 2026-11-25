@@ -251,7 +251,9 @@ Notes:
   totals, so `used_percent` can slightly exceed
   `used_bytes / total_bytes * 100`.
 - `disks` contains at most one entry per mountpoint (the filesystem
-  actually visible at that path when a mountpoint is overmounted), and
+  actually visible at that path when a mountpoint is overmounted) and
+  per filesystem (a filesystem mounted at several mountpoints appears
+  once, at its shortest mountpoint), and
   network filesystems (NFS, CIFS/SMB, SSHFS, ...) are excluded — only
   local storage is reported.
 - `disk_io` is a delta-based reading (sectors × 512 bytes from

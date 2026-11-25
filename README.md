@@ -18,7 +18,8 @@ automation systems like openHAB). Runs as a systemd service.
   `vcgencmd`-sourced GPU and PMIC (Pi 4/5) temperatures if available
 - **Memory & swap** usage
 - **Filesystem usage** - per mounted filesystem, pseudo filesystems
-  (tmpfs, proc, overlay, ...) always excluded
+  (tmpfs, proc, overlay, ...) always excluded; a filesystem bind-mounted
+  at several places is listed once
 - **Disk I/O throughput** (REST API) - per block device read/write
   bytes-per-second
 - **Network throughput** per interface (optional, can be disabled)
