@@ -146,6 +146,15 @@ type fsStats struct {
 	Bfree  uint64 // free blocks (incl. root-reserved)
 	Bavail uint64 // blocks available to unprivileged users
 	Bsize  uint64 // block size in bytes
+	Dev    uint64 // device ID of the filesystem at the path (stat(2) st_dev)
+}
+
+// fsDisk is a collected Disk together with the device ID of its filesystem,
+// which dedupeFilesystems uses to report a filesystem mounted at several
+// mountpoints once.
+type fsDisk struct {
+	disk Disk
+	dev  uint64
 }
 
 // statfsFunc matches the platform statfs wrapper so tests can inject a fake
@@ -241,17 +250,29 @@ func (c *DiskCollector) Collect() ([]Disk, error) {
 	now := c.clock()
 	// Always non-nil (even with zero entries) so Snapshot.Disks marshals as
 	// [] rather than null, matching docs/API.md.
-	disks := make([]Disk, 0, len(order))
+	candidates := make([]fsDisk, 0, len(order))
 	for _, mp := range order {
 		e := byMountpoint[mp]
 		if c.excludedFSType[e.fstype] {
 			continue
 		}
-		if disk, ok := c.collectDisk(e, now); ok {
-			disks = append(disks, disk)
+		if candidate, ok := c.collectDisk(e, now); ok {
+			candidates = append(candidates, candidate)
 		}
 	}
-	return disks, nil
+	return dedupeFilesystems(candidates), nil
+}
+
+// dedupeFilesystems reports a filesystem mounted at several mountpoints once,
+// at its shortest mountpoint, identified by the device ID. The result is
+// never nil.
+func dedupeFilesystems(candidates []fsDisk) []Disk {
+	// Skeleton stub: passes every candidate through, so existing tests stay green.
+	disks := make([]Disk, 0, len(candidates))
+	for _, c := range candidates {
+		disks = append(disks, c.disk)
+	}
+	return disks
 }
 
 // dedupeMounts collapses /proc/mounts entries to the last entry per
@@ -274,10 +295,10 @@ func dedupeMounts(entries []mountEntry) (order []string, byMountpoint map[string
 // collectDisk statfs's a single mountpoint and reports its usage. ok is
 // false when the mountpoint should be skipped: it's on the bad-mount
 // cooldown, statfs failed, or it reports zero size.
-func (c *DiskCollector) collectDisk(e mountEntry, now time.Time) (disk Disk, ok bool) {
+func (c *DiskCollector) collectDisk(e mountEntry, now time.Time) (candidate fsDisk, ok bool) {
 	if until, bad := c.badUntil[e.mountpoint]; bad {
 		if now.Before(until) {
-			return Disk{}, false
+			return fsDisk{}, false
 		}
 		delete(c.badUntil, e.mountpoint)
 	}
@@ -286,11 +307,11 @@ func (c *DiskCollector) collectDisk(e mountEntry, now time.Time) (disk Disk, ok 
 		if errors.Is(err, errStatfsTimeout) {
 			c.markBad(e.mountpoint, now)
 		}
-		return Disk{}, false
+		return fsDisk{}, false
 	}
 	total := buf.Blocks * buf.Bsize
 	if total == 0 {
-		return Disk{}, false
+		return fsDisk{}, false
 	}
 	free := buf.Bfree * buf.Bsize
 	avail := buf.Bavail * buf.Bsize
@@ -304,13 +325,16 @@ func (c *DiskCollector) collectDisk(e mountEntry, now time.Time) (disk Disk, ok 
 	if denom := used + avail; denom > 0 {
 		usedPercent = float64(used) / float64(denom) * 100
 	}
-	return Disk{
-		Mountpoint:  e.mountpoint,
-		Device:      e.device,
-		FSType:      e.fstype,
-		TotalBytes:  total,
-		UsedBytes:   used,
-		UsedPercent: usedPercent,
+	return fsDisk{
+		disk: Disk{
+			Mountpoint:  e.mountpoint,
+			Device:      e.device,
+			FSType:      e.fstype,
+			TotalBytes:  total,
+			UsedBytes:   used,
+			UsedPercent: usedPercent,
+		},
+		dev: buf.Dev,
 	}, true
 }
 
