@@ -35,4 +35,10 @@ func TestPlatformStatfs(t *testing.T) {
 			t.Errorf("subdirectory Dev = %d, want %d (same filesystem)", gotSub.Dev, got.Dev)
 		}
 	})
+	t.Run("AC4 missing path is an error", func(t *testing.T) {
+		missing := filepath.Join(t.TempDir(), "does-not-exist")
+		if _, err := platformStatfs(missing); err == nil {
+			t.Errorf("platformStatfs(%q) error = nil, want an error", missing)
+		}
+	})
 }

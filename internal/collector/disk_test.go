@@ -481,6 +481,14 @@ func TestDiskCollector_Collect_DeduplicatesFilesystems(t *testing.T) {
 			want: []string{"/", "/boot/firmware"},
 		},
 		{
+			name: "AC2 distinct filesystems with equal sizes are kept",
+			mounts: `/dev/sda1 /mnt/a ext4 rw,relatime 0 0
+/dev/sda1 /mnt/b ext4 rw,relatime 0 0
+`,
+			devs: map[string]uint64{"/mnt/a": 1, "/mnt/b": 2},
+			want: []string{"/mnt/a", "/mnt/b"},
+		},
+		{
 			name: "AC3 shortest mountpoint wins regardless of position",
 			mounts: `/dev/sda1 /srv/data ext4 rw,relatime 0 0
 /dev/sdb1 /mnt/x ext4 rw,relatime 0 0
@@ -537,4 +545,21 @@ func TestDiskCollector_Collect_DeduplicatesFilesystems_KeepsFigures(t *testing.T
 			t.Errorf("disk = %+v, want / on /dev/mmcblk0p2 ext4 with %d bytes", d, 4096*1000)
 		}
 	})
+}
+
+func TestDiskCollector_Collect_ZeroSizeFilesystemSkipped(t *testing.T) {
+	c := &DiskCollector{
+		mountsPath:     writeMountsFixture(t, "/dev/sda1 /mnt/z ext4 rw 0 0\n"),
+		excludedFSType: defaultExcludedFSTypes,
+		statfs: func(string) (fsStats, error) {
+			return fsStats{Bsize: 4096, Dev: 7}, nil
+		},
+	}
+	disks, err := c.Collect()
+	if err != nil {
+		t.Fatalf("Collect: %v", err)
+	}
+	if len(disks) != 0 {
+		t.Errorf("got %d disks, want none for a zero-size filesystem: %+v", len(disks), disks)
+	}
 }
