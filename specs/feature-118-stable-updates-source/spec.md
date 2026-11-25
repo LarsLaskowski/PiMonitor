@@ -1,7 +1,7 @@
 # Spec: Read available apt updates from a stable source
 
 Source: Issue #118
-Status: Draft
+Status: Approved by Lead
 
 ## Problem
 
@@ -53,17 +53,16 @@ misses security updates.
   the tools apt(8) names for scripts. Never the output of the `apt` binary. A child process keeps a fixed argument
   list and an explicit minimal environment with a pinned locale (`SECURITY.md`, *Threat model*), so the result does
   not depend on the operator's locale or environment.
-- N4: Bounds: a check ends within 10 s, as today. A child process's output beyond 4 MiB, or a single line beyond
-  1 MiB in any file or output the check reads, fails the check. Files are read as a stream, never whole into
-  memory; the check holds at most the installed-package set and the result.
+- N4: Bounds: a check ends within 10 s, as today. Files and child output are read as a stream, never whole into
+  memory; the check holds at most the installed-package set and the result. A child process's output beyond
+  256 MiB, or a single line beyond 1 MiB in any file or output the check reads, fails the check.
 - N5: Compatibility: the `/api/v1` shape and meaning of `updates`, `pimonitor_updates_pending`, the dashboard and the
   configuration (`updates_check_minutes`, `updates_stale_threshold_minutes`) are unchanged; no new option.
 - N6: Supported targets: the apt versions of the current Raspberry Pi OS releases, Bookworm (Debian 12) and Trixie
   (Debian 13), both 32-bit (`armhf`) and 64-bit (`arm64`).
 - N7: A successful check rests on a positive structural signal of a complete result that the plan names for its
-  source: for command output, the summary or marker line the tool always prints; for state files, a dpkg status
-  file with at least one well-formed installed-package record, and every list file a configured repository needs
-  present and readable.
+  source: for command output, a summary or marker line the tool always prints, or a record every working host's
+  output holds; for state files, at least one well-formed installed-package record.
 
 ## Acceptance criteria
 
@@ -75,7 +74,7 @@ misses security updates.
 - AC3: Update data in the new source's syntax in which only the entry format changed, so that no entry matches,
   fails the check instead of reporting 0; so does data with one unrecognised, malformed or truncated entry among
   valid ones (S3, E3).
-- AC4: A missing or unreadable source, a check not done within 10 s, a child output beyond 4 MiB or a line beyond
+- AC4: A missing or unreadable source, a check not done within 10 s, a child output beyond 256 MiB or a line beyond
   1 MiB fails the check with an error; the collector then logs `updates collection failed` and keeps the previous
   `updates` with its `checked_at`, the zero values before the first success (S3, E1, E4, N4).
 - AC5: The check reads only the sources N3 allows, needs no privilege, group or path beyond today's
