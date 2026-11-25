@@ -113,6 +113,11 @@ such as openHAB that poll single values.
 - `disks` lists the filesystems in `/proc/mounts`, octal escapes (`\040`, `\011`, `\012`, `\134`) decoded. A
   mountpoint listed several times is reported once, with its last entry (the one visible at the path), in the
   order mountpoints first appear.
+- A filesystem mounted at several mountpoints (bind mounts, such as the ones systemd creates for the service) is
+  reported once, at its shortest mountpoint, the first of equally long ones; the other mountpoints are left out and
+  the rest keep their order. The filesystem is identified by the device ID (`stat(2)` `st_dev`) at the mountpoint,
+  so distinct filesystems stay separate entries even with equal sizes. A mountpoint left out of a tick takes no
+  part in that tick's comparison. Why: [0027](../decisions/0027-filesystem-identified-by-device-id.md).
 - These filesystem types are never reported (a fixed list, not configurable): `tmpfs`, `devtmpfs`, `proc`,
   `sysfs`, `cgroup`, `cgroup2`, `overlay`, `debugfs`, `tracefs`, `devpts`, `securityfs`, `pstore`, `bpf`,
   `autofs`, `mqueue`, `hugetlbfs`, `configfs`, `fusectl`, `rpc_pipefs`, `binfmt_misc`, and the network
