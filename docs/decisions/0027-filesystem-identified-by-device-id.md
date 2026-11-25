@@ -1,6 +1,6 @@
 # 0027: A filesystem is identified by the device ID of its mountpoint and reported once
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-25
 - **Area:** Metrics
 - **Source:** Issue #279
