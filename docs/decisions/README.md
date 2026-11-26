@@ -89,4 +89,5 @@ once in the [area document](../areas/README.md) of the record's area, and the re
 | [0025](0025-new-metric-in-v1-alert-lists-is-no-shape-change.md) | A new metric in the v1 alert lists is no shape change | Accepted | 2026-11-18 |
 | [0026](0026-openhab-things-alert-is-one-count.md) | The openHAB Things alert is one count with a capped list | Accepted | 2026-11-18 |
 | [0027](0027-filesystem-identified-by-device-id.md) | A filesystem is identified by the device ID of its mountpoint and reported once | Accepted | 2026-11-25 |
+| [0028](0028-apt-updates-from-dumpavail-and-dpkg-status.md) | Available apt updates come from `apt-cache dumpavail` and the dpkg status file | Proposed | 2026-11-26 |
 <!-- project:end index -->
