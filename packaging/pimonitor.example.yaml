@@ -20,7 +20,7 @@ access_log_enabled: true
 poll_interval_seconds: 5
 
 # How often available apt updates are checked. This only reads the
-# existing apt cache (`apt list --upgradable`) - it never refreshes it.
+# existing apt cache (`apt-cache dumpavail`) - it never refreshes it.
 # The cache itself is refreshed by the separate pimonitor-apt-update.timer
 # systemd unit, which runs with root privileges.
 updates_check_minutes: 15

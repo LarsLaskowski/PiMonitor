@@ -38,8 +38,8 @@ reporters and reviewers have context:
 - **The main `pimonitor` service runs unprivileged**, as a dedicated system
   user with no special capabilities. It only reads world-readable files under
   `/proc`, `/sys/class/thermal`, `/sys/devices/system/cpu/*/cpufreq`,
-  `/sys/class/hwmon`, `/etc/os-release`, and the existing apt
-  cache under `/var/lib/apt/lists/` (via the read-only `apt list --upgradable`
+  `/sys/class/hwmon`, `/etc/os-release`, `/var/lib/dpkg/status`, and the existing apt
+  cache under `/var/lib/apt/lists/` (via the read-only `apt-cache dumpavail`
   command) and, when Pi-hole is installed, the world-readable
   `/etc/pihole/versions`, plus the optional, fixed-argument `vcgencmd measure_temp` /
   `measure_temp pmic` / `get_throttled` calls. It never invokes anything that
@@ -100,12 +100,12 @@ reporters and reviewers have context:
   permissions. The `-api-key` flag is a development convenience only: a
   process's command line is world-readable via `/proc/<pid>/cmdline`, so a
   key passed that way is exposed to every local user on the machine.
-- Shell-outs (`apt list --upgradable`, optional `vcgencmd measure_temp`) are
+- Shell-outs (`apt-cache dumpavail`, optional `vcgencmd measure_temp`) are
   invoked with fixed argument lists (no user input is interpolated into
   shell commands), to avoid command injection.
 - Shell-outs are also invoked with an explicit, minimal environment rather
-  than inheriting the service's own — neither `apt` nor `vcgencmd` needs
-  anything beyond `PATH` (and, for `apt`, a couple of apt-specific
+  than inheriting the service's own — neither `apt-cache` nor `vcgencmd` needs
+  anything beyond `PATH` (and, for `apt-cache`, a couple of apt-specific
   variables), so `PIMONITOR_API_KEY` and `PIMONITOR_OPENHAB_TOKEN` are never copied into a child process's
   `/proc/<pid>/environ`.
 - `config.Load` calls `os.Unsetenv("PIMONITOR_API_KEY")` and `os.Unsetenv("PIMONITOR_OPENHAB_TOKEN")` immediately
@@ -124,7 +124,7 @@ reporters and reviewers have context:
   `PIMONITOR_API_KEY` (and `openhab.api_token`/`PIMONITOR_OPENHAB_TOKEN`) out of the command line and in files with restricted
   permissions (mode `640 root:pimonitor`, as `install.sh` sets up), and rely
   on the explicit subprocess environment (not this unset) to keep the key and token
-  out of `apt`'s and `vcgencmd`'s own environments.
+  out of `apt-cache`'s and `vcgencmd`'s own environments.
 - **Requests to any endpoint behind `apiRoute`** (every `/api/v1/...` route,
   plus `GET /metrics` when `prometheus_enabled` is set) **share a
   concurrency limit** (`withMaxInFlight`,

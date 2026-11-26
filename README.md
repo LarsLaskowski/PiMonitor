@@ -91,11 +91,11 @@ automation systems like openHAB). Runs as a systemd service.
 The main service (`pimonitor.service`) never requires root: it only reads
 world-readable files under `/proc`, `/sys/class/thermal`,
 `/sys/devices/system/cpu/*/cpufreq`, `/sys/class/hwmon`,
-`/etc/os-release`, the apt cache, Pi-hole's `/etc/pihole/versions`, and,
+`/etc/os-release`, `/var/lib/dpkg/status`, the apt cache, Pi-hole's `/etc/pihole/versions`, and,
 for the optional openHAB status, openHAB's install directories, the
 `/proc` entries of its process and `/proc/net/tcp*` (plus loopback HTTP
 requests to openHAB itself), plus the read-only
-`apt list --upgradable` command and the optional `vcgencmd` readings (for
+`apt-cache dumpavail` command and the optional `vcgencmd` readings (for
 which the unit adds the service to the `video` group, needed to open
 `/dev/vcio_gencmd` / `/dev/vchiq` on Raspberry Pi OS). A separate, root-privileged systemd timer
 (`pimonitor-apt-update.timer`) refreshes the apt cache periodically -

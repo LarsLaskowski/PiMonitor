@@ -165,16 +165,29 @@ such as openHAB that poll single values.
 
 ### Available apt updates
 
-- `updates` comes from `apt list --upgradable`, run with a fixed argument list, a **10 s** timeout and only the
-  environment `LC_ALL=C`, `LANG=C`, `LANGUAGE=`, `DEBIAN_FRONTEND=noninteractive` and the service's `PATH`. It
-  only reads the existing apt cache; PiMonitor never refreshes it ([Deployment](deployment.md)).
-- Every output line of the form `name/suite new-version arch [upgradable from: old-version]` becomes one entry of
-  `packages`; other lines are ignored. `count` is the number of entries, `checked_at` the time of the check.
+- `updates` compares two sources ([decision 0028](../decisions/0028-apt-updates-from-dumpavail-and-dpkg-status.md)):
+  the dpkg status file `/var/lib/dpkg/status` (installed packages) and the output of `apt-cache dumpavail` (the
+  policy candidate per package and architecture). The child runs with the single argument `dumpavail`, a **10 s**
+  timeout and only the environment `LC_ALL=C`, `LANG=C`, `LANGUAGE=`, `DEBIAN_FRONTEND=noninteractive` and the
+  service's `PATH`. It only reads the existing apt cache; PiMonitor never refreshes it ([Deployment](deployment.md)).
+- A package is an update when it is installed (any status state but `not-installed` and `config-files`) and its
+  candidate version compares newer by dpkg's rules; held and kept-back packages are included, as in
+  `apt list --upgradable`. Packages are matched by name and architecture, with `all` mapped to the native
+  architecture (that of the installed `dpkg` package); an entry's `arch` is the candidate record's value. `packages`
+  is sorted by name, then architecture; `count` is the number of entries, `checked_at` the time of the check.
+- Unrecognised input fails the check instead of reporting 0: a malformed line, a duplicate `Package`, `Version`,
+  `Architecture` or `Status` field in a record, a missing or invalid one of them, a duplicate candidate record, a
+  truncated last record, no installed `dpkg` record in the status file, or no `dpkg` record of the native
+  architecture in the `dumpavail` output. A line over **1 MiB**, more than **256 MiB** of child output, a failing or
+  timed-out child, or a change of the status file or the apt lists while the check ran (compared by the lists
+  directory's modification time, the count, total size and newest modification time of its files, and the status
+  file's modification time and size) fails it too.
 - `cache_age_seconds` is the age of the newest file in `/var/lib/apt/lists`. `stale` is true when
   `updates_stale_threshold_minutes` is above 0 and the age exceeds it. When the age cannot be determined (directory
   unreadable or without files), `cache_age_seconds` is 0 and `stale` is false.
-- When `apt` fails or times out, `updates` keeps the last successful result. Before the first success it holds zero
-  values (`count` 0, `checked_at` the zero time).
+- When the check fails for any reason above, `updates` keeps the last successful result with its `checked_at`; a
+  warning `updates collection failed` is logged. Before the first success it holds zero values (`count` 0,
+  `checked_at` the zero time, meaning never checked).
 
 ### Pi-hole updates
 

@@ -130,7 +130,7 @@ against a scratch directory with stub commands, without systemd. The plan lists 
 CI (`.squad/routing.md`, *Operator environments and documented procedures*).
 
 **Collector bugs.** A bug in a collector is reproduced with a fixture that captures the reported input (the issue's
-`/proc/meminfo`, `apt list --upgradable` output, …); the plan notes the reported environment (Pi model,
+`/proc/meminfo`, `apt-cache dumpavail` output and the dpkg status file, …); the plan notes the reported environment (Pi model,
 distribution, kernel, PiMonitor version), since collector bugs are often hardware- or OS-specific, and says what
 only real Pi hardware can verify.
 
