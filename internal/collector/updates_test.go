@@ -939,12 +939,12 @@ func TestUpdatesCollector_Collect_Failures(t *testing.T) {
 		}, errRunPrefix},
 		{"AC4 apt-cache exits 1", func(t *testing.T, e *aptTestEnv) *UpdatesCollector {
 			return e.collector(e.stub(t, e.printFixture()+"; exit 1"))
-		}, errRunPrefix},
+		}, errRunPrefix + " exit status 1"},
 		{"AC4 timeout", func(t *testing.T, e *aptTestEnv) *UpdatesCollector {
 			c := e.collector(e.stub(t, e.printFixture()+"; exec sleep 30"))
 			c.timeout = 50 * time.Millisecond
 			return c
-		}, errRunPrefix},
+		}, errRunPrefix + " context deadline exceeded"},
 		{"AC4 output over the cap", func(t *testing.T, e *aptTestEnv) *UpdatesCollector {
 			c := e.collector(e.stub(t, e.printFixture()))
 			c.maxOutput = 1024
@@ -966,7 +966,11 @@ func TestUpdatesCollector_Collect_Failures(t *testing.T) {
 
 			updates, err := c.Collect(context.Background())
 
-			checkErrorContains(t, err, tt.want)
+			if strings.HasPrefix(tt.want, errRunPrefix+" ") {
+				checkErrorText(t, err, tt.want)
+			} else {
+				checkErrorContains(t, err, tt.want)
+			}
 			if updates.Count != 0 || updates.Packages != nil || !updates.CheckedAt.IsZero() {
 				t.Fatalf("Updates = %+v on a failed check, want the zero value", updates)
 			}
