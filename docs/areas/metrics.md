@@ -176,8 +176,10 @@ such as openHAB that poll single values.
   architecture (that of the installed `dpkg` package); an entry's `arch` is the candidate record's value. `packages`
   is sorted by name, then architecture; `count` is the number of entries, `checked_at` the time of the check.
 - Unrecognised input fails the check instead of reporting 0: a malformed line, a duplicate `Package`, `Version`,
-  `Architecture` or `Status` field in a record, a missing or invalid one of them, a duplicate candidate record, a
-  truncated last record, no installed `dpkg` record in the status file, or no `dpkg` record of the native
+  `Architecture` or `Status` field in a record, a missing or invalid `Package` or `Status` in a status record, a
+  missing or invalid `Version` or `Architecture` in the status record of an installed package, a missing or invalid
+  `Package`, `Version` or `Architecture` in a `dumpavail` record, a second `dumpavail` record for an installed package
+  and architecture, a truncated last record, no installed `dpkg` record in the status file, or no `dpkg` record of the native
   architecture in the `dumpavail` output. A line over **1 MiB**, more than **256 MiB** of child output, a failing or
   timed-out child, or a change of the status file or the apt lists while the check ran (compared by the lists
   directory's modification time, the count, total size and newest modification time of its files, and the status
