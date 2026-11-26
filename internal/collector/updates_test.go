@@ -206,6 +206,41 @@ func TestParseDebianVersion(t *testing.T) {
 	}
 }
 
+func TestParseDebianVersion_Invalid(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"empty", "", "invalid upstream version"},
+		{"letter first", "a1.0", "invalid upstream version"},
+		{"bad character", "1.0_1", "invalid upstream version"},
+		{"space", "1.0 1", "invalid upstream version"},
+		{"colon after epoch", "1:2:3", "invalid upstream version"},
+		{"colon in upstream", "1.0:2", "invalid epoch"},
+		{"non-numeric epoch", "x:1.0", "invalid epoch"},
+		{"empty epoch", ":1.0", "invalid epoch"},
+		{"overflowing epoch", "4294967296:1.0", "invalid epoch"},
+		{"empty revision", "1.0-", "invalid revision"},
+		{"empty upstream", "1:", "invalid upstream version"},
+		{"tilde first", "~1.0", "invalid upstream version"},
+	}
+	for _, tt := range tests {
+		t.Run("AC3 "+tt.name, func(t *testing.T) {
+			got, err := parseDebianVersion(tt.in)
+			if err == nil {
+				t.Fatalf("parseDebianVersion(%q) = %+v, want an error", tt.in, got)
+			}
+			if !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("parseDebianVersion(%q) error = %q, want it to contain %q", tt.in, err, tt.want)
+			}
+			if got != (debianVersion{}) {
+				t.Fatalf("parseDebianVersion(%q) = %+v, want the zero value with an error", tt.in, got)
+			}
+		})
+	}
+}
+
 func TestCompareDebianVersions(t *testing.T) {
 	// want is the sign of dpkg --compare-versions a b: -1 older, 0 equal, 1 newer.
 	tests := []struct {

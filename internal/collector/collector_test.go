@@ -1100,6 +1100,24 @@ func TestCollector_SlowTick_UpdatesFailureKeepsPreviousResult(t *testing.T) {
 			t.Fatalf("WARN lines %q = %d, want 1; log:\n%s", "updates collection failed", n, buf.String())
 		}
 	})
+
+	t.Run("AC4 failure before a first success keeps the zero values", func(t *testing.T) {
+		env := newAptTestEnv(t)
+		stub := env.stub(t, "exit 1")
+		clock := time.Date(2026, 11, 26, 12, 0, 0, 0, time.UTC)
+		c, buf := newTickCollector(t, env, stub, &clock)
+
+		c.slowTick(context.Background())
+
+		got := c.Snapshot().Updates
+		if got.Count != 0 || len(got.Packages) != 0 || !got.CheckedAt.IsZero() {
+			t.Fatalf("Updates after a failed first tick = count %d, %d packages, checked_at %v; want the zero values",
+				got.Count, len(got.Packages), got.CheckedAt)
+		}
+		if n := countLogLines(buf.String(), "WARN", "updates collection failed"); n != 1 {
+			t.Fatalf("WARN lines %q = %d, want 1; log:\n%s", "updates collection failed", n, buf.String())
+		}
+	})
 }
 
 // TestCollector_SlowTick_PiholeErrorKeepsPreviousState pins that a failed
