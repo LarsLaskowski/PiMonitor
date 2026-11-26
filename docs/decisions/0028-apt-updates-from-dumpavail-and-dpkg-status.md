@@ -45,6 +45,11 @@ record on either side, or a change of the apt or dpkg state during the check fai
 - A future change of the `Packages` or status format fails the check visibly instead of reporting 0.
 - Accepted risks, checked by hand on a Pi before approval: the Bookworm apt (2.6) and armhf were not sampled (the
   rule was read in apt's current source); the 10 s bound was measured on one Trixie arm64 host only (0.325 s), so a
-  slow board fails closed (failed check, last result kept) rather than reporting a wrong count.
+  slow board fails closed (failed check, last result kept) rather than reporting a wrong count. If `dumpavail` takes
+  more than 5 s on an armv6 board, or none can be measured, the Lead decides between a longer bound for this check
+  and keeping `apt list --upgradable` there, and records it here.
+- The consistency check assumes apt gives a downloaded list the server's `Last-Modified` as mtime (so a newer list
+  can look older) and moves finished lists in by `rename`; it therefore also compares the lists directory's mtime
+  and the count and total size of list files, not only the newest mtime.
 - Each check streams the whole `dumpavail` output (88 MB on the sample) instead of a short list.
 - Revisit if apt offers a machine-readable upgradable list (a JSON output of `apt-get` or `apt-cache`).
