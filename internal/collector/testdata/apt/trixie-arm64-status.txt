@@ -1,0 +1,1171 @@
+Package: ack
+Status: install ok installed
+Priority: optional
+Section: utils
+Installed-Size: 230
+Maintainer: Debian Perl Group <pkg-perl-maintainers@lists.alioth.debian.org>
+Architecture: all
+Version: 3.8.1-1
+Replaces: ack-grep (<= 2.14-5~)
+Provides: ack-grep
+Depends: libfile-next-perl (>= 1.18), perl:any
+Breaks: ack-grep (<= 2.14-5~)
+Description: grep-like program specifically for large source trees
+ Ack is designed as an alternative for 99% of the uses of grep. ack is
+ intelligent about the files it searches. It knows about certain file
+ types, based on both the extension on the file and, in some cases, the
+ contents of the file.
+ .
+ Ack ignores backup files and files under CVS and .svn directories. It
+ also highlights matches to help you see where the match was. Ack uses
+ perl regular expressions.
+Homepage: https://beyondgrep.com/
+
+Package: acl
+Status: install ok installed
+Priority: optional
+Section: utils
+Installed-Size: 347
+Maintainer: Guillem Jover <guillem@debian.org>
+Architecture: arm64
+Multi-Arch: foreign
+Source: acl (2.3.2-2)
+Version: 2.3.2-2+b1
+Depends: libacl1 (= 2.3.2-2+b1), libc6 (>= 2.38)
+Description: access control list - utilities
+ This package contains the getfacl and setfacl utilities needed for
+ manipulating access control lists. It also contains the chacl IRIX
+ compatible utility.
+Homepage: https://savannah.nongnu.org/projects/acl/
+
+Package: adduser
+Status: install ok installed
+Priority: important
+Section: admin
+Installed-Size: 428
+Maintainer: Debian Adduser Developers <adduser@packages.debian.org>
+Architecture: all
+Multi-Arch: foreign
+Version: 3.152
+Depends: passwd (>= 1:4.17.2-5)
+Suggests: liblocale-gettext-perl, perl, cron, quota
+Conffiles:
+ /etc/adduser.conf ef23042097ebb0d1075254f888c3c394
+ /etc/deluser.conf 11a06baf8245fd8d690b99024d228c1f
+Description: add and remove users and groups
+ This package includes the 'adduser' and 'deluser' commands for creating
+ and removing users.
+ .
+  - 'adduser' creates new users and groups and adds existing users to
+    existing groups;
+  - 'deluser' removes users and groups and removes users from a given
+    group.
+ .
+ Adding users with 'adduser' is much easier than adding them manually.
+ 'Adduser' will choose UID and GID values that conform to Debian policy,
+ create a home directory, copy skeletal user configuration, and
+ automate setting initial values for the user's password, real name
+ and so on.
+ .
+ 'Deluser' can back up and remove users' home directories
+ and mail spool or all the files they own on the system.
+ .
+ A custom script can be executed after each of the commands.
+ .
+ 'Adduser' and 'Deluser' are intended to be used by the local
+ administrator in lieu of the tools from the 'useradd' suite, and
+ they provide support for easy use from Debian package maintainer
+ scripts, functioning as kind of a policy layer to make those scripts
+ easier and more stable to write and maintain.
+
+Package: apt
+Status: install ok installed
+Priority: required
+Section: admin
+Installed-Size: 4913
+Maintainer: APT Development Team <deity@lists.debian.org>
+Architecture: arm64
+Version: 3.0.4
+Replaces: apt-transport-https (<< 1.5~alpha4~), apt-utils (<< 1.3~exp2~)
+Provides: apt-transport-https (= 3.0.4)
+Depends: base-passwd (>= 3.6.1) | adduser, sqv (>= 1.3.0), libapt-pkg7.0 (>= 3.0.4), debian-archive-keyring, libc6 (>= 2.38), libgcc-s1 (>= 3.0), libseccomp2 (>= 2.4.2), libssl3t64 (>= 3.0.0), libstdc++6 (>= 13.1), libsystemd0
+Recommends: ca-certificates
+Suggests: apt-doc, aptitude | synaptic | wajig, dpkg-dev (>= 1.17.2), gnupg | gnupg2 | gnupg1, powermgmt-base
+Breaks: apt-transport-https (<< 1.5~alpha4~), apt-utils (<< 1.3~exp2~), aptitude (<< 0.8.10)
+Conflicts: apt-verify, libnettle8 (<< 3.9.1-2.2~)
+Conffiles:
+ /etc/apt/apt.conf.d/01autoremove 879455db9b938ce287b23383629aedce
+ /etc/cron.daily/apt-compat 1400ab07a4a2905b04c33e3e93d42b7b
+ /etc/logrotate.d/apt 179f2ed4f85cbaca12fa3d69c2a4a1c3
+Description: commandline package manager
+ This package provides commandline tools for searching and
+ managing as well as querying information about packages
+ as a low-level access to all features of the libapt-pkg library.
+ .
+ These include:
+  * apt-get for retrieval of packages and information about them
+    from authenticated sources and for installation, upgrade and
+    removal of packages together with their dependencies
+  * apt-cache for querying available information about installed
+    as well as installable packages
+  * apt-cdrom to use removable media as a source for packages
+  * apt-config as an interface to the configuration settings
+  * apt-extracttemplates is used by debconf to prompt for configuration
+    questions before installation.
+
+Package: base-files
+Essential: yes
+Status: install ok installed
+Priority: required
+Section: admin
+Installed-Size: 498
+Maintainer: Santiago Vila <sanvila@debian.org>
+Architecture: arm64
+Multi-Arch: foreign
+Version: 13.8+deb13u7
+Replaces: base, dpkg (<= 1.15.0), miscutils
+Provides: base, usr-is-merged
+Pre-Depends: awk
+Breaks: debian-security-support (<< 2019.04.25), initscripts (<< 2.88dsf-13.3), sendfile (<< 2.1b.20080616-5.2~)
+Conffiles:
+ /etc/debian_version 5243b35d3894c513d1189360c303199a
+ /etc/dpkg/origins/debian c47b6815f67ad1aeccb0d4529bd0b990
+ /etc/host.conf 4eb63731c9f5e30903ac4fc07a7fe3d6
+ /etc/issue d0c7919a5e2641d60400de08201a49e2
+ /etc/issue.net 37827eb4e7d268f39255c01fc49b009e
+ /etc/update-motd.d/10-uname 9e1b832b7b06f566156e7c9e0548247b
+Description: Debian base system miscellaneous files
+ This package contains the basic filesystem hierarchy of a Debian system, and
+ several important miscellaneous files, such as /etc/debian_version,
+ /etc/host.conf, /etc/issue, /etc/motd, /etc/profile, and others,
+ and the text of several common licenses in use on Debian systems.
+
+Package: base-passwd
+Essential: yes
+Status: install ok installed
+Priority: required
+Section: admin
+Installed-Size: 300
+Maintainer: Shadow package maintainers <pkg-shadow-devel@lists.alioth.debian.org>
+Architecture: arm64
+Multi-Arch: foreign
+Version: 3.6.7
+Replaces: base
+Depends: libc6 (>= 2.34), libdebconfclient0 (>= 0.145), libselinux1 (>= 3.1~)
+Recommends: debconf (>= 0.5) | debconf-2.0
+Description: Debian base system master password and group files
+ These are the canonical master copies of the user database files
+ (/etc/passwd and /etc/group), containing the Debian-allocated user and
+ group IDs. The update-passwd tool is provided to keep the system databases
+ synchronized with these master files.
+
+Package: bash
+Essential: yes
+Status: install ok installed
+Priority: required
+Section: shells
+Installed-Size: 7359
+Maintainer: Matthias Klose <doko@debian.org>
+Architecture: arm64
+Multi-Arch: foreign
+Source: bash (5.2.37-2)
+Version: 5.2.37-2+b10
+Depends: base-files (>= 2.1.12), debianutils (>= 5.6-0.1)
+Pre-Depends: libc6 (>= 2.38), libtinfo6 (>= 6)
+Recommends: bash-completion
+Suggests: bash-doc
+Conffiles:
+ /etc/bash.bashrc 72d453119aaa1e96c7c8a7a8fedcf582
+ /etc/skel/.bash_logout 22bfb8c1dd94b5f3813a2b25da67463f
+ /etc/skel/.bashrc ee35a240758f374832e809ae0ea4883a
+ /etc/skel/.profile f4e81ade7d6f9fb342541152d08e7a97
+Description: GNU Bourne Again SHell
+ Bash is an sh-compatible command language interpreter that executes
+ commands read from the standard input or from a file.  Bash also
+ incorporates useful features from the Korn and C shells (ksh and csh).
+ .
+ Bash is ultimately intended to be a conformant implementation of the
+ IEEE POSIX Shell and Tools specification (IEEE Working Group 1003.2).
+ .
+ The Programmable Completion Code, by Ian Macdonald, is now found in
+ the bash-completion package.
+Homepage: http://tiswww.case.edu/php/chet/bash/bashtop.html
+
+Package: bluez-firmware
+Status: install ok installed
+Priority: optional
+Section: non-free-firmware/kernel
+Installed-Size: 476
+Maintainer: Serge Schneider <serge@raspberrypi.com>
+Architecture: all
+Version: 1.2-13+rpt2
+Description: Firmware for Bluetooth devices
+ This firmware is required for operation of Bluetooth dongles based on
+ the Broadcom BCM203x and Raspberry Pi chipset.
+
+Package: ca-certificates
+Status: install ok installed
+Priority: standard
+Section: misc
+Installed-Size: 387
+Maintainer: Julien Cristau <jcristau@debian.org>
+Architecture: all
+Multi-Arch: foreign
+Version: 20250419+deb13u1
+Depends: openssl (>= 1.1.1), debconf (>= 0.5) | debconf-2.0
+Breaks: ca-certificates-java (<< 20121112+nmu1)
+Enhances: openssl
+Description: Common CA certificates
+ Contains the certificate authorities shipped with Mozilla's browser to allow
+ SSL-based applications to check for the authenticity of SSL connections.
+ .
+ Please note that Debian can neither confirm nor deny whether the
+ certificate authorities whose certificates are included in this package
+ have in any way been audited for trustworthiness or RFC 3647 compliance.
+ Full responsibility to assess them belongs to the local system
+ administrator.
+
+Package: coreutils
+Essential: yes
+Status: install ok installed
+Priority: required
+Section: utils
+Installed-Size: 21046
+Maintainer: Michael Stone <mstone@debian.org>
+Architecture: arm64
+Multi-Arch: foreign
+Version: 9.7-3
+Pre-Depends: libacl1 (>= 2.2.23), libattr1 (>= 1:2.4.48), libc6 (>= 2.38), libcap2 (>= 1:2.10), libgmp10 (>= 2:6.3.0+dfsg), libselinux1 (>= 3.1~), libssl3t64 (>= 3.0.0), libsystemd0 (>= 254)
+Description: GNU core utilities
+ This package contains the basic file, shell and text manipulation
+ utilities which are expected to exist on every operating system.
+ .
+ Specifically, this package includes:
+ arch base64 basename cat chcon chgrp chmod chown chroot cksum comm cp
+ csplit cut date dd df dir dircolors dirname du echo env expand expr
+ factor false flock fmt fold groups head hostid id install join link ln
+ logname ls md5sum mkdir mkfifo mknod mktemp mv nice nl nohup nproc numfmt
+ od paste pathchk pinky pr printenv printf ptx pwd readlink realpath rm
+ rmdir runcon sha*sum seq shred sleep sort split stat stty sum sync tac
+ tail tee test timeout touch tr true truncate tsort tty uname unexpand
+ uniq unlink users vdir wc who whoami yes
+Homepage: https://gnu.org/software/coreutils
+
+Package: cron
+Status: install ok installed
+Priority: important
+Section: admin
+Installed-Size: 273
+Maintainer: Georges Khaznadar <georgesk@debian.org>
+Architecture: arm64
+Multi-Arch: foreign
+Version: 3.0pl1-197
+Replaces: bcron, cronie, systemd-cron
+Provides: cron-daemon
+Depends: libc6 (>= 2.34), libpam0g (>= 0.99.7.1), libselinux1 (>= 3.1~), sensible-utils, libpam-runtime
+Pre-Depends: init-system-helpers (>= 1.54~), cron-daemon-common
+Recommends: default-mta | mail-transport-agent
+Suggests: anacron, logrotate, checksecurity, supercat, bat
+Conflicts: bcron, cronie, systemd-cron
+Conffiles:
+ /etc/default/cron c3a7b773d9234e1948c5885753bb7c05
+ /etc/init.d/cron af02c6044a6166137218843d7556e2fd
+ /etc/pam.d/cron 11e788a7f7cd5477b10da2c7fd5ecdf0
+ /etc/supercat/spcrc-crontab f4a36df1ac8298dc249f712026bafff8
+ /etc/supercat/spcrc-crontab-light ed8b59882050d7de508a1eab088734e9
+Description: process scheduling daemon
+ The cron daemon is a background process that runs particular programs at
+ particular times (for example, every minute, day, week, or month), as
+ specified in a crontab. By default, users may also create crontabs of
+ their own so that processes are run on their behalf.
+ .
+ Output from the commands is usually mailed to the system administrator
+ (or to the user in question); you should probably install a mail system
+ as well so that you can receive these messages.
+ .
+ This cron package does not provide any system maintenance tasks. Basic
+ periodic maintenance tasks are provided by other packages, such
+ as checksecurity.
+Homepage: https://ftp.isc.org/isc/cron/
+
+Package: debconf
+Status: install ok installed
+Priority: required
+Section: admin
+Installed-Size: 497
+Maintainer: Debconf Developers <debconf-devel@lists.alioth.debian.org>
+Architecture: all
+Multi-Arch: foreign
+Version: 1.5.91
+Replaces: debconf-tiny
+Provides: debconf-2.0
+Recommends: apt (>= 2.9.11~) | apt-utils, debconf-i18n
+Suggests: debconf-doc, debconf-kde-helper, debconf-utils, libgtk3-perl, libnet-ldap-perl, libterm-readline-gnu-perl, perl, whiptail | dialog
+Conflicts: debconf-tiny, whiptail-utf8 (<= 0.50.17-13)
+Conffiles:
+ /etc/apt/apt.conf.d/70debconf 7e9d09d5801a42b4926b736b8eeabb73
+ /etc/debconf.conf 1cd82ead5651f0753b1ff6d9b31bd235
+Description: Debian configuration management system
+ Debconf is a configuration management system for debian packages. Packages
+ use Debconf to ask questions when they are installed.
+
+Package: dhcpcd-base
+Status: install ok installed
+Priority: important
+Section: net
+Installed-Size: 563
+Maintainer: Martin-Éric Racine <martin-eric.racine@iki.fi>
+Architecture: arm64
+Source: dhcpcd
+Version: 1:10.1.0-11+deb13u4
+Replaces: dhcpcd5 (<< 1:10.1.0-11+deb13u4~)
+Provides: dhcp-client
+Depends: adduser, libc6 (>= 2.38), libssl3t64 (>= 3.0.0), libudev1 (>= 183)
+Suggests: openresolv | resolvconf | systemd-resolved
+Breaks: dhcpcd5 (<< 1:10.1.0-11+deb13u4~)
+Conffiles:
+ /etc/dhcpcd.conf f6e072abd48f0991cd9a817a08ffa9ca
+Description: DHCPv4 and DHCPv6 dual-stack client (binaries and exit hooks)
+ dhcpcd provides seamless IPv4 and IPv6 auto-configuration:
+  * DHCPv4 client
+  * DHCPv6 client with Prefix Delegation (PD) support
+  * IPv4LL support (ZeroConf)
+  * IPv6RS support (SLAAC)
+  * ARP address conflict resolution
+  * ARP ping profiles
+  * Wireless SSID profiles
+ .
+ This package provides the binaries, exit hooks and manual pages.
+ .
+ It offers a dual-stack substitute for ISC DHCP Client (dhclient) on systems
+ where interfaces are configured by ifupdown via </etc/network/interfaces>
+ using the DHCP method.
+ .
+ The init.d script and systemd service required for systems without ifupdown
+ are packaged separately as dhcpcd.
+ .
+ Since Debian 12 (Bookworm), dhcpcd uses Predictable Network Interface Names
+ on Linux ports. See NEWS.Debian for more details.
+Homepage: https://github.com/NetworkConfiguration/dhcpcd
+
+Package: dpkg
+Essential: yes
+Status: install ok installed
+Priority: required
+Section: admin
+Installed-Size: 6906
+Maintainer: Dpkg Developers <debian-dpkg@lists.debian.org>
+Architecture: arm64
+Multi-Arch: foreign
+Version: 1.22.22
+Depends: tar (>= 1.28-1)
+Pre-Depends: libbz2-1.0, libc6 (>= 2.38), liblzma5 (>= 5.4.0), libmd0 (>= 0.0.0), libselinux1 (>= 3.1~), libzstd1 (>= 1.5.5), zlib1g (>= 1:1.1.4)
+Suggests: apt, debsig-verify
+Breaks: libapt-pkg5.0 (<< 1.7~b), lsb-base (<< 10.2019031300)
+Conffiles:
+ /etc/alternatives/README 7be88b21f7e386c8d5a8790c2461c92b
+ /etc/cron.daily/dpkg 94bb6c1363245e46256908a5d52ba4fb
+ /etc/dpkg/dpkg.cfg f4413ffb515f8f753624ae3bb365b81b
+ /etc/logrotate.d/alternatives 5fe0af6ce1505fefdc158d9e5dbf6286
+ /etc/logrotate.d/dpkg 9e25c8505966b5829785f34a548ae11f
+Description: Debian package management system
+ This package provides the low-level infrastructure for handling the
+ installation and removal of Debian software packages.
+ .
+ For Debian package development tools, install dpkg-dev.
+Homepage: https://wiki.debian.org/Teams/Dpkg
+
+Package: dump1090-mutability
+Status: install ok installed
+Priority: optional
+Section: net
+Installed-Size: 2799
+Maintainer: Debian Hamradio Maintainers <debian-hams@lists.debian.org>
+Architecture: arm64
+Version: 1.15~20180310.4a16df3+dfsg-8.2
+Provides: fatsv-data-source
+Depends: adduser, libjs-excanvas, libjs-jquery-ui, libjs-jquery-ui-theme-smoothness, lsb-base, debconf (>= 0.5) | debconf-2.0, libc6 (>= 2.38), librtlsdr0
+Recommends: lighttpd
+Conffiles:
+ /etc/apache2/conf-available/dump1090-mutability.conf 60ec16262aa1e097a5a79744cba62884
+ /etc/dump1090-mutability/config.js d8651d747ae67448bf102ff8771928ff
+ /etc/init.d/dump1090-mutability 24f17d3c3a308ab6436e6424b00042c4
+ /etc/lighttpd/conf-available/89-dump1090.conf 05d312523961ab71b75a07420d844370
+ /etc/logrotate.d/dump1090-mutability b2ec2104e1b3adbf42e2163bddcd20e1
+ /etc/nginx/sites-available/dump1090-mutability 4df1dd1d9e45f19de42433ed0ad4f4b6
+Description: ADS-B Ground Station System for RTL-SDR
+ Networked Aviation Mode S / ADS-B decoder/translator with RTL-SDR software
+ defined radio USB device support.
+ .
+ This is a packaging of the "mutability" fork of dump1090 that includes
+ sampling at 2.4MHz and other improvements.
+Homepage: https://github.com/mutability/dump1090
+
+Package: libc6
+Status: install ok installed
+Priority: optional
+Section: libs
+Installed-Size: 23769
+Maintainer: GNU Libc Maintainers <debian-glibc@lists.debian.org>
+Architecture: arm64
+Multi-Arch: same
+Source: glibc
+Version: 2.41-12+rpt1+deb13u4
+Depends: libgcc-s1
+Recommends: libidn2-0 (>= 2.0.5~)
+Suggests: glibc-doc, debconf | debconf-2.0, libc-l10n, locales, libnss-nis, libnss-nisplus
+Breaks: base-files (<< 13.3~), chrony (<< 4.2-3~), dhcpcd (<< 1:10.1.0-7~), fakechroot (<< 2.19-3.5), firefox (<< 91~), firefox-esr (<< 91~), gnumach-image-1.8-486 (<< 2:1.8+git20210923~), gnumach-image-1.8-486-dbg (<< 2:1.8+git20210923~), gnumach-image-1.8-xen-486 (<< 2:1.8+git20210923~), gnumach-image-1.8-xen-486-dbg (<< 2:1.8+git20210923~), hurd (<< 1:0.9.git20220301-2), libamdhip64-5 (<< 5.7.1-5+b1), libhiprtc-builtins5 (<< 5.7.1-5+b1), librccl1 (<< 5.4.3-3+b1), libswupdate0.1 (<< 2024.12.1+dfsg-1+b3), locales (<< 2.41), locales-all (<< 2.41), lua-swupdate (<< 2024.12.1+dfsg-1+b3), nscd (<< 2.41), pd-scaf (<< 1:0.14.1+darcs20180201-6+b4), postgresql-15-pllua (<< 1:2.0.12-4), postgresql-17-pllua (<< 1:2.0.12-3+b2), python3-iptables (<< 1.0.0-2), python3-mrgingham (<< 1.25-1), python3-onnxruntime (<< 1.20.1+dfsg-2~), sysvinit (<< 3.09-2~), sysvinit-core (<< 3.09-2~), tinydns (<< 1:1.05-14), uwsgi-plugin-pypy3 (<< 0.0.2+b1), valgrind (<< 1:3.19.0-1~)
+Conffiles:
+ /etc/ld.so.conf.d/aarch64-linux-gnu.conf da8a2db277c6c69cad56b6c778193e40
+Description: GNU C Library: Shared libraries
+ Contains the standard libraries that are used by nearly all programs on
+ the system. This package includes shared versions of the standard C library
+ and the standard math library, as well as many others.
+Homepage: https://www.gnu.org/software/libc/libc.html
+
+Package: libcamera-ipa
+Status: install ok installed
+Priority: optional
+Section: libs
+Installed-Size: 5362
+Maintainer: Serge Schneider <serge@raspberrypi.com>
+Architecture: arm64
+Multi-Arch: same
+Source: libcamera
+Version: 0.7.2+rpt20261009-1
+Replaces: libcamera0
+Depends: libc6 (>= 2.38), libcamera0.7 (>= 0.7.2+rpt20261009), libgcc-s1 (>= 4.2), libpisp1 (>= 1.7.0), libstdc++6 (>= 14), libtensorflow-lite2.20.0 (>= 2.20.0)
+Recommends: awb-nn
+Breaks: libcamera0
+Description: complex camera support library (IPA modules)
+ libcamera is a complex camera support library which handles low-level
+ control of the camera devices, providing a unified higher-level
+ programming interface to the applications.
+ .
+ This package contains the libcamera IPA (Image Processing Algorithms) modules.
+Homepage: https://libcamera.org/
+
+Package: libfreetype6
+Status: install ok installed
+Priority: optional
+Section: libs
+Installed-Size: 972
+Maintainer: Hugh McMaster <hmc@debian.org>
+Architecture: arm64
+Multi-Arch: same
+Source: freetype
+Version: 2.13.3+dfsg-1+deb13u1
+Depends: libbrotli1 (>= 0.6.0), libbz2-1.0, libc6 (>= 2.33), libpng16-16t64 (>= 1.6.46), zlib1g (>= 1:1.1.4)
+Description: FreeType 2 font engine, shared library files
+ The FreeType project is a team of volunteers who develop free,
+ portable and high-quality software solutions for digital typography.
+ They specifically target embedded systems and focus on providing small,
+ efficient and ubiquitous products.
+ .
+ The FreeType 2 library is their new software font engine.  It has been
+ designed to provide the following important features:
+  * A universal and simple API to manage font files
+  * Support for several font formats through loadable modules
+  * High-quality anti-aliasing
+  * High portability & performance
+ .
+ Supported font formats include:
+  * TrueType files (.ttf) and collections (.ttc)
+  * Type 1 font files both in ASCII (.pfa) or binary (.pfb) format
+  * Type 1 Multiple Master fonts.  The FreeType 2 API also provides
+    routines to manage design instances easily
+  * Type 1 CID-keyed fonts
+  * OpenType/CFF (.otf) fonts
+  * CFF/Type 2 fonts
+  * Adobe CEF fonts (.cef), used to embed fonts in SVG documents with
+    the Adobe SVG viewer plugin.
+  * Windows FNT/FON bitmap fonts
+ .
+ This package contains the files needed to run programs that use the
+ FreeType 2 library.
+Homepage: https://freetype.org
+
+Package: libgd3
+Status: install ok installed
+Priority: optional
+Section: libs
+Installed-Size: 485
+Maintainer: GD Team <team+gd@tracker.debian.org>
+Architecture: arm64
+Multi-Arch: same
+Source: libgd2
+Version: 2.3.3-14~deb13u1
+Depends: libavif16 (>= 1.2.1), libc6 (>= 2.38), libfontconfig1 (>= 2.12.6), libfreetype6 (>= 2.2.1), libheif1 (>= 1.3.2), libimagequant0 (>= 2.11.10), libjpeg62-turbo (>= 1.3.1), libpng16-16t64 (>= 1.6.46), libtiff6 (>= 4.0.3), libwebp7 (>= 1.5.0), libxpm4
+Suggests: libgd-tools
+Description: GD Graphics Library
+ GD is a graphics library. It allows your code to quickly draw images
+ complete with lines, arcs, text, multiple colours, cut and paste from
+ other images, flood fills, and write out the result as a PNG file.
+ This is particularly useful in World Wide Web applications, where PNG is
+ one of the formats accepted for inline images by most browsers.
+ .
+ This is the runtime package of the library.
+Homepage: https://libgd.github.io/
+
+Package: libgpgme11t64
+Status: install ok installed
+Priority: optional
+Section: libs
+Installed-Size: 629
+Maintainer: Debian GnuPG Maintainers <pkg-gnupg-maint@lists.alioth.debian.org>
+Architecture: arm64
+Multi-Arch: same
+Source: gpgme1.0
+Version: 1.24.2-3
+Replaces: libgpgme11
+Provides: libgpgme11 (= 1.24.2-3)
+Depends: gnupg (>= 2.1.21-4) | gpg, libassuan9 (>= 2.4.2), libc6 (>= 2.38), libgpg-error0 (>= 1.50)
+Recommends: dirmngr, gpg-agent, gpg-wks-client, gpgsm
+Breaks: libgpgme11 (<< 1.24.2-3)
+Description: GPGME - GnuPG Made Easy (library)
+ GPGME is a wrapper library which provides a C API to access some of the
+ GnuPG functions, such as encrypt, decrypt, sign, verify, ...
+ .
+ This package contains the library.
+Homepage: https://gnupg.org/software/gpgme/
+
+Package: libgpgmepp6t64
+Status: install ok installed
+Priority: optional
+Section: libs
+Installed-Size: 746
+Maintainer: Debian GnuPG Maintainers <pkg-gnupg-maint@lists.alioth.debian.org>
+Architecture: arm64
+Multi-Arch: same
+Source: gpgme1.0
+Version: 1.24.2-3
+Replaces: libgpgmepp6
+Provides: libgpgmepp6 (= 1.24.2-3)
+Depends: libc6 (>= 2.38), libgcc-s1 (>= 3.0), libgpgme11t64 (>= 1.24.1), libstdc++6 (>= 13.1)
+Breaks: libgpgmepp6 (<< 1.24.2-3)
+Description: C++ wrapper library for GPGME
+ GpgME++ (aka GpgMEpp) is a C++ wrapper (or C++ bindings) for the
+ GnuPG project's GPGME (GnuPG Made Easy) library.
+ .
+ This is the official upstream C++ binding for GPGME.
+Homepage: https://gnupg.org/software/gpgme/
+
+Package: libgssapi-krb5-2
+Status: install ok installed
+Priority: optional
+Section: libs
+Installed-Size: 487
+Maintainer: Sam Hartman <hartmans@debian.org>
+Architecture: arm64
+Multi-Arch: same
+Source: krb5
+Version: 1.21.3-5+deb13u1
+Depends: libkrb5-3 (= 1.21.3-5+deb13u1), libc6 (>= 2.38), libcom-err2 (>= 1.43.9), libk5crypto3 (>= 1.20), libkrb5support0 (= 1.21.3-5+deb13u1)
+Suggests: krb5-doc, krb5-user
+Description: MIT Kerberos runtime libraries - krb5 GSS-API Mechanism
+ Kerberos is a system for authenticating users and services on a network.
+ Kerberos is a trusted third-party service.  That means that there is a
+ third party (the Kerberos server) that is trusted by all the entities on
+ the network (users and services, usually called "principals").
+ .
+ This is the MIT reference implementation of Kerberos V5.
+ .
+ This package contains the runtime library for the MIT Kerberos
+ implementation of GSS-API used by applications and Kerberos clients.
+Homepage: https://web.mit.edu/kerberos/
+
+Package: libk5crypto3
+Status: install ok installed
+Priority: optional
+Section: libs
+Installed-Size: 278
+Maintainer: Sam Hartman <hartmans@debian.org>
+Architecture: arm64
+Multi-Arch: same
+Source: krb5
+Version: 1.21.3-5+deb13u1
+Depends: libc6 (>= 2.38), libkrb5support0 (= 1.21.3-5+deb13u1)
+Suggests: krb5-doc, krb5-user
+Breaks: libgssapi-krb5-2 (<= 1.18~), libkrb5-3 (<= 1.18~)
+Description: MIT Kerberos runtime libraries - Crypto Library
+ Kerberos is a system for authenticating users and services on a network.
+ Kerberos is a trusted third-party service.  That means that there is a
+ third party (the Kerberos server) that is trusted by all the entities on
+ the network (users and services, usually called "principals").
+ .
+ This is the MIT reference implementation of Kerberos V5.
+ .
+ This package contains the runtime cryptography libraries used by
+ applications and Kerberos clients.
+Homepage: https://web.mit.edu/kerberos/
+
+Package: libkrb5-3
+Status: install ok installed
+Priority: optional
+Section: libs
+Installed-Size: 1166
+Maintainer: Sam Hartman <hartmans@debian.org>
+Architecture: arm64
+Multi-Arch: same
+Source: krb5
+Version: 1.21.3-5+deb13u1
+Depends: libkrb5support0 (= 1.21.3-5+deb13u1), libc6 (>= 2.38), libcom-err2 (>= 1.43.9), libk5crypto3 (>= 1.20), libkeyutils1 (>= 1.5.9), libssl3t64 (>= 3.0.0)
+Recommends: krb5-locales
+Suggests: krb5-doc, krb5-user
+Breaks: libapache2-mod-auth-kerb (<= 5.4-2.4)
+Description: MIT Kerberos runtime libraries
+ Kerberos is a system for authenticating users and services on a network.
+ Kerberos is a trusted third-party service.  That means that there is a
+ third party (the Kerberos server) that is trusted by all the entities on
+ the network (users and services, usually called "principals").
+ .
+ This is the MIT reference implementation of Kerberos V5.
+ .
+ This package contains the runtime library for the main Kerberos v5 API
+ used by applications and Kerberos clients.
+Homepage: https://web.mit.edu/kerberos/
+
+Package: libkrb5support0
+Status: install ok installed
+Priority: optional
+Section: libs
+Installed-Size: 154
+Maintainer: Sam Hartman <hartmans@debian.org>
+Architecture: arm64
+Multi-Arch: same
+Source: krb5
+Version: 1.21.3-5+deb13u1
+Depends: libc6 (>= 2.38)
+Breaks: krb5-admin-server (<< 1.20.1-4~), krb5-kdc (<< 1.20.1-4~), krb5-pkinit (<< 1.20.1-4~), krb5-user (<< 1.20.1-4~), libgssapi-krb5-2 (<< 1.20), libk5crypto3 (<< 1.20.1-4~), libkadm5clnt-mit9 (<< 1.13~alpha1-1), libkadm5srv-mit12 (<< 1.20.1-4~), libkadm5srv-mit9 (<< 1.13~alpha1-1), libkdb5-10t64 (<< 1.20.1-4~), libkdb5-8 (<< 1.16), libkrb5-3 (<< 1.20.1-4~)
+Description: MIT Kerberos runtime libraries - Support library
+ Kerberos is a system for authenticating users and services on a network.
+ Kerberos is a trusted third-party service.  That means that there is a
+ third party (the Kerberos server) that is trusted by all the entities on
+ the network (users and services, usually called "principals").
+ .
+ This is the MIT reference implementation of Kerberos V5.
+ .
+ This package contains an internal runtime support library used by other
+ Kerberos libraries.
+Homepage: https://web.mit.edu/kerberos/
+
+Package: libnghttp2-14
+Status: install ok installed
+Priority: optional
+Section: libs
+Installed-Size: 229
+Maintainer: Tomasz Buchert <tomasz@debian.org>
+Architecture: arm64
+Multi-Arch: same
+Source: nghttp2
+Version: 1.64.0-1.1+deb13u1
+Depends: libc6 (>= 2.17)
+Description: library implementing HTTP/2 protocol (shared library)
+ This is an implementation of the Hypertext Transfer Protocol version
+ 2 in C. The framing layer of HTTP/2 is implemented as a reusable C
+ library.
+ .
+ This package installs a shared library.
+Homepage: https://nghttp2.org/
+
+Package: libparted2t64
+Status: install ok installed
+Priority: optional
+Section: libs
+Installed-Size: 609
+Maintainer: Parted Maintainer Team <parted-maintainers@alioth-lists.debian.net>
+Architecture: arm64
+Multi-Arch: same
+Source: parted
+Version: 3.6-5
+Replaces: libparted2
+Provides: libparted, libparted2 (= 3.6-5)
+Depends: libblkid1 (>= 2.17.2), libc6 (>= 2.38), libdevmapper1.02.1 (>= 2:1.02.197), libuuid1 (>= 2.16)
+Suggests: libparted-dev, libparted-i18n (= 3.6-5), parted
+Conflicts: libparted2 (<< 3.6-5)
+Description: disk partition manipulator - shared library
+ GNU Parted is a program that allows you to create, destroy, resize,
+ move, and copy disk partitions. This is useful for creating space
+ for new operating systems, reorganizing disk usage, and copying data
+ to new hard disks.
+ .
+ This package contains the shared library.
+Homepage: https://www.gnu.org/software/parted
+
+Package: librpicam-app1
+Status: install ok installed
+Priority: optional
+Section: video
+Installed-Size: 793
+Maintainer: Serge Schneider <serge@raspberrypi.com>
+Architecture: arm64
+Multi-Arch: same
+Source: rpicam-apps
+Version: 1.14.0-1
+Depends: libboost-program-options1.83.0 (>= 1.83.0), libc6 (>= 2.38), libcamera0.7 (>= 0.7.2+rpt20261009), libexif12 (>= 0.6.21-1~), libgcc-s1 (>= 3.0), libjpeg62-turbo (>= 1.3.1), libpng16-16t64 (>= 1.6.46), libstdc++6 (>= 14), libtiff6 (>= 4.5.0~rc1)
+Description: Framework for rpicam-apps camera applications
+ The rpicam-apps libary is the core framework used by the rpicam-apps suite of
+ official command-line camera applications developed for Raspberry Pi, built on
+ the libcamera framework. Custom camera applications can be built using this
+ library.
+ .
+ This package contains the shared library.
+Homepage: https://github.com/raspberrypi/rpicam-apps/
+
+Package: libzstd1
+Status: install ok installed
+Priority: optional
+Section: libs
+Installed-Size: 748
+Maintainer: RPM packaging team <team+pkg-rpm@tracker.debian.org>
+Architecture: arm64
+Multi-Arch: same
+Source: libzstd
+Version: 1.5.7+dfsg-1
+Depends: libc6 (>= 2.34)
+Description: fast lossless compression algorithm
+ Zstd, short for Zstandard, is a fast lossless compression algorithm, targeting
+ real-time compression scenarios at zlib-level compression ratio.
+ .
+ This package contains the shared library.
+Homepage: https://github.com/facebook/zstd
+
+Package: login.defs
+Status: install ok installed
+Priority: required
+Section: admin
+Installed-Size: 214
+Maintainer: Shadow package maintainers <pkg-shadow-devel@lists.alioth.debian.org>
+Architecture: all
+Multi-Arch: foreign
+Source: shadow
+Version: 1:4.17.4-2
+Replaces: login (<< 1:4.16.0-2~)
+Conffiles:
+ /etc/login.defs f4e7091da823fd58589e991a2f9c2d96
+Description: system user management configuration
+ This package provides the login.defs configuration file,
+ used by otherwise unrelated tools managing system users.
+Homepage: https://github.com/shadow-maint/shadow
+
+Package: mawk
+Status: install ok installed
+Priority: required
+Section: interpreters
+Installed-Size: 320
+Maintainer: Boyuan Yang <byang@debian.org>
+Architecture: arm64
+Multi-Arch: foreign
+Version: 1.3.4.20250131-1
+Provides: awk
+Depends: libc6 (>= 2.38)
+Description: Pattern scanning and text processing language
+ Mawk is an interpreter for the AWK Programming Language. The AWK
+ language is useful for manipulation of data files, text retrieval and
+ processing, and for prototyping and experimenting with algorithms. Mawk
+ is a new awk meaning it implements the AWK language as defined in Aho,
+ Kernighan and Weinberger, The AWK Programming Language, Addison-Wesley
+ Publishing, 1988. (Hereafter referred to as the AWK book.) Mawk conforms
+ to the POSIX 1003.2 (draft 11.3) definition of the AWK language
+ which contains a few features not described in the AWK book, and mawk
+ provides a small number of extensions.
+ .
+ Mawk is smaller and much faster than gawk. It has some compile-time
+ limits such as NF = 32767 and sprintf buffer = 1020.
+Homepage: https://invisible-island.net/mawk/
+
+Package: mesa-libgallium
+Status: install ok installed
+Priority: optional
+Section: libs
+Installed-Size: 50649
+Maintainer: Debian X Strike Force <debian-x@lists.debian.org>
+Architecture: arm64
+Multi-Arch: same
+Source: mesa
+Version: 26.2.6-1~bpo13+0~rpt2
+Replaces: mesa-va-drivers (<< 25.2.8-3), mesa-vdpau-drivers (<< 25.2.8-3)
+Provides: libglapi-mesa, mesa-va-drivers, mesa-vdpau-drivers, va-driver
+Depends: libc6 (>= 2.38), libdrm-amdgpu1 (>= 2.4.134-3~), libdrm2 (>= 2.4.134-3~), libelf1t64 (>= 0.142), libexpat1 (>= 2.0.1), libgcc-s1 (>= 3.0), libllvm19 (>= 1:19.1.0), libsensors5 (>= 1:3.5.0), libstdc++6 (>= 11), libx11-xcb1, libxcb-dri3-0 (>= 1.13), libxcb-present0, libxcb-randr0 (>= 1.3), libxcb-sync1, libxcb-xfixes0, libxcb1 (>= 1.9.2), libxshmfence1, libzstd1 (>= 1.5.5), zlib1g (>= 1:1.2.3.4)
+Breaks: mesa-va-drivers (<< 25.2.8-3), mesa-vdpau-drivers (<< 25.2.8-3)
+Enhances: libva2
+Description: shared infrastructure for Mesa drivers
+ This package contains libgallium, a private library shared between
+ multiple Mesa drivers. This library is an implementation detail of Mesa
+ and should not be used directly by user code.
+Homepage: https://mesa3d.org/
+
+Package: openssl
+Status: install ok installed
+Priority: optional
+Section: utils
+Installed-Size: 2567
+Maintainer: Debian OpenSSL Team <pkg-openssl-devel@alioth-lists.debian.net>
+Architecture: arm64
+Multi-Arch: foreign
+Version: 3.5.9-1~deb13u1+rpt1
+Depends: libc6 (>= 2.34), libssl3t64 (>= 3.5.0)
+Suggests: ca-certificates
+Conffiles:
+ /etc/ssl/openssl.cnf bfdc30bd205b6ca2c15a46b17721c6f2
+Description: Secure Sockets Layer toolkit - cryptographic utility
+ This package is part of the OpenSSL project's implementation of the SSL
+ and TLS cryptographic protocols for secure communication over the
+ Internet.
+ .
+ It contains the general-purpose command line binary /usr/bin/openssl,
+ useful for cryptographic operations such as:
+  * creating RSA, DH, and DSA key parameters;
+  * creating X.509 certificates, CSRs, and CRLs;
+  * calculating message digests;
+  * encrypting and decrypting with ciphers;
+  * testing SSL/TLS clients and servers;
+  * handling S/MIME signed or encrypted mail.
+Homepage: https://openssl-library.org
+
+Package: parted
+Status: install ok installed
+Priority: optional
+Section: admin
+Installed-Size: 218
+Maintainer: Parted Maintainer Team <parted-maintainers@alioth-lists.debian.net>
+Architecture: arm64
+Multi-Arch: foreign
+Version: 3.6-5
+Depends: libparted2t64 (= 3.6-5), libc6 (>= 2.38), libreadline8t64 (>= 6.0), libtinfo6 (>= 6), libuuid1 (>= 2.16)
+Suggests: parted-doc
+Conflicts: parted-doc (<< 3.5-2~)
+Description: disk partition manipulator
+ GNU Parted is a program that allows you to create, destroy, resize,
+ move, and copy disk partitions. This is useful for creating space
+ for new operating systems, reorganizing disk usage, and copying data
+ to new hard disks.
+ .
+ This package contains the binary and manual page. Further
+ documentation is available in parted-doc.
+ .
+ Parted currently supports DOS, Mac, Sun, BSD, GPT, MIPS, and PC98
+ partitioning formats, as well as a "loop" (raw disk) type which
+ allows use on RAID/LVM. It can detect and remove ASFS/AFFS/APFS,
+ Btrfs, ext2/3/4, FAT16/32, HFS, JFS, linux-swap, UFS, XFS, and ZFS
+ file systems. Parted also has the ability to create and modify file
+ systems of some of these types, but using it to perform file system
+ operations is now deprecated.
+ .
+ The nature of this software means that any bugs could cause massive
+ data loss. While there are no such bugs known at the moment, they
+ could exist, so please back up all important files before running
+ it, and do so at your own risk.
+Homepage: https://www.gnu.org/software/parted
+
+Package: passwd
+Status: install ok installed
+Priority: required
+Section: admin
+Installed-Size: 5317
+Maintainer: Shadow package maintainers <pkg-shadow-devel@lists.alioth.debian.org>
+Architecture: arm64
+Multi-Arch: foreign
+Source: shadow
+Version: 1:4.17.4-2
+Replaces: login (<< 1:4.16.0-2~)
+Depends: base-passwd (>= 3.6.4), libpam-modules, login.defs, libacl1 (>= 2.2.23), libattr1 (>= 1:2.4.44), libaudit1 (>= 1:2.2.1), libbsd0 (>= 0.11.0), libc6 (>= 2.38), libcrypt1 (>= 1:4.1.0), libpam0g (>= 0.99.7.1), libselinux1 (>= 3.1~), libsemanage2 (>= 2.0.32)
+Recommends: sensible-utils
+Conffiles:
+ /etc/default/useradd e03965d134c26725cbc51a57969da6c9
+ /etc/pam.d/chfn 4d466e00a348ba426130664d795e8afa
+ /etc/pam.d/chpasswd 9900720564cb4ee98b7da29e2d183cb2
+ /etc/pam.d/chsh a6e9b589e90009334ffd030d819290a6
+ /etc/pam.d/newusers 1454e29bfa9f2a10836563e76936cea5
+ /etc/pam.d/passwd eaf2ad85b5ccd06cceb19a3e75f40c63
+Description: change and administer password and group data
+ This package includes passwd, chsh, chfn, and many other programs to
+ maintain password and group data.
+ .
+ Shadow passwords are supported.  See /usr/share/doc/passwd/README.Debian
+Homepage: https://github.com/shadow-maint/shadow
+
+Package: patch
+Status: install ok installed
+Priority: optional
+Section: vcs
+Installed-Size: 270
+Maintainer: Laszlo Boszormenyi (GCS) <gcs@debian.org>
+Architecture: arm64
+Multi-Arch: foreign
+Version: 2.8-2
+Depends: libc6 (>= 2.34)
+Suggests: ed, diffutils-doc
+Description: Apply a diff file to an original
+ Patch will take a patch file containing any of the four forms
+ of difference listing produced by the diff program and apply
+ those differences to an original file, producing a patched
+ version.
+Homepage: https://savannah.gnu.org/projects/patch/
+
+Package: pihole-meta
+Status: install ok installed
+Priority: optional
+Section: contrib/metapackages
+Maintainer: Pi-hole team <adblock@pi-hole.net>
+Architecture: all
+Version: 0.8
+Depends: awk, bash-completion, binutils, ca-certificates, cron | cron-daemon, curl, dialog, bind9-dnsutils | dnsutils, dns-root-data, git, grep, iproute2, iputils-ping, jq, libcap2, libcap2-bin, logrotate, lshw, procps, psmisc, util-linux, unzip
+Description: Pi-hole dependency meta package
+
+Package: python3
+Status: install ok installed
+Priority: optional
+Section: python
+Installed-Size: 83
+Maintainer: Matthias Klose <doko@debian.org>
+Architecture: arm64
+Multi-Arch: allowed
+Source: python3-defaults
+Version: 3.13.5-1
+Replaces: python3-minimal (<< 3.1.2-2)
+Provides: python3-profiler, python3-supported-max (= 3.13), python3-supported-min (= 3.13)
+Depends: python3.13 (>= 3.13.5-1~), libpython3-stdlib (= 3.13.5-1)
+Pre-Depends: python3-minimal (= 3.13.5-1)
+Suggests: python3-doc (>= 3.13.5-1), python3-tk (>= 3.13.5-1~), python3-venv (>= 3.13.5-1)
+Conflicts: python3-distutils
+Description: interactive high-level object-oriented language (default python3 version)
+ Python, the high-level, interactive object oriented language,
+ includes an extensive class library with lots of goodies for
+ network programming, system administration, sounds and graphics.
+ .
+ This package is a dependency package, which depends on Debian's default
+ Python 3 version (currently v3.13).
+Homepage: https://www.python.org/
+
+Package: python3-pygments
+Status: install ok installed
+Priority: optional
+Section: python
+Installed-Size: 4521
+Maintainer: Piotr Ożarowski <piotr@debian.org>
+Architecture: all
+Multi-Arch: foreign
+Source: pygments
+Version: 2.18.0+dfsg-2
+Replaces: python-pygments (<< 2.3.1+dfsg-4~)
+Depends: python3:any
+Suggests: python-pygments-doc, ttf-bitstream-vera
+Breaks: python-pygments (<< 2.3.1+dfsg-4~)
+Description: syntax highlighting package written in Python 3
+ Pygments aims to be a generic syntax highlighter for general use in all kinds
+ of software such as forum systems, wikis or other applications that need to
+ prettify source code.
+ .
+ Highlights are:
+   * a wide range of common languages and markup formats is supported
+   * special attention is paid to details, increasing quality by a fair amount
+   * support for new languages and formats are added easily
+   * a number of output formats, presently HTML, LaTeX and ANSI sequences
+   * it is usable as a command-line tool and as a library
+Homepage: https://pygments.org/
+
+Package: rpi-eeprom
+Status: install ok installed
+Priority: optional
+Section: misc
+Installed-Size: 47477
+Maintainer: Tim Gover <tim.gover@raspberrypi.com>
+Architecture: all
+Version: 28.36-1
+Replaces: rpi-eeprom-images (<< 7.2)
+Provides: rpi-eeprom-images
+Depends: raspi-utils, python3, binutils, pciutils, python3-pycryptodome
+Recommends: flashrom, rpieepromab (>= 20260304+1)
+Breaks: rpi-eeprom-images (<< 7.2)
+Conffiles:
+ /etc/default/rpi-eeprom-update 0d657c25176302dace9384ca77aa3328
+Description: Raspberry Pi 4/5 boot EEPROM updater
+ Checks whether the Raspberry Pi bootloader EEPROM is up-to-date and updates
+ the EEPROM.
+Homepage: https://github.com/raspberrypi/rpi-eeprom/
+
+Package: rpicam-apps-core
+Status: install ok installed
+Priority: optional
+Section: video
+Installed-Size: 1017
+Maintainer: Serge Schneider <serge@raspberrypi.com>
+Architecture: arm64
+Source: rpicam-apps
+Version: 1.14.0-1
+Replaces: libcamera-apps (<< 1.4.1-1~), rpicam-apps (<< 1.8.1-1~bookworm), rpicam-apps-lite (<< 1.8.1-1~bookworm)
+Depends: libboost-program-options1.83.0 (>= 1.83.0), libc6 (>= 2.34), libcamera0.7 (>= 0.7.2+rpt20261009), libdrm2 (>= 2.4.99), libgcc-s1 (>= 3.0), librpicam-app1 (>= 1.14.0), libstdc++6 (>= 13.1), python3:any
+Breaks: libcamera-apps (<< 1.4.1-1~), rpicam-apps (<< 1.8.1-1~bookworm), rpicam-apps-lite (<< 1.8.1-1~bookworm)
+Conflicts: rpicam-apps (<< 1.8.1-1~bookworm), rpicam-apps-lite (<< 1.8.1-1~bookworm)
+Description: Camera based applications for Raspberry Pi using the libcamera framework
+ rpicam-apps is a suite of official command-line camera applications developed
+ for Raspberry Pi, built on the libcamera framework. Tools like rpicam-still,
+ rpicam-vid, and rpicam-preview enable high-quality image and video capture with
+ official and 3rd party camera modules. The apps support a variety of controls
+ and advanced features for flexible imaging use cases.
+ .
+ This is a metapackage that installs the core rpicam-apps applications.
+Homepage: https://github.com/raspberrypi/rpicam-apps/
+
+Package: rsync
+Status: install ok installed
+Priority: optional
+Section: net
+Installed-Size: 1018
+Maintainer: Samuel Henrique <samueloph@debian.org>
+Architecture: arm64
+Multi-Arch: foreign
+Version: 3.5.0+ds1-0+deb13u1
+Depends: libacl1 (>= 2.2.23), libc6 (>= 2.38), liblz4-1 (>= 0.0~r130), libpopt0 (>= 1.14), libssl3t64 (>= 3.0.0), libxxhash0 (>= 0.8.0), libzstd1 (>= 1.5.5), zlib1g (>= 1:1.1.4)
+Pre-Depends: init-system-helpers (>= 1.54~)
+Suggests: openssh-client, openssh-server, python3, python3-braceexpand
+Conffiles:
+ /etc/default/rsync b8fd9efa75e2bda2583b0d7c0892a073
+ /etc/init.d/rsync 59aa13cd1a70ff254a2991ad0c522ea5
+Description: fast, versatile, remote (and local) file-copying tool
+ rsync is a fast and versatile file-copying tool which can copy locally
+ and to/from a remote host. It offers many options to control its behavior,
+ and its remote-update protocol can minimize network traffic to make
+ transferring updates between machines fast and efficient.
+ .
+ It is widely used for backups and mirroring and as an improved copy
+ command for everyday use.
+ .
+ This package provides both the rsync command line tool and optional
+ daemon functionality.
+Homepage: https://rsync.samba.org/
+
+Package: sudo
+Status: install ok installed
+Priority: optional
+Section: admin
+Installed-Size: 7062
+Maintainer: Debian Sudo Maintainers <sudo@packages.debian.org>
+Architecture: arm64
+Multi-Arch: foreign
+Version: 1.9.16p2-3+deb13u2
+Replaces: sudo-ldap
+Depends: libapparmor1 (>= 2.7.0~beta1+bzr1772), libaudit1 (>= 1:2.2.1), libc6 (>= 2.38), libpam0g (>= 0.99.7.1), libselinux1 (>= 3.1~), libssl3t64 (>= 3.0.0), zlib1g (>= 1:1.2.0.2), libpam-modules
+Pre-Depends: init-system-helpers (>= 1.54~)
+Conflicts: sudo-ldap
+Conffiles:
+ /etc/init.d/sudo 4fd40c92739a3bb2242df7cc6af126df
+ /etc/pam.d/sudo 7fa5090826481c517f23faa1e21c77a8
+ /etc/pam.d/sudo-i 95199b1f3d5a60bcf98058d9f8b70e70
+ /etc/sudo.conf b802577e70ce0df065aa94feb3d0566f
+ /etc/sudo_logsrvd.conf ad0ba586da300ae3ba46312ad744a6e2
+ /etc/sudoers da8bee36494c904ba767f0dd58920878
+ /etc/sudoers.d/README bb1eba13940f331e91cfb9294d86a04f
+Description: Provide limited super user privileges to specific users
+ Sudo is a program designed to allow a sysadmin to give limited root
+ privileges to users and log root activity.  The basic philosophy is to give
+ as few privileges as possible but still allow people to get their work done.
+ .
+ This version is built with minimal shared library dependencies, use the
+ sudo-ldap package instead if you need LDAP support for sudoers.
+Homepage: https://www.sudo.ws/
+
+Package: tzdata
+Status: install ok installed
+Priority: required
+Section: localization
+Installed-Size: 1360
+Maintainer: GNU Libc Maintainers <debian-glibc@lists.debian.org>
+Architecture: all
+Multi-Arch: foreign
+Version: 2026f-0+deb13u1
+Replaces: tzdata-legacy (= 2023c-8), tzdata-legacy (= 2023c-9)
+Provides: tzdata-trixie
+Depends: debconf (>= 0.5) | debconf-2.0
+Breaks: tzdata-legacy (= 2023c-8), tzdata-legacy (= 2023c-9)
+Description: time zone and daylight-saving time data
+ This package contains data required for the implementation of
+ standard local time for many representative locations around the
+ globe. It is updated periodically to reflect changes made by
+ political bodies to time zone boundaries, UTC offsets, and
+ daylight-saving rules.
+Homepage: https://www.iana.org/time-zones
+
+Package: util-linux
+Essential: yes
+Status: install ok installed
+Priority: required
+Section: utils
+Installed-Size: 7402
+Maintainer: Chris Hofstaedtler <zeha@debian.org>
+Architecture: arm64
+Multi-Arch: foreign
+Version: 2.41.5-0+deb13u1
+Replaces: hardlink
+Provides: hardlink
+Pre-Depends: libpam-modules, libpam-runtime, libblkid1 (= 2.41.5-0+deb13u1), libc6 (>= 2.41), libcap-ng0 (>= 0.7.9), libcrypt1 (>= 1:4.1.0), liblastlog2-2 (= 2.41.5-0+deb13u1), libmount1 (= 2.41.5-0+deb13u1), libpam0g (>= 0.99.7.1), libselinux1 (>= 3.1~), libsmartcols1 (= 2.41.5-0+deb13u1), libsystemd0, libtinfo6 (>= 6), libudev1 (>= 183), libuuid1 (= 2.41.5-0+deb13u1)
+Recommends: sensible-utils
+Suggests: dosfstools, kbd, util-linux-extra, util-linux-locales, wtmpdb
+Conflicts: hardlink
+Conffiles:
+ /etc/pam.d/runuser b8b44b045259525e0fae9e38fdb2aeeb
+ /etc/pam.d/runuser-l 2106ea05877e8913f34b2c77fa02be45
+ /etc/pam.d/su 60fbbe65c90d741bc0d380543cefe8af
+ /etc/pam.d/su-l 756fef5687fecc0d986e5951427b0c4f
+Description: miscellaneous system utilities
+ This package contains a number of important utilities, most of which
+ are oriented towards maintenance of your system. Some of the more
+ important utilities included in this package allow you to view kernel
+ messages, create new filesystems, view block device information,
+ interface with real time clock, etc.
+Homepage: https://github.com/util-linux/util-linux
+
+Package: wireless-regdb
+Status: install ok installed
+Priority: optional
+Section: net
+Installed-Size: 39
+Maintainer: Debian kernel team <debian-kernel@lists.debian.org>
+Architecture: all
+Multi-Arch: foreign
+Version: 2026.05.30-1~deb13u1
+Description: wireless regulatory database for Linux
+ This package provides a machine-readable database of legal
+ regulations on radio emissions that affect use of wireless networking.
+ The Linux kernel and drivers use this to maintain compliance with
+ those regulations.
+Homepage: https://wireless.wiki.kernel.org/en/developers/regulatory/wireless-regdb
+
+Package: zlib1g
+Status: install ok installed
+Priority: required
+Section: libs
+Installed-Size: 180
+Maintainer: Mark Brown <broonie@debian.org>
+Architecture: arm64
+Multi-Arch: same
+Source: zlib
+Version: 1:1.3.dfsg+really1.3.1-1+deb13u1
+Provides: libz1
+Depends: libc6 (>= 2.17)
+Breaks: libxml2 (<< 2.7.6.dfsg-2), texlive-binaries (<< 2023.20230311.66589-8)
+Conflicts: zlib1 (<= 1:1.0.4-7)
+Description: compression library - runtime
+ zlib is a library implementing the deflate compression method found
+ in gzip and PKZIP.  This package includes the shared library.
+Homepage: http://zlib.net/
+
+Package: zstd
+Status: install ok installed
+Priority: optional
+Section: utils
+Installed-Size: 2112
+Maintainer: RPM packaging team <team+pkg-rpm@tracker.debian.org>
+Architecture: arm64
+Multi-Arch: foreign
+Source: libzstd
+Version: 1.5.7+dfsg-1
+Depends: libc6 (>= 2.34), libgcc-s1 (>= 3.0), liblz4-1 (>= 1.8.0), liblzma5 (>= 5.1.1alpha+20120614), libstdc++6 (>= 14), zlib1g (>= 1:1.1.4)
+Description: fast lossless compression algorithm -- CLI tool
+ Zstd, short for Zstandard, is a fast lossless compression algorithm, targeting
+ real-time compression scenarios at zlib-level compression ratio.
+ .
+ This package contains the CLI program implementing zstd.
+Homepage: https://github.com/facebook/zstd
+

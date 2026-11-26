@@ -1,0 +1,1151 @@
+Package: 0ad
+Source: 0ad (0.27.0-2)
+Version: 0.27.0-2+b1
+Installed-Size: 51987
+Maintainer: Debian Games Team <pkg-games-devel@lists.alioth.debian.org>
+Architecture: arm64
+Depends: 0ad-data (>= 0.27.0), 0ad-data (<= 0.27.0-2), 0ad-data-common (>= 0.27.0), 0ad-data-common (<= 0.27.0-2), libboost-filesystem1.83.0 (>= 1.83.0), libc6 (>= 2.39), libcurl3t64-gnutls (>= 7.32.0), libenet7 (>= 1.3), libfmt10 (>= 10.1.1+ds1), libfreetype6 (>= 2.2.1), libgcc-s1 (>= 4.2), libgloox18 (>= 1.0.28), libicu76 (>= 76.1-1~), libminiupnpc18 (>= 2.2.8), libopenal1 (>= 1.14), libpng16-16t64 (>= 1.6.46), libsdl2-2.0-0 (>= 2.0.12), libsodium23 (>= 1.0.14), libstdc++6 (>= 14), libvorbisfile3 (>= 1.1.2), libwxbase3.2-1t64 (>= 3.2.6+dfsg), libwxgtk-gl3.2-1t64 (>= 3.2.6+dfsg), libwxgtk3.2-1t64 (>= 3.2.6+dfsg), libx11-6, libxml2 (>= 2.9.0), zlib1g (>= 1:1.2.0)
+Pre-Depends: dpkg (>= 1.15.6~)
+Description: Real-time strategy game of ancient warfare
+Homepage: https://play0ad.com/
+Description-md5: d943033bedada21853d2ae54a2578a7b
+Tag: game::strategy, interface::graphical, interface::x11, role::program,
+ uitoolkit::sdl, uitoolkit::wxwidgets, use::gameplaying,
+ x11::application
+Section: games
+Priority: optional
+Filename: pool/main/0/0ad/0ad_0.27.0-2+b1_arm64.deb
+Size: 13600408
+MD5sum: b0dcb7c1f890d9f2d6a35324d8a88761
+SHA256: c44b335656e2d1bbaa2a939381a63c1942e91004f73d1fa676c3f6012d374f4b
+
+Package: 0ad
+Source: 0ad (0.27.0-2)
+Version: 0.27.0-2+b1
+Installed-Size: 33599
+Maintainer: Debian Games Team <pkg-games-devel@lists.alioth.debian.org>
+Architecture: armhf
+Depends: 0ad-data (>= 0.27.0), 0ad-data (<= 0.27.0-2), 0ad-data-common (>= 0.27.0), 0ad-data-common (<= 0.27.0-2), libboost-filesystem1.83.0 (>= 1.83.0), libc6 (>= 2.39), libcurl3t64-gnutls (>= 7.32.0), libenet7 (>= 1.3), libfmt10 (>= 10.1.1+ds1), libfreetype6 (>= 2.2.1), libgcc-s1 (>= 4.3), libgloox18 (>= 1.0.28), libicu76 (>= 76.1-1~), libminiupnpc18 (>= 2.2.8), libopenal1 (>= 1.14), libpng16-16t64 (>= 1.6.46), libsdl2-2.0-0 (>= 2.0.12), libsodium23 (>= 1.0.14), libstdc++6 (>= 14), libvorbisfile3 (>= 1.1.2), libwxbase3.2-1t64 (>= 3.2.6+dfsg), libwxgtk-gl3.2-1t64 (>= 3.2.6+dfsg), libwxgtk3.2-1t64 (>= 3.2.6+dfsg), libx11-6, libxml2 (>= 2.9.0), zlib1g (>= 1:1.2.0)
+Pre-Depends: dpkg (>= 1.15.6~)
+Description: Real-time strategy game of ancient warfare
+Homepage: https://play0ad.com/
+Description-md5: d943033bedada21853d2ae54a2578a7b
+Tag: game::strategy, interface::graphical, interface::x11, role::program,
+ uitoolkit::sdl, uitoolkit::wxwidgets, use::gameplaying,
+ x11::application
+Section: games
+Priority: optional
+Filename: pool/main/0/0ad/0ad_0.27.0-2+b1_armhf.deb
+Size: 13298812
+MD5sum: 61cd3d16407883da321514cd95c6cd0d
+SHA256: d91e2a9de100dca84c56fb5d2702a2f16aa0ed5a1406c73b0242bb4ba1b20812
+
+Package: 0ad-data
+Version: 0.27.0-1
+Installed-Size: 3433612
+Maintainer: Debian Games Team <pkg-games-devel@lists.alioth.debian.org>
+Architecture: all
+Pre-Depends: dpkg (>= 1.15.6~)
+Suggests: 0ad
+Description: Real-time strategy game of ancient warfare (data files)
+Multi-Arch: foreign
+Homepage: https://play0ad.com/
+Description-md5: 26581e685027d5ae84824362a4ba59ee
+Tag: role::app-data
+Section: games
+Priority: optional
+Filename: pool/main/0/0ad-data/0ad-data_0.27.0-1_all.deb
+Size: 1389812248
+MD5sum: 8bc5ae2a785f8a88e4c6a1ecc1e0e245
+SHA256: 7a25d66175bdc75cbd6a90e98b71dcb0d76f7763c589bd71880503f1c6185e4c
+
+Package: 7zip-standalone
+Source: 7zip
+Version: 25.01+dfsg-1~deb13u2
+Installed-Size: 2655
+Maintainer: YOKOTA Hiroshi <yokota.hgml@gmail.com>
+Architecture: arm64
+Replaces: 7zip (<< 25.01+dfsg-1~)
+Depends: libc6 (>= 2.34), libgcc-s1 (>= 3.0), libstdc++6 (>= 14)
+Suggests: 7zip (= 25.01+dfsg-1~deb13u2)
+Description: 7-Zip file archiver with a high compression ratio (standalone)
+Homepage: https://www.7-zip.org/
+Description-md5: c8212035d9236b1f9c2baaab0e0cd9d2
+Section: utils
+Priority: optional
+Filename: pool/main/7/7zip/7zip-standalone_25.01+dfsg-1~deb13u2_arm64.deb
+Size: 901656
+MD5sum: fc826501dd47c36576205dd39ad09582
+SHA256: d56d0cd4c4a43e5550de4edf5fd62fa1d91b0303c9359bea29918cefd273ed8b
+
+Package: 7zip-standalone
+Source: 7zip
+Version: 25.01+dfsg-1~deb13u2
+Installed-Size: 1628
+Maintainer: YOKOTA Hiroshi <yokota.hgml@gmail.com>
+Architecture: armhf
+Replaces: 7zip (<< 25.01+dfsg-1~)
+Depends: libc6 (>= 2.34), libgcc-s1 (>= 3.5), libstdc++6 (>= 14)
+Suggests: 7zip (= 25.01+dfsg-1~deb13u2)
+Description: 7-Zip file archiver with a high compression ratio (standalone)
+Homepage: https://www.7-zip.org/
+Description-md5: c8212035d9236b1f9c2baaab0e0cd9d2
+Section: utils
+Priority: optional
+Filename: pool/main/7/7zip/7zip-standalone_25.01+dfsg-1~deb13u2_armhf.deb
+Size: 850172
+MD5sum: ec89de1ef30237d9cd77c524e3762121
+SHA256: e3887d075fbf61ff97821ebb16df4095988dd85269586e3c46b2a441186d364b
+
+Package: ack
+Version: 3.8.1-1
+Installed-Size: 230
+Maintainer: Debian Perl Group <pkg-perl-maintainers@lists.alioth.debian.org>
+Architecture: all
+Replaces: ack-grep (<= 2.14-5~)
+Provides: ack-grep
+Depends: libfile-next-perl (>= 1.18), perl:any
+Breaks: ack-grep (<= 2.14-5~)
+Description: grep-like program specifically for large source trees
+Homepage: https://beyondgrep.com/
+Description-md5: e50a48f3af6e02593eb6155b28aaed6e
+Tag: implemented-in::perl, interface::commandline, role::program,
+ scope::utility, use::searching, works-with-format::plaintext,
+ works-with::software:source, works-with::text
+Section: utils
+Priority: optional
+Filename: pool/main/a/ack/ack_3.8.1-1_all.deb
+Size: 73900
+MD5sum: 4e9cbf29c26a5f0a1ba1198cb9d0d17e
+SHA256: aeafa2b66e51e1ff7fa5747a6e4e51198e506cf51b03fceb09908f76aee0da72
+
+Package: acl
+Source: acl (2.3.2-2)
+Version: 2.3.2-2+b1
+Installed-Size: 347
+Maintainer: Guillem Jover <guillem@debian.org>
+Architecture: arm64
+Depends: libacl1 (= 2.3.2-2+b1), libc6 (>= 2.38)
+Description: access control list - utilities
+Multi-Arch: foreign
+Homepage: https://savannah.nongnu.org/projects/acl/
+Description-md5: b83fc53f6059dbeb88f11752e70968e7
+Tag: admin::user-management, implemented-in::c, interface::commandline,
+ role::program, scope::utility, use::configuring, works-with::file
+Section: utils
+Priority: optional
+Filename: pool/main/a/acl/acl_2.3.2-2+b1_arm64.deb
+Size: 63336
+MD5sum: 566b2b55ee25761ccbc0b7b8ba5e783c
+SHA256: 099b5f8bfa3ffea30a10308a89a5467d3fa7d8d16b94df931f0299344c2a4291
+
+Package: adduser
+Priority: important
+Section: admin
+Installed-Size: 428
+Maintainer: Debian Adduser Developers <adduser@packages.debian.org>
+Architecture: all
+Multi-Arch: foreign
+Version: 3.152
+Depends: passwd (>= 1:4.17.2-5)
+Suggests: liblocale-gettext-perl, perl, cron, quota
+Conffiles:
+ /etc/adduser.conf ef23042097ebb0d1075254f888c3c394
+ /etc/deluser.conf 11a06baf8245fd8d690b99024d228c1f
+Description: add and remove users and groups
+ This package includes the 'adduser' and 'deluser' commands for creating
+ and removing users.
+ .
+  - 'adduser' creates new users and groups and adds existing users to
+    existing groups;
+  - 'deluser' removes users and groups and removes users from a given
+    group.
+ .
+ Adding users with 'adduser' is much easier than adding them manually.
+ 'Adduser' will choose UID and GID values that conform to Debian policy,
+ create a home directory, copy skeletal user configuration, and
+ automate setting initial values for the user's password, real name
+ and so on.
+ .
+ 'Deluser' can back up and remove users' home directories
+ and mail spool or all the files they own on the system.
+ .
+ A custom script can be executed after each of the commands.
+ .
+ 'Adduser' and 'Deluser' are intended to be used by the local
+ administrator in lieu of the tools from the 'useradd' suite, and
+ they provide support for easy use from Debian package maintainer
+ scripts, functioning as kind of a policy layer to make those scripts
+ easier and more stable to write and maintain.
+
+Package: apt
+Version: 3.0.4
+Installed-Size: 4913
+Maintainer: APT Development Team <deity@lists.debian.org>
+Architecture: arm64
+Replaces: apt-transport-https (<< 1.5~alpha4~), apt-utils (<< 1.3~exp2~)
+Provides: apt-transport-https (= 3.0.4)
+Depends: base-passwd (>= 3.6.1) | adduser, sqv (>= 1.3.0), libapt-pkg7.0 (>= 3.0.4), debian-archive-keyring, libc6 (>= 2.38), libgcc-s1 (>= 3.0), libseccomp2 (>= 2.4.2), libssl3t64 (>= 3.0.0), libstdc++6 (>= 13.1), libsystemd0
+Recommends: ca-certificates
+Suggests: apt-doc, aptitude | synaptic | wajig, dpkg-dev (>= 1.17.2), gnupg | gnupg2 | gnupg1, powermgmt-base
+Conflicts: apt-verify, libnettle8 (<< 3.9.1-2.2~)
+Breaks: apt-transport-https (<< 1.5~alpha4~), apt-utils (<< 1.3~exp2~), aptitude (<< 0.8.10)
+Description: commandline package manager
+Description-md5: 6b534aaa75feaadaa911a5a6e81b66b2
+Tag: admin::package-management, devel::lang:ruby, hardware::storage,
+ hardware::storage:cd, implemented-in::c++, implemented-in::perl,
+ implemented-in::ruby, interface::commandline, network::client,
+ protocol::ftp, protocol::http, protocol::ipv6, role::program,
+ scope::application, scope::utility, suite::debian, use::downloading,
+ use::organizing, use::playing, use::searching, works-with-format::html,
+ works-with::audio, works-with::software:package, works-with::text
+Section: admin
+Priority: required
+Filename: pool/main/a/apt/apt_3.0.4_arm64.deb
+Size: 1362704
+MD5sum: 2dabe1bdf4e26372c10e470467b67806
+SHA256: 9a3ee57117d1d8e086e2d8917cd3e85e8f76da25dd18a898085759668dc5c71f
+
+Package: base-files
+Version: 13.8+deb13u8
+Essential: yes
+Installed-Size: 498
+Maintainer: Santiago Vila <sanvila@debian.org>
+Architecture: arm64
+Replaces: base, dpkg (<= 1.15.0), miscutils
+Provides: base, usr-is-merged
+Pre-Depends: awk
+Breaks: debian-security-support (<< 2019.04.25), initscripts (<< 2.88dsf-13.3), sendfile (<< 2.1b.20080616-5.2~)
+Description: Debian base system miscellaneous files
+Multi-Arch: foreign
+Description-md5: 6d16337f57b84c4747f56438355b2395
+Tag: admin::configuring, admin::filesystem, admin::install, admin::login,
+ role::app-data, suite::debian
+Section: admin
+Priority: required
+Filename: pool/main/b/base-files/base-files_13.8+deb13u8_arm64.deb
+Size: 88320
+MD5sum: 9873fa1e3cfbf719387672b370c3a12a
+SHA256: 893616b7ce203a05a0528652f7d754cc5e3de7e8eff3b396f95383a5b8b1c668
+
+Package: base-passwd
+Version: 3.6.7
+Essential: yes
+Installed-Size: 300
+Maintainer: Shadow package maintainers <pkg-shadow-devel@lists.alioth.debian.org>
+Architecture: arm64
+Replaces: base
+Depends: libc6 (>= 2.34), libdebconfclient0 (>= 0.145), libselinux1 (>= 3.1~)
+Recommends: debconf (>= 0.5) | debconf-2.0
+Description: Debian base system master password and group files
+Multi-Arch: foreign
+Description-md5: aad0cc52ee72b2469af5552851e49f03
+Tag: admin::configuring, admin::user-management, implemented-in::c,
+ interface::commandline, role::app-data, role::program, scope::utility,
+ security::authentication, suite::debian, use::login
+Section: admin
+Priority: required
+Filename: pool/main/b/base-passwd/base-passwd_3.6.7_arm64.deb
+Size: 53392
+MD5sum: 9b35ab2d7a45da0956167a0fc50df61d
+SHA256: c5755fd2cbf76961a1230e708b6bfc12c5400b57f3cd8a255675e9aa11d85848
+
+Package: bash
+Source: bash (5.2.37-2)
+Version: 5.2.37-2+b10
+Essential: yes
+Installed-Size: 7359
+Maintainer: Matthias Klose <doko@debian.org>
+Architecture: arm64
+Depends: base-files (>= 2.1.12), debianutils (>= 5.6-0.1)
+Pre-Depends: libc6 (>= 2.38), libtinfo6 (>= 6)
+Recommends: bash-completion
+Suggests: bash-doc
+Description: GNU Bourne Again SHell
+Multi-Arch: foreign
+Homepage: http://tiswww.case.edu/php/chet/bash/bashtop.html
+Description-md5: 3522aa7b4374048d6450e348a5bb45d9
+Tag: admin::TODO, devel::TODO, devel::interpreter, implemented-in::c,
+ interface::shell, interface::text-mode, role::program,
+ scope::application, suite::gnu, uitoolkit::ncurses
+Section: shells
+Priority: required
+Filename: pool/main/b/bash/bash_5.2.37-2+b10_arm64.deb
+Size: 1456340
+MD5sum: c53712fc129927eb5dc7ad53155930db
+SHA256: 9e2d2b3646b250f53be79b6128d9cff5e99cc5ff4a8c84e58efab59ad9bb0ddc
+
+Package: bluez-firmware
+Version: 1.2-13+rpt3
+Architecture: all
+Maintainer: Serge Schneider <serge@raspberrypi.com>
+Installed-Size: 478
+Priority: optional
+Section: non-free-firmware/kernel
+Filename: pool/main/b/bluez-firmware/bluez-firmware_1.2-13+rpt3_all.deb
+Size: 294888
+SHA512: 76ae3285268b0a9a5de40cac1993d3af79b8c94708276260d3429329732155e7126cebc7674e3ecef2797d9b33b2f2bc2f802ac5a69dadcdb6eeca7b79c25a58
+SHA256: 205e6a7a384128df1495c417c5db3ca92cd09f3a34b38acc6503267a65c3d23c
+SHA1: e767c622d0ad18e8bf441dfb120f065e780fcae9
+MD5sum: c0c822cf47295dcdb66821053d2c5521
+Description: Firmware for Bluetooth devices
+ This firmware is required for operation of Bluetooth dongles based on
+ the Broadcom BCM203x and Raspberry Pi chipset.
+
+Package: ca-certificates
+Version: 20250419+deb13u1
+Installed-Size: 387
+Maintainer: Julien Cristau <jcristau@debian.org>
+Architecture: all
+Depends: openssl (>= 1.1.1), debconf (>= 0.5) | debconf-2.0
+Enhances: openssl
+Breaks: ca-certificates-java (<< 20121112+nmu1)
+Description: Common CA certificates
+Multi-Arch: foreign
+Description-md5: e867d2a359bea1800b5bff209fc65bd1
+Tag: protocol::ssl, role::app-data, security::authentication
+Section: misc
+Priority: standard
+Filename: pool/main/c/ca-certificates/ca-certificates_20250419+deb13u1_all.deb
+Size: 160720
+MD5sum: 64c344227d517970312b6817549c8db2
+SHA256: c10585ac22c7f617a73d394eea29ba71d0356f350ae973b19043d1b017f80f54
+
+Package: coreutils
+Version: 9.7-3
+Essential: yes
+Installed-Size: 21046
+Maintainer: Michael Stone <mstone@debian.org>
+Architecture: arm64
+Pre-Depends: libacl1 (>= 2.2.23), libattr1 (>= 1:2.4.48), libc6 (>= 2.38), libcap2 (>= 1:2.10), libgmp10 (>= 2:6.3.0+dfsg), libselinux1 (>= 3.1~), libssl3t64 (>= 3.0.0), libsystemd0 (>= 254)
+Description: GNU core utilities
+Multi-Arch: foreign
+Homepage: https://gnu.org/software/coreutils
+Description-md5: d0d975dec3625409d24be1238cede238
+Tag: admin::configuring, implemented-in::c, interface::commandline,
+ role::program, scope::utility, suite::gnu, works-with::file
+Section: utils
+Priority: required
+Filename: pool/main/c/coreutils/coreutils_9.7-3_arm64.deb
+Size: 2948764
+MD5sum: 88659d3c1264b01686c9c4391df6b073
+SHA256: 99b2531e8d16e4f2d3f239ae3cb57913ec1f43764d2d6cd5c69154cbb1e57f3e
+
+Package: cron
+Version: 3.0pl1-197
+Installed-Size: 273
+Maintainer: Georges Khaznadar <georgesk@debian.org>
+Architecture: arm64
+Replaces: bcron, cronie, systemd-cron
+Provides: cron-daemon
+Depends: libc6 (>= 2.34), libpam0g (>= 0.99.7.1), libselinux1 (>= 3.1~), sensible-utils, libpam-runtime
+Pre-Depends: init-system-helpers (>= 1.54~), cron-daemon-common
+Recommends: default-mta | mail-transport-agent
+Suggests: anacron, logrotate, checksecurity, supercat, bat
+Conflicts: bcron, cronie, systemd-cron
+Description: process scheduling daemon
+Multi-Arch: foreign
+Homepage: https://ftp.isc.org/isc/cron/
+Description-md5: 7384e614068d48b9ac2335cb05added3
+Tag: admin::automation, implemented-in::c, interface::daemon, role::program,
+ scope::utility
+Section: admin
+Priority: important
+Filename: pool/main/c/cron/cron_3.0pl1-197_arm64.deb
+Size: 85116
+MD5sum: e81e429c4c21133c95e6090c5112ba39
+SHA256: bcaaebfbdaa7b265e6baa8ecd7e86040f2cddcce7fd882a36e172ff9b371bfc2
+
+Package: debconf
+Version: 1.5.91
+Installed-Size: 497
+Maintainer: Debconf Developers <debconf-devel@lists.alioth.debian.org>
+Architecture: all
+Replaces: debconf-tiny
+Provides: debconf-2.0
+Recommends: apt (>= 2.9.11~) | apt-utils, debconf-i18n
+Suggests: debconf-doc, debconf-kde-helper, debconf-utils, libgtk3-perl, libnet-ldap-perl, libterm-readline-gnu-perl, perl, whiptail | dialog
+Conflicts: debconf-tiny, whiptail-utf8 (<= 0.50.17-13)
+Description: Debian configuration management system
+Multi-Arch: foreign
+Description-md5: 85b82bf406dfc9a635114f44ab7fb66d
+Tag: admin::configuring, implemented-in::perl, interface::commandline,
+ interface::graphical, interface::text-mode, interface::x11,
+ role::program, scope::utility, suite::debian, uitoolkit::TODO,
+ uitoolkit::gtk, uitoolkit::ncurses, uitoolkit::qt, use::configuring,
+ x11::application
+Section: admin
+Priority: required
+Filename: pool/main/d/debconf/debconf_1.5.91_all.deb
+Size: 121088
+MD5sum: 19f464db8fc065dfbca92198ee28f058
+SHA256: 1ddc7e6c5925f748eefb7ca811d98e049f18c158bb21fbc7e122262ce6011e49
+
+Package: dhcpcd-base
+Source: dhcpcd
+Version: 1:10.1.0-11+deb13u5
+Installed-Size: 563
+Maintainer: Martin-Éric Racine <martin-eric.racine@iki.fi>
+Architecture: arm64
+Replaces: dhcpcd5 (<< 1:10.1.0-11+deb13u5~)
+Provides: dhcp-client
+Depends: adduser, libc6 (>= 2.38), libssl3t64 (>= 3.0.0), libudev1 (>= 183)
+Suggests: openresolv | resolvconf | systemd-resolved
+Breaks: dhcpcd5 (<< 1:10.1.0-11+deb13u5~)
+Description: DHCPv4 and DHCPv6 dual-stack client (binaries and exit hooks)
+Homepage: https://github.com/NetworkConfiguration/dhcpcd
+Description-md5: 9fabc12c92ee2a93e5fbc5a0e6dcd21c
+Section: net
+Priority: important
+Filename: pool/main/d/dhcpcd/dhcpcd-base_10.1.0-11+deb13u5_arm64.deb
+Size: 188224
+MD5sum: 93f2b261218925a95959aa31568b35f6
+SHA256: aa3464366ab8caae3f245217bb6028d0bfac5645cb81fc5cdba4408bd2699303
+
+Package: dpkg
+Version: 1.22.22
+Essential: yes
+Installed-Size: 6906
+Maintainer: Dpkg Developers <debian-dpkg@lists.debian.org>
+Architecture: arm64
+Depends: tar (>= 1.28-1)
+Pre-Depends: libbz2-1.0, libc6 (>= 2.38), liblzma5 (>= 5.4.0), libmd0 (>= 0.0.0), libselinux1 (>= 3.1~), libzstd1 (>= 1.5.5), zlib1g (>= 1:1.1.4)
+Suggests: apt, debsig-verify
+Breaks: libapt-pkg5.0 (<< 1.7~b), lsb-base (<< 10.2019031300)
+Description: Debian package management system
+Multi-Arch: foreign
+Homepage: https://wiki.debian.org/Teams/Dpkg
+Description-md5: 2f156c6a30cc39895ad3487111e8c190
+Tag: admin::package-management, devel::lang:perl, devel::library,
+ implemented-in::c, implemented-in::perl, interface::commandline,
+ role::devel-lib, role::program, scope::utility, suite::debian,
+ use::configuring, works-with::software:package
+Section: admin
+Priority: required
+Filename: pool/main/d/dpkg/dpkg_1.22.22_arm64.deb
+Size: 1521436
+MD5sum: 09b02099c61772a7d65133be22743b38
+SHA256: 1142468e57f69e13d174f517dff739508c61ee97d81c182c120cd6b281d8cdfa
+
+Package: libc6
+Source: glibc
+Version: 2.41-12+rpt1+deb13u4
+Architecture: arm64
+Maintainer: GNU Libc Maintainers <debian-glibc@lists.debian.org>
+Installed-Size: 23769
+Depends: libgcc-s1
+Recommends: libidn2-0 (>= 2.0.5~)
+Suggests: glibc-doc, debconf | debconf-2.0, libc-l10n, locales, libnss-nis, libnss-nisplus
+Breaks: base-files (<< 13.3~), chrony (<< 4.2-3~), dhcpcd (<< 1:10.1.0-7~), fakechroot (<< 2.19-3.5), firefox (<< 91~), firefox-esr (<< 91~), gnumach-image-1.8-486 (<< 2:1.8+git20210923~), gnumach-image-1.8-486-dbg (<< 2:1.8+git20210923~), gnumach-image-1.8-xen-486 (<< 2:1.8+git20210923~), gnumach-image-1.8-xen-486-dbg (<< 2:1.8+git20210923~), hurd (<< 1:0.9.git20220301-2), libamdhip64-5 (<< 5.7.1-5+b1), libhiprtc-builtins5 (<< 5.7.1-5+b1), librccl1 (<< 5.4.3-3+b1), libswupdate0.1 (<< 2024.12.1+dfsg-1+b3), locales (<< 2.41), locales-all (<< 2.41), lua-swupdate (<< 2024.12.1+dfsg-1+b3), nscd (<< 2.41), pd-scaf (<< 1:0.14.1+darcs20180201-6+b4), postgresql-15-pllua (<< 1:2.0.12-4), postgresql-17-pllua (<< 1:2.0.12-3+b2), python3-iptables (<< 1.0.0-2), python3-mrgingham (<< 1.25-1), python3-onnxruntime (<< 1.20.1+dfsg-2~), sysvinit (<< 3.09-2~), sysvinit-core (<< 3.09-2~), tinydns (<< 1:1.05-14), uwsgi-plugin-pypy3 (<< 0.0.2+b1), valgrind (<< 1:3.19.0-1~)
+Multi-Arch: same
+Homepage: https://www.gnu.org/software/libc/libc.html
+Priority: optional
+Section: libs
+Filename: pool/main/g/glibc/libc6_2.41-12+rpt1+deb13u4_arm64.deb
+Size: 5178372
+SHA512: 7f169a2f5f12aef1d39736ef54486592907ff4f34607d6e8a04b58824fcd345b878403d7d9452be0e7ac251a10837c91d1a12ad503f75ff73ec924698bc64981
+SHA256: 5c5376fdd2d6a4c9927eb0d6fcfea232f64b8ab44103e65bb61f621e99d792e1
+SHA1: 2b0601e920d84be22b4452557b81d599dbe2ce4c
+MD5sum: 5fb2701849f96bcaf1380d86073b07e0
+Description: GNU C Library: Shared libraries
+ Contains the standard libraries that are used by nearly all programs on
+ the system. This package includes shared versions of the standard C library
+ and the standard math library, as well as many others.
+
+Package: libcamera-ipa
+Source: libcamera
+Version: 0.8.0+rpt20261104-1
+Architecture: arm64
+Maintainer: Serge Schneider <serge@raspberrypi.com>
+Installed-Size: 5334
+Depends: libc6 (>= 2.38), libcamera0.8 (>= 0.8.0+rpt20261104), libgcc-s1 (>= 4.2), libpisp1 (>= 1.8.0), libstdc++6 (>= 14), libtensorflow-lite2.20.0 (>= 2.20.0)
+Recommends: awb-nn
+Breaks: libcamera0
+Replaces: libcamera0
+Multi-Arch: same
+Homepage: https://libcamera.org/
+Priority: optional
+Section: libs
+Filename: pool/main/libc/libcamera/libcamera-ipa_0.8.0+rpt20261104-1_arm64.deb
+Size: 1113800
+SHA512: 00bfb7b8dec30fc379eaf6265dd829b0de5560f8036983f28dfd2906a0f9906046cf35a1162b89cafb770249ae1a1e255efffdd957c0d732ec0efb1df417192a
+SHA256: b0bb6d212b0d78ed81aa07dd2c8bae137380a4cdba9c772dd6c38c8c17f690e2
+SHA1: 5eeb52aec4d56b5fad513458e747642821762c43
+MD5sum: 8abe218cd9bdfe397b1be310b2e3f421
+Description: complex camera support library (IPA modules)
+ libcamera is a complex camera support library which handles low-level
+ control of the camera devices, providing a unified higher-level
+ programming interface to the applications.
+ .
+ This package contains the libcamera IPA (Image Processing Algorithms) modules.
+
+Package: libfreetype6
+Source: freetype
+Version: 2.13.3+dfsg-1+deb13u2
+Installed-Size: 972
+Maintainer: Hugh McMaster <hmc@debian.org>
+Architecture: arm64
+Depends: libbrotli1 (>= 0.6.0), libbz2-1.0, libc6 (>= 2.33), libpng16-16t64 (>= 1.6.46), zlib1g (>= 1:1.1.4)
+Description: FreeType 2 font engine, shared library files
+Multi-Arch: same
+Homepage: https://freetype.org
+Description-md5: a1e3ee2cc4e84cd6907bcd99545e0796
+Tag: role::shared-lib
+Section: libs
+Priority: optional
+Filename: pool/main/f/freetype/libfreetype6_2.13.3+dfsg-1+deb13u2_arm64.deb
+Size: 422360
+MD5sum: bdf343d4ec08dc43eed5f7230461af1a
+SHA256: e743a5b04183fcc2fc8347abadcecb30c82528012bd446f8168195bd1552721a
+
+Package: libgd3
+Source: libgd2
+Version: 2.3.3-14~deb13u3
+Installed-Size: 485
+Maintainer: GD Team <team+gd@tracker.debian.org>
+Architecture: arm64
+Depends: libavif16 (>= 1.2.1), libc6 (>= 2.38), libfontconfig1 (>= 2.12.6), libfreetype6 (>= 2.2.1), libheif1 (>= 1.3.2), libimagequant0 (>= 2.11.10), libjpeg62-turbo (>= 1.3.1), libpng16-16t64 (>= 1.6.46), libtiff6 (>= 4.0.3), libwebp7 (>= 1.5.0), libxpm4
+Suggests: libgd-tools
+Description: GD Graphics Library
+Homepage: https://libgd.github.io/
+Description-md5: c60ac65f313e96eb4257868f1294e7fd
+Multi-Arch: same
+Section: libs
+Priority: optional
+Filename: pool/updates/main/libg/libgd2/libgd3_2.3.3-14~deb13u3_arm64.deb
+Size: 115604
+SHA256: 1747fbbae88276ce6b2f1a1bcd6139a5bf0f0a1ccb231b26f15e4de248736bb2
+
+Package: libgpgme11t64
+Source: gpgme1.0
+Version: 1.24.2-3+deb13u1
+Installed-Size: 629
+Maintainer: Debian GnuPG Maintainers <pkg-gnupg-maint@lists.alioth.debian.org>
+Architecture: arm64
+Replaces: libgpgme11
+Provides: libgpgme11 (= 1.24.2-3+deb13u1)
+Depends: gnupg (>= 2.1.21-4) | gpg, libassuan9 (>= 2.4.2), libc6 (>= 2.38), libgpg-error0 (>= 1.50)
+Breaks: libgpgme11 (<< 1.24.2-3+deb13u1)
+Description: GPGME - GnuPG Made Easy (library)
+Homepage: https://gnupg.org/software/gpgme/
+Description-md5: 7305da3bebc903cedb7fa94da8ad1fbf
+Multi-Arch: same
+Recommends: dirmngr, gpg-agent, gpg-wks-client, gpgsm
+Section: libs
+Priority: optional
+Filename: pool/updates/main/g/gpgme1.0/libgpgme11t64_1.24.2-3+deb13u1_arm64.deb
+Size: 329088
+SHA256: ef220aa7b8437c08066d872e8a53af1f35217fb9f5f893f63c31a2ab05428e38
+
+Package: libgpgmepp6t64
+Source: gpgme1.0
+Version: 1.24.2-3+deb13u1
+Installed-Size: 746
+Maintainer: Debian GnuPG Maintainers <pkg-gnupg-maint@lists.alioth.debian.org>
+Architecture: arm64
+Replaces: libgpgmepp6
+Provides: libgpgmepp6 (= 1.24.2-3+deb13u1)
+Depends: libc6 (>= 2.38), libgcc-s1 (>= 3.0), libgpgme11t64 (>= 1.24.1), libstdc++6 (>= 13.1)
+Breaks: libgpgmepp6 (<< 1.24.2-3+deb13u1)
+Description: C++ wrapper library for GPGME
+Homepage: https://gnupg.org/software/gpgme/
+Description-md5: 7fbc01c53deefdc640d685b90a21c0b4
+Multi-Arch: same
+Section: libs
+Priority: optional
+Filename: pool/updates/main/g/gpgme1.0/libgpgmepp6t64_1.24.2-3+deb13u1_arm64.deb
+Size: 327776
+SHA256: c3a2b53ac0d2c9bb1b5a9100b65694c0637a6200fe3cefe65702583c51da6cfa
+
+Package: libgssapi-krb5-2
+Source: krb5
+Version: 1.21.3-5+deb13u2
+Installed-Size: 487
+Maintainer: Sam Hartman <hartmans@debian.org>
+Architecture: arm64
+Depends: libkrb5-3 (= 1.21.3-5+deb13u2), libc6 (>= 2.38), libcom-err2 (>= 1.43.9), libk5crypto3 (>= 1.20), libkrb5support0 (= 1.21.3-5+deb13u2)
+Suggests: krb5-doc, krb5-user
+Description: MIT Kerberos runtime libraries - krb5 GSS-API Mechanism
+Homepage: https://web.mit.edu/kerberos/
+Description-md5: 2dd7fe357b29d0ba6727171c01f0301c
+Multi-Arch: same
+Section: libs
+Priority: optional
+Filename: pool/updates/main/k/krb5/libgssapi-krb5-2_1.21.3-5+deb13u2_arm64.deb
+Size: 127872
+SHA256: 10eed2ae453ec56135bf23fbf8b2b19cc6536017a3fe7702814c2bc6e185bf8c
+
+Package: libk5crypto3
+Source: krb5
+Version: 1.21.3-5+deb13u2
+Installed-Size: 278
+Maintainer: Sam Hartman <hartmans@debian.org>
+Architecture: arm64
+Depends: libc6 (>= 2.38), libkrb5support0 (= 1.21.3-5+deb13u2)
+Suggests: krb5-doc, krb5-user
+Breaks: libgssapi-krb5-2 (<= 1.18~), libkrb5-3 (<= 1.18~)
+Description: MIT Kerberos runtime libraries - Crypto Library
+Homepage: https://web.mit.edu/kerberos/
+Description-md5: 4b107bcb8481fee0b8b11744a386a6b0
+Multi-Arch: same
+Section: libs
+Priority: optional
+Filename: pool/updates/main/k/krb5/libk5crypto3_1.21.3-5+deb13u2_arm64.deb
+Size: 82180
+SHA256: 1982449c930a9b52de8f976cb53af9e8aafb4382e63d7f619659a1e408a2cc5c
+
+Package: libkrb5-3
+Source: krb5
+Version: 1.21.3-5+deb13u2
+Installed-Size: 1166
+Maintainer: Sam Hartman <hartmans@debian.org>
+Architecture: arm64
+Depends: libkrb5support0 (= 1.21.3-5+deb13u2), libc6 (>= 2.38), libcom-err2 (>= 1.43.9), libk5crypto3 (>= 1.20), libkeyutils1 (>= 1.5.9), libssl3t64 (>= 3.0.0)
+Suggests: krb5-doc, krb5-user
+Breaks: libapache2-mod-auth-kerb (<= 5.4-2.4)
+Description: MIT Kerberos runtime libraries
+Homepage: https://web.mit.edu/kerberos/
+Description-md5: 07bb931a85fb24c6a0ef0f62a94bb26c
+Multi-Arch: same
+Recommends: krb5-locales
+Section: libs
+Priority: optional
+Filename: pool/updates/main/k/krb5/libkrb5-3_1.21.3-5+deb13u2_arm64.deb
+Size: 309152
+SHA256: 613608b23bf38abc0ddbf167e6498e443e3cfb3d48e397f01a1af4d3497779f7
+
+Package: libkrb5support0
+Source: krb5
+Version: 1.21.3-5+deb13u2
+Installed-Size: 154
+Maintainer: Sam Hartman <hartmans@debian.org>
+Architecture: arm64
+Depends: libc6 (>= 2.38)
+Breaks: krb5-admin-server (<< 1.20.1-4~), krb5-kdc (<< 1.20.1-4~), krb5-pkinit (<< 1.20.1-4~), krb5-user (<< 1.20.1-4~), libgssapi-krb5-2 (<< 1.20), libk5crypto3 (<< 1.20.1-4~), libkadm5clnt-mit9 (<< 1.13~alpha1-1), libkadm5srv-mit12 (<< 1.20.1-4~), libkadm5srv-mit9 (<< 1.13~alpha1-1), libkdb5-10t64 (<< 1.20.1-4~), libkdb5-8 (<< 1.16), libkrb5-3 (<< 1.20.1-4~)
+Description: MIT Kerberos runtime libraries - Support library
+Homepage: https://web.mit.edu/kerberos/
+Description-md5: 4f3abf66dd7bfd20406fc400a05b0693
+Multi-Arch: same
+Section: libs
+Priority: optional
+Filename: pool/updates/main/k/krb5/libkrb5support0_1.21.3-5+deb13u2_arm64.deb
+Size: 33236
+SHA256: 637bc4633e83c7d46c08aa00e1680440bd63a1329e5e552955dab59579ddf1d4
+
+Package: libnghttp2-14
+Source: nghttp2
+Version: 1.64.0-1.1+deb13u2
+Installed-Size: 229
+Maintainer: Tomasz Buchert <tomasz@debian.org>
+Architecture: arm64
+Depends: libc6 (>= 2.17)
+Description: library implementing HTTP/2 protocol (shared library)
+Multi-Arch: same
+Homepage: https://nghttp2.org/
+Description-md5: e959c1ba3df5439ba338e7e50ed40e05
+Tag: role::shared-lib
+Section: libs
+Priority: optional
+Filename: pool/main/n/nghttp2/libnghttp2-14_1.64.0-1.1+deb13u2_arm64.deb
+Size: 71608
+MD5sum: 20da26308cd2cd9f86e29c1b685a7ab8
+SHA256: 968f022ccb34f89c7ac4df0567b4d916f05f9235ad39fe2cf1ab6a12bacf5d80
+
+Package: libparted2t64
+Source: parted
+Version: 3.6-5+deb13u1
+Installed-Size: 609
+Maintainer: Parted Maintainer Team <parted-maintainers@alioth-lists.debian.net>
+Architecture: arm64
+Replaces: libparted2
+Provides: libparted, libparted2 (= 3.6-5+deb13u1)
+Depends: libblkid1 (>= 2.17.2), libc6 (>= 2.38), libdevmapper1.02.1 (>= 2:1.02.197), libuuid1 (>= 2.16)
+Suggests: libparted-dev, libparted-i18n (= 3.6-5+deb13u1), parted
+Conflicts: libparted2 (<< 3.6-5+deb13u1)
+Description: disk partition manipulator - shared library
+Multi-Arch: same
+Homepage: https://www.gnu.org/software/parted
+Description-md5: 8351c24350acd1cda567a096a68bf6b7
+Section: libs
+Priority: optional
+Filename: pool/main/p/parted/libparted2t64_3.6-5+deb13u1_arm64.deb
+Size: 294048
+MD5sum: 51107199d5c6cd9c4fbf2649979b90f6
+SHA256: 9289d385b0b08dde8a4d8cd9689d644087e01d9eff8c2a8ed8318806595dac8a
+
+Package: librpicam-app1
+Source: rpicam-apps
+Version: 1.15.0-1
+Architecture: arm64
+Maintainer: Serge Schneider <serge@raspberrypi.com>
+Installed-Size: 793
+Depends: libboost-program-options1.83.0 (>= 1.83.0), libc6 (>= 2.38), libcamera0.8 (>= 0.8.0+rpt20261104), libexif12 (>= 0.6.21-1~), libgcc-s1 (>= 3.0), libjpeg62-turbo (>= 1.3.1), libpng16-16t64 (>= 1.6.46), libstdc++6 (>= 14), libtiff6 (>= 4.5.0~rc1)
+Multi-Arch: same
+Homepage: https://github.com/raspberrypi/rpicam-apps/
+Priority: optional
+Section: video
+Filename: pool/main/r/rpicam-apps/librpicam-app1_1.15.0-1_arm64.deb
+Size: 288372
+SHA512: 3ef0aa56654ef0c016427593f15e8265d14ddeae9bc01970a0d425cf847190e9c194c59349ffb98c5949f7c2c82b04c365191618ef952efda657fc47c818ea70
+SHA256: 261b911ac40737eeedb6637d8bb00fc6c5fe7ef109e87628b2862ffb4aaf2835
+SHA1: 2ac5c2debf46a0789600d741c8119024fafd3661
+MD5sum: 4fa3f8ed634b8633ef3ad2ecc7f51fd4
+Description: Framework for rpicam-apps camera applications
+ The rpicam-apps libary is the core framework used by the rpicam-apps suite of
+ official command-line camera applications developed for Raspberry Pi, built on
+ the libcamera framework. Custom camera applications can be built using this
+ library.
+ .
+ This package contains the shared library.
+
+Package: libzstd1
+Source: libzstd
+Version: 1.5.7+dfsg-1+deb13u1
+Installed-Size: 748
+Maintainer: RPM packaging team <team+pkg-rpm@tracker.debian.org>
+Architecture: arm64
+Depends: libc6 (>= 2.34)
+Description: fast lossless compression algorithm
+Homepage: https://github.com/facebook/zstd
+Description-md5: 5529781042229a3d4fc1e69daa94d736
+Multi-Arch: same
+Section: libs
+Priority: optional
+Filename: pool/updates/main/libz/libzstd/libzstd1_1.5.7+dfsg-1+deb13u1_arm64.deb
+Size: 266336
+SHA256: ab5ad90f986b315bfa12be50f438aa3453e32da3b29540844d2d847800d2ce08
+
+Package: login.defs
+Source: shadow
+Version: 1:4.17.4-2+deb13u1
+Installed-Size: 214
+Maintainer: Shadow package maintainers <pkg-shadow-devel@lists.alioth.debian.org>
+Architecture: all
+Replaces: login (<< 1:4.16.0-2~)
+Description: system user management configuration
+Homepage: https://github.com/shadow-maint/shadow
+Description-md5: 4085dc032cb3ecfa269c4c2c2b85249c
+Multi-Arch: foreign
+Section: admin
+Priority: required
+Filename: pool/updates/main/s/shadow/login.defs_4.17.4-2+deb13u1_all.deb
+Size: 186196
+SHA256: 5573474d7bdfab60b27abdb6cbd5c5d4bf898e86d17fd8956eed6a4ebf1a4246
+
+Package: mawk
+Version: 1.3.4.20250131-1
+Installed-Size: 320
+Maintainer: Boyuan Yang <byang@debian.org>
+Architecture: arm64
+Provides: awk
+Depends: libc6 (>= 2.38)
+Description: Pattern scanning and text processing language
+Multi-Arch: foreign
+Homepage: https://invisible-island.net/mawk/
+Description-md5: 05965bfcd1a2333e963d9f1945d161fc
+Tag: devel::interpreter, implemented-in::c, interface::commandline,
+ role::program, scope::utility, use::filtering, use::scanning,
+ works-with::text
+Section: interpreters
+Priority: required
+Filename: pool/main/m/mawk/mawk_1.3.4.20250131-1_arm64.deb
+Size: 133820
+MD5sum: 47cd68bdaf2ade91f27a2fc1ffd9c313
+SHA256: 0ab946ff4b8a34d93f81727957612f290c86cd0db39e849dc0ae5e3f3a9563d6
+
+Package: mesa-libgallium
+Source: mesa
+Version: 26.2.7-1~bpo13+0~rpt1
+Architecture: arm64
+Maintainer: Debian X Strike Force <debian-x@lists.debian.org>
+Installed-Size: 50584
+Depends: libc6 (>= 2.38), libdrm-amdgpu1 (>= 2.4.134-3~), libdrm2 (>= 2.4.134-3~), libelf1t64 (>= 0.142), libexpat1 (>= 2.0.1), libgcc-s1 (>= 3.0), libllvm19 (>= 1:19.1.0), libsensors5 (>= 1:3.5.0), libstdc++6 (>= 11), libx11-xcb1, libxcb-dri3-0 (>= 1.13), libxcb-present0, libxcb-randr0 (>= 1.3), libxcb-sync1, libxcb-xfixes0, libxcb1 (>= 1.9.2), libxshmfence1, libzstd1 (>= 1.5.5), zlib1g (>= 1:1.2.3.4)
+Enhances: libva2
+Breaks: mesa-va-drivers (<< 25.2.8-3), mesa-vdpau-drivers (<< 25.2.8-3)
+Replaces: mesa-va-drivers (<< 25.2.8-3), mesa-vdpau-drivers (<< 25.2.8-3)
+Provides: libglapi-mesa, mesa-va-drivers, mesa-vdpau-drivers, va-driver
+Multi-Arch: same
+Homepage: https://mesa3d.org/
+Priority: optional
+Section: libs
+Filename: pool/main/m/mesa/mesa-libgallium_26.2.7-1~bpo13+0~rpt1_arm64.deb
+Size: 16672582
+SHA512: 681c29b6095b800bd19ab1944f8959f1425e4d91b2b5395f6a38ade5236014c9c756efd4dddaa457e5da7823cb1c557af97836a822a3617ce2ea2859cce1855d
+SHA256: d3d0b68e921b7974228f3a37f9dab1c9d3eefbb9b5d7b1e5eb254a1fc9cd0682
+SHA1: 95557f2c6303c2fe63d41d2f1bd58040a0b024bc
+MD5sum: c18b22224ebac7f9173ab0c30c677f14
+Description: shared infrastructure for Mesa drivers
+ This package contains libgallium, a private library shared between
+ multiple Mesa drivers. This library is an implementation detail of Mesa
+ and should not be used directly by user code.
+
+Package: openssl
+Version: 3.5.9-1~deb13u1+rpt1
+Architecture: arm64
+Maintainer: Debian OpenSSL Team <pkg-openssl-devel@alioth-lists.debian.net>
+Installed-Size: 2567
+Depends: libc6 (>= 2.34), libssl3t64 (>= 3.5.0)
+Suggests: ca-certificates
+Multi-Arch: foreign
+Homepage: https://openssl-library.org
+Priority: optional
+Section: utils
+Filename: pool/main/o/openssl/openssl_3.5.9-1~deb13u1+rpt1_arm64.deb
+Size: 1582720
+SHA512: d37f263acd54d2e73bbcacbbd4cc7394ad6d7773aec6afb90963885712d0bdcc04639a1db512a5a532db6db8e0459b6b00970ffe92212db847323111c0431aad
+SHA256: bb0b4fa98cb59e3b9375de6cbea00483c49946f258bd71baae7537ebd190b611
+SHA1: 534ed91a16431c9cfac8879bc719327543ade8a3
+MD5sum: 325d4ccbc392caba7d5d70a19ec052e8
+Description: Secure Sockets Layer toolkit - cryptographic utility
+ This package is part of the OpenSSL project's implementation of the SSL
+ and TLS cryptographic protocols for secure communication over the
+ Internet.
+ .
+ It contains the general-purpose command line binary /usr/bin/openssl,
+ useful for cryptographic operations such as:
+  * creating RSA, DH, and DSA key parameters;
+  * creating X.509 certificates, CSRs, and CRLs;
+  * calculating message digests;
+  * encrypting and decrypting with ciphers;
+  * testing SSL/TLS clients and servers;
+  * handling S/MIME signed or encrypted mail.
+
+Package: parted
+Version: 3.6-5+deb13u1
+Installed-Size: 218
+Maintainer: Parted Maintainer Team <parted-maintainers@alioth-lists.debian.net>
+Architecture: arm64
+Depends: libparted2t64 (= 3.6-5+deb13u1), libc6 (>= 2.38), libreadline8t64 (>= 6.0), libtinfo6 (>= 6), libuuid1 (>= 2.16)
+Suggests: parted-doc
+Conflicts: parted-doc (<< 3.5-2~)
+Description: disk partition manipulator
+Multi-Arch: foreign
+Homepage: https://www.gnu.org/software/parted
+Description-md5: 0672c048225946ff0705e0cecd54cf5d
+Tag: admin::filesystem, implemented-in::c, interface::commandline,
+ interface::text-mode, role::program, scope::utility, suite::gnu,
+ uitoolkit::ncurses
+Section: admin
+Priority: optional
+Filename: pool/main/p/parted/parted_3.6-5+deb13u1_arm64.deb
+Size: 37836
+MD5sum: e0a0ef52806abb1cab1b4c8e0deb0364
+SHA256: 4a94dcfba2b39204d2b4cbc8e604102527bb52b3fdf9cb147c5ad2e7eac53c48
+
+Package: passwd
+Source: shadow
+Version: 1:4.17.4-2+deb13u1
+Installed-Size: 5317
+Maintainer: Shadow package maintainers <pkg-shadow-devel@lists.alioth.debian.org>
+Architecture: arm64
+Replaces: login (<< 1:4.16.0-2~)
+Depends: base-passwd (>= 3.6.4), libpam-modules, login.defs, libacl1 (>= 2.2.23), libattr1 (>= 1:2.4.44), libaudit1 (>= 1:2.2.1), libbsd0 (>= 0.11.0), libc6 (>= 2.38), libcrypt1 (>= 1:4.1.0), libpam0g (>= 0.99.7.1), libselinux1 (>= 3.1~), libsemanage2 (>= 2.0.32)
+Description: change and administer password and group data
+Homepage: https://github.com/shadow-maint/shadow
+Description-md5: 5bbd70e421ed3367a8299e53bd7afed4
+Multi-Arch: foreign
+Recommends: sensible-utils
+Section: admin
+Priority: required
+Filename: pool/updates/main/s/shadow/passwd_4.17.4-2+deb13u1_arm64.deb
+Size: 1206524
+SHA256: 49acfe766c3dea4f760e330ff9f1142c052ba2198442a35ad7d22ecf65508f6f
+
+Package: patch
+Version: 2.8-2+deb13u1
+Installed-Size: 270
+Maintainer: Laszlo Boszormenyi (GCS) <gcs@debian.org>
+Architecture: arm64
+Depends: libc6 (>= 2.34)
+Suggests: ed, diffutils-doc
+Description: Apply a diff file to an original
+Multi-Arch: foreign
+Homepage: https://savannah.gnu.org/projects/patch/
+Description-md5: d56076980d5ce0f54f9dd685e6ca0ce7
+Build-Essential: yes
+Tag: devel::rcs, implemented-in::c, interface::commandline, role::program,
+ scope::utility, suite::gnu, use::editing, use::synchronizing,
+ works-with-format::TODO, works-with-format::diff,
+ works-with-format::plaintext, works-with::file,
+ works-with::software:source, works-with::text
+Section: vcs
+Priority: optional
+Filename: pool/main/p/patch/patch_2.8-2+deb13u1_arm64.deb
+Size: 128496
+MD5sum: 047606ac7aaf09f0ccf62153ca75356f
+SHA256: ee524dcd15b062ff762cdc1db1724d7850358d97b94b1db38ed7fdcce8e8adaa
+
+Package: python3
+Source: python3-defaults
+Version: 3.13.5-1
+Installed-Size: 83
+Maintainer: Matthias Klose <doko@debian.org>
+Architecture: arm64
+Replaces: python3-minimal (<< 3.1.2-2)
+Provides: python3-profiler, python3-supported-max (= 3.13), python3-supported-min (= 3.13)
+Depends: python3.13 (>= 3.13.5-1~), libpython3-stdlib (= 3.13.5-1)
+Pre-Depends: python3-minimal (= 3.13.5-1)
+Suggests: python3-doc (>= 3.13.5-1), python3-tk (>= 3.13.5-1~), python3-venv (>= 3.13.5-1)
+Conflicts: python3-distutils
+Description: interactive high-level object-oriented language (default python3 version)
+Multi-Arch: allowed
+Homepage: https://www.python.org/
+Description-md5: 502b4ee6378cd2f757ac37ef533462d6
+Tag: devel::interpreter, devel::lang:python, devel::library,
+ implemented-in::c, implemented-in::python, role::devel-lib,
+ role::program, role::shared-lib
+Section: python
+Priority: optional
+Filename: pool/main/p/python3-defaults/python3_3.13.5-1_arm64.deb
+Size: 28244
+MD5sum: e0dc793adc765e706ee1f5eb029c7197
+SHA256: 8d5be256bf3bb4f07afce1aa86f0595c6939e1a6c2ea939bdcb7b36351cbe021
+
+Package: python3-pygments
+Source: pygments
+Version: 2.18.0+dfsg-2+deb13u1
+Installed-Size: 4521
+Maintainer: Piotr Ożarowski <piotr@debian.org>
+Architecture: all
+Replaces: python-pygments (<< 2.3.1+dfsg-4~)
+Depends: python3:any
+Suggests: python-pygments-doc, ttf-bitstream-vera
+Breaks: python-pygments (<< 2.3.1+dfsg-4~)
+Description: syntax highlighting package written in Python 3
+Multi-Arch: foreign
+Homepage: https://pygments.org/
+Description-md5: cf7d5e943a9900549d6bd386f387a547
+Tag: devel::lang:python, implemented-in::python, interface::commandline,
+ role::program, scope::utility
+Section: python
+Priority: optional
+Filename: pool/main/p/pygments/python3-pygments_2.18.0+dfsg-2+deb13u1_all.deb
+Size: 835864
+MD5sum: 31ffc1c948a3e538efa0a0543083b140
+SHA256: aee6dd2730d94491f1069626afcb86be3c1f322358ec64a52071fd7ebdafd39e
+
+Package: rpi-eeprom
+Version: 28.38-1
+Architecture: all
+Maintainer: Tim Gover <tim.gover@raspberrypi.com>
+Installed-Size: 50050
+Depends: raspi-utils, python3, binutils, pciutils, python3-pycryptodome
+Recommends: flashrom, rpieepromab (>= 20260304+1)
+Breaks: rpi-eeprom-images (<< 7.2)
+Replaces: rpi-eeprom-images (<< 7.2)
+Provides: rpi-eeprom-images
+Homepage: https://github.com/raspberrypi/rpi-eeprom/
+Priority: optional
+Section: misc
+Filename: pool/main/r/rpi-eeprom/rpi-eeprom_28.38-1_all.deb
+Size: 15940586
+SHA512: 67b0f4fde5c89ca31955cc77975284d66bc9f230c5f842751a8a19f43dbe3dfc88ff3d4fa161633bf5446d626dcab40df4945a5e68340c177e395a06503c0adf
+SHA256: 4ab84569c9f7d5f72a8ef655714e1d4f913390b68bc4f2eb0517901a464c882f
+SHA1: 57c03cab0604be601ce6b8e4306788b35ffb00cf
+MD5sum: de0c44f3af492c9f2aac018499d89a50
+Description: Raspberry Pi 4/5 boot EEPROM updater
+ Checks whether the Raspberry Pi bootloader EEPROM is up-to-date and updates
+ the EEPROM.
+
+Package: rpicam-apps-core
+Source: rpicam-apps
+Version: 1.15.0-1
+Architecture: arm64
+Maintainer: Serge Schneider <serge@raspberrypi.com>
+Installed-Size: 1213
+Depends: libboost-program-options1.83.0 (>= 1.83.0), libc6 (>= 2.34), libcamera0.8 (>= 0.8.0+rpt20261104), libdrm2 (>= 2.4.99), libgcc-s1 (>= 3.0), librpicam-app1 (>= 1.15.0), libstdc++6 (>= 13.1), python3:any
+Conflicts: rpicam-apps (<< 1.8.1-1~bookworm), rpicam-apps-lite (<< 1.8.1-1~bookworm)
+Breaks: libcamera-apps (<< 1.4.1-1~), rpicam-apps (<< 1.8.1-1~bookworm), rpicam-apps-lite (<< 1.8.1-1~bookworm)
+Replaces: libcamera-apps (<< 1.4.1-1~), rpicam-apps (<< 1.8.1-1~bookworm), rpicam-apps-lite (<< 1.8.1-1~bookworm)
+Homepage: https://github.com/raspberrypi/rpicam-apps/
+Priority: optional
+Section: video
+Filename: pool/main/r/rpicam-apps/rpicam-apps-core_1.15.0-1_arm64.deb
+Size: 311774
+SHA512: 25831fd64544c1931f9dc01d781236ed60ab53e91d0e6cb3f1f2e9bdebe571c1012031953d05e36aafc625d6749b93b9a225a6ffdd464a68a569f3d04595cfac
+SHA256: 2726c1a89806f614d0f0636197762f3486f12b8872de3a708d852f785e0a4d5d
+SHA1: 0fd7c4435415a9b40d90f1f89b9eeb3ad56323c6
+MD5sum: d2cc1074b2b9f97ae0f6bb89812172e5
+Description: Camera based applications for Raspberry Pi using the libcamera framework
+ rpicam-apps is a suite of official command-line camera applications developed
+ for Raspberry Pi, built on the libcamera framework. Tools like rpicam-still,
+ rpicam-vid, and rpicam-preview enable high-quality image and video capture with
+ official and 3rd party camera modules. The apps support a variety of controls
+ and advanced features for flexible imaging use cases.
+ .
+ This is a metapackage that installs the core rpicam-apps applications.
+
+Package: rsync
+Version: 3.5.0+ds1-0+deb13u2
+Installed-Size: 1018
+Maintainer: Samuel Henrique <samueloph@debian.org>
+Architecture: arm64
+Depends: libacl1 (>= 2.2.23), libc6 (>= 2.38), liblz4-1 (>= 0.0~r130), libpopt0 (>= 1.14), libssl3t64 (>= 3.0.0), libxxhash0 (>= 0.8.0), libzstd1 (>= 1.5.5), zlib1g (>= 1:1.1.4)
+Pre-Depends: init-system-helpers (>= 1.54~)
+Suggests: openssh-client, openssh-server, python3, python3-braceexpand
+Description: fast, versatile, remote (and local) file-copying tool
+Multi-Arch: foreign
+Homepage: https://rsync.samba.org/
+Description-md5: 3bf40f318d2abfed74fa472aaff46d5f
+Tag: admin::backup, admin::file-distribution, implemented-in::c,
+ interface::commandline, interface::daemon, network::client,
+ network::server, protocol::ip, protocol::ipv6, role::program,
+ use::comparing, use::downloading, use::synchronizing, works-with::file
+Section: net
+Priority: optional
+Filename: pool/main/r/rsync/rsync_3.5.0+ds1-0+deb13u2_arm64.deb
+Size: 479932
+MD5sum: db9152bd1d65b7685bc56ccc21768950
+SHA256: 6c9e5a493bfa1aa4ee508d0fa37cc94f36fd051eebcce80922dc70a74911cd55
+
+Package: sudo
+Version: 1.9.16p2-3+deb13u5
+Installed-Size: 7062
+Maintainer: Debian Sudo Maintainers <sudo@packages.debian.org>
+Architecture: arm64
+Replaces: sudo-ldap
+Depends: libapparmor1 (>= 2.7.0~beta1+bzr1772), libaudit1 (>= 1:2.2.1), libc6 (>= 2.38), libpam0g (>= 0.99.7.1), libselinux1 (>= 3.1~), libssl3t64 (>= 3.0.0), zlib1g (>= 1:1.2.0.2), libpam-modules
+Pre-Depends: init-system-helpers (>= 1.54~)
+Conflicts: sudo-ldap
+Description: Provide limited super user privileges to specific users
+Multi-Arch: foreign
+Homepage: https://www.sudo.ws/
+Description-md5: acd82d558698567df941afe9b1ac35df
+Tag: admin::login, admin::user-management, implemented-in::c,
+ interface::commandline, role::program, scope::utility,
+ security::authentication, use::login
+Section: admin
+Priority: optional
+Filename: pool/main/s/sudo/sudo_1.9.16p2-3+deb13u5_arm64.deb
+Size: 1993080
+MD5sum: 2a3efbee3d36b03eeecbc14804bc26d8
+SHA256: b6ef66c7e41df53b927c3f482a6e201add10165ad69cfc856852738d699633e2
+
+Package: tzdata
+Version: 2026f-0+deb13u1
+Installed-Size: 1360
+Maintainer: GNU Libc Maintainers <debian-glibc@lists.debian.org>
+Architecture: all
+Replaces: tzdata-legacy (= 2023c-8), tzdata-legacy (= 2023c-9)
+Provides: tzdata-trixie
+Depends: debconf (>= 0.5) | debconf-2.0
+Breaks: tzdata-legacy (= 2023c-8), tzdata-legacy (= 2023c-9)
+Description: time zone and daylight-saving time data
+Multi-Arch: foreign
+Homepage: https://www.iana.org/time-zones
+Description-md5: a77a3cc9a67658dd7cfdc6547391b8f8
+Tag: role::app-data, use::timekeeping
+Section: localization
+Priority: required
+Filename: pool/main/t/tzdata/tzdata_2026f-0+deb13u1_all.deb
+Size: 267528
+MD5sum: 8e63158e853a273a594efaccda39d716
+SHA256: 2c1c561091402883430d0d47c57a3c0aa00b44afc8a6239265065a87211a5c11
+
+Package: util-linux
+Version: 2.41.5-0+deb13u1
+Essential: yes
+Installed-Size: 7402
+Maintainer: Chris Hofstaedtler <zeha@debian.org>
+Architecture: arm64
+Replaces: hardlink
+Provides: hardlink
+Pre-Depends: libpam-modules, libpam-runtime, libblkid1 (= 2.41.5-0+deb13u1), libc6 (>= 2.41), libcap-ng0 (>= 0.7.9), libcrypt1 (>= 1:4.1.0), liblastlog2-2 (= 2.41.5-0+deb13u1), libmount1 (= 2.41.5-0+deb13u1), libpam0g (>= 0.99.7.1), libselinux1 (>= 3.1~), libsmartcols1 (= 2.41.5-0+deb13u1), libsystemd0, libtinfo6 (>= 6), libudev1 (>= 183), libuuid1 (= 2.41.5-0+deb13u1)
+Recommends: sensible-utils
+Suggests: dosfstools, kbd, util-linux-extra, util-linux-locales, wtmpdb
+Conflicts: hardlink
+Description: miscellaneous system utilities
+Multi-Arch: foreign
+Homepage: https://github.com/util-linux/util-linux
+Description-md5: 33d0291a69ffd307cfba295915df602a
+Tag: admin::configuring, admin::filesystem, admin::hardware,
+ implemented-in::c, interface::commandline, interface::text-mode,
+ role::program, scope::utility, uitoolkit::ncurses
+Section: utils
+Priority: required
+Filename: pool/main/u/util-linux/util-linux_2.41.5-0+deb13u1_arm64.deb
+Size: 1199468
+MD5sum: 3c2b4d8eb733fa138446f98ca2870e40
+SHA256: d427f83a08d46107e8f7d39f1522a8a316e785e45f04ad657d2ecb7570210d84
+
+Package: wireless-regdb
+Version: 2026.09.03-1~deb13u1
+Installed-Size: 39
+Maintainer: Debian kernel team <debian-kernel@lists.debian.org>
+Architecture: all
+Description: wireless regulatory database for Linux
+Multi-Arch: foreign
+Homepage: https://wireless.wiki.kernel.org/en/developers/regulatory/wireless-regdb
+Description-md5: 92fb1412745a980e27d0623da2d4c26d
+Tag: admin::hardware, role::app-data
+Section: net
+Priority: optional
+Filename: pool/main/w/wireless-regdb/wireless-regdb_2026.09.03-1~deb13u1_all.deb
+Size: 12548
+MD5sum: 2ed5f02638de7ccfeb3fa8c7db5126d1
+SHA256: a38e446ad81bc015c15d99e17af6c76ad1bafe507d2f28b869cbbbba86f94d55
+
+Package: zlib1g
+Source: zlib
+Version: 1:1.3.dfsg+really1.3.1-1+deb13u1
+Installed-Size: 180
+Maintainer: Mark Brown <broonie@debian.org>
+Architecture: arm64
+Provides: libz1
+Depends: libc6 (>= 2.17)
+Conflicts: zlib1 (<= 1:1.0.4-7)
+Breaks: libxml2 (<< 2.7.6.dfsg-2), texlive-binaries (<< 2023.20230311.66589-8)
+Description: compression library - runtime
+Multi-Arch: same
+Homepage: http://zlib.net/
+Description-md5: 567f396aeeb2b2b63295099aed237057
+Tag: role::shared-lib
+Section: libs
+Priority: optional
+Filename: pool/main/z/zlib/zlib1g_1.3.dfsg+really1.3.1-1+deb13u1_arm64.deb
+Size: 85028
+MD5sum: 8eb6ee61a3f0f26e91b3f38e460106c3
+SHA256: 0e41b3d7ad8ad7fcd36dd4d61ca91a70018478fc4af652e044f4be770784ddff
+
+Package: zstd
+Source: libzstd
+Version: 1.5.7+dfsg-1+deb13u1
+Installed-Size: 2112
+Maintainer: RPM packaging team <team+pkg-rpm@tracker.debian.org>
+Architecture: arm64
+Depends: libc6 (>= 2.34), libgcc-s1 (>= 3.0), liblz4-1 (>= 1.8.0), liblzma5 (>= 5.1.1alpha+20120614), libstdc++6 (>= 14), zlib1g (>= 1:1.1.4)
+Description: fast lossless compression algorithm -- CLI tool
+Homepage: https://github.com/facebook/zstd
+Description-md5: d2e4d40bb07cc70b5a32d3b4a9b5f53d
+Multi-Arch: foreign
+Section: utils
+Priority: optional
+Filename: pool/updates/main/libz/libzstd/zstd_1.5.7+dfsg-1+deb13u1_arm64.deb
+Size: 633716
+SHA256: 55a12a9a05d48130b1c2ddb86c0ce76d1aa5df25a2424c3a2f7280762b7e56e9
+
+Package: dpkg
+Version: 1.22.22
+Essential: yes
+Installed-Size: 6385
+Maintainer: Dpkg Developers <debian-dpkg@lists.debian.org>
+Architecture: armhf
+Depends: tar (>= 1.28-1)
+Pre-Depends: libbz2-1.0, libc6 (>= 2.38), liblzma5 (>= 5.4.0), libmd0 (>= 0.0.0), libselinux1 (>= 3.1~), libzstd1 (>= 1.5.5), zlib1g (>= 1:1.1.4)
+Suggests: apt, debsig-verify
+Breaks: libapt-pkg5.0 (<< 1.7~b), lsb-base (<< 10.2019031300)
+Description: Debian package management system
+Multi-Arch: foreign
+Homepage: https://wiki.debian.org/Teams/Dpkg
+Description-md5: 2f156c6a30cc39895ad3487111e8c190
+Tag: admin::package-management, devel::lang:perl, devel::library,
+ implemented-in::c, implemented-in::perl, interface::commandline,
+ role::devel-lib, role::program, scope::utility, suite::debian,
+ use::configuring, works-with::software:package
+Section: admin
+Priority: required
+Filename: pool/main/d/dpkg/dpkg_1.22.22_armhf.deb
+Size: 1487744
+MD5sum: e92cf3ec66e00653497d891f51a78f1a
+SHA256: 871eb4a1b9f739303ee0fc93cba048e1fb865d5b98a5e700bcc65fcfa7a4e430
+
