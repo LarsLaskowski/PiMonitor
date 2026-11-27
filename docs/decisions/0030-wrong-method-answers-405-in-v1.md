@@ -1,6 +1,6 @@
 # 0030: A wrong method on a registered route answers 405 in v1
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-27
 - **Area:** HTTP API
 - **Source:** Issue #202
