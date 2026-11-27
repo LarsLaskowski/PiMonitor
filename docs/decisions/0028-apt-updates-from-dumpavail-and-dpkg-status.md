@@ -1,6 +1,6 @@
 # 0028: Available apt updates come from `apt-cache dumpavail` and the dpkg status file
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-26
 - **Area:** Metrics
 - **Source:** Issue #118
