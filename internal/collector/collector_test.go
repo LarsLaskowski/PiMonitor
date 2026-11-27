@@ -25,8 +25,16 @@ import (
 // run in a Linux CI environment; a missing thermal zone (common in
 // containers) is tolerated gracefully rather than failing the test.
 
+// hermeticUpdates points c's apt check at a binary that does not exist, so a
+// tick never runs the host's real apt-cache (slow on a runner with large apt
+// lists) and the result does not depend on the host.
+func hermeticUpdates(c *Collector) *Collector {
+	c.updates = &UpdatesCollector{aptCachePath: "/nonexistent/apt-cache", now: time.Now}
+	return c
+}
+
 func newTestCollector() *Collector {
-	return New(Config{
+	return hermeticUpdates(New(Config{
 		FastInterval:          time.Second,
 		SlowInterval:          time.Minute,
 		HistoryCapacity:       10,
@@ -35,7 +43,7 @@ func newTestCollector() *Collector {
 		UpdatesStaleThreshold: time.Hour,
 		DistroInfoEnabled:     true,
 		PiModelEnabled:        true,
-	}, nil)
+	}, nil))
 }
 
 func TestCollector_FastTick_PopulatesSnapshot(t *testing.T) {
@@ -565,6 +573,7 @@ func TestCollector_Processes_PopulatedOnSlowTick(t *testing.T) {
 	dir := t.TempDir()
 	writeFakeProcess(t, dir, 100, fakeProcess{comm: "hog", utime: 1000, stime: 200, rssKB: 51200, startTime: 1000})
 	c.processes = &ProcessCollector{root: dir, now: time.Now}
+	hermeticUpdates(c)
 
 	c.slowTick(context.Background())
 
@@ -837,6 +846,7 @@ func TestCollector_Run_StopsOnContextCancel(t *testing.T) {
 		HistoryCapacity: 10,
 		NetworkEnabled:  false,
 	}, nil)
+	hermeticUpdates(c)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
@@ -2037,6 +2047,7 @@ func newOpenHABRunCollector(t *testing.T, srv *ohServer, root string) *Collector
 // the test when Run does not return within 5 s.
 func startRun(t *testing.T, c *Collector) (stop func()) {
 	t.Helper()
+	hermeticUpdates(c)
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	go func() {
