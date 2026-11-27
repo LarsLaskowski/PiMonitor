@@ -22,3 +22,4 @@ are quoted in full.
 | 2026-11-27 17:50 | 6 Implement (G2) | Dev | G2 implemented: renderUpdates/aptCheckedLine in app.js, docs updated (areas, API.md, openhab.md, README); suite green -race, coverage gate PASS; focus drop after closing dialog documented in dashboard.md (sonnet/medium · 21,290 tokens · 9 tool uses · 39 s · 18 in · 5,197 out · 686,315 cache read · 20,519 cache write · 120,283 weighted · continued) |
 | 2026-11-27 17:50 | 6 Coverage skipped (G2) | Orchestrator | skipped — gate passes, no deferred tests, no uncovered lines (app.js outside Go coverage paths) |
 | 2026-11-27 17:50 | 6 Documentation | Orchestrator | written in 6 Implement (G2) |
+| 2026-11-27 17:50 | 7 Gate stamp | Orchestrator | FAIL on dbf8f4eacbce085de22900542d13136f394124ea (tier standard): Format check pass; Analyzer gate FAIL; Test with coverage pass; Coverage gate pass; decision-check.py pass; scope-check.py pass · figure-check.py 0 hit(s) |
