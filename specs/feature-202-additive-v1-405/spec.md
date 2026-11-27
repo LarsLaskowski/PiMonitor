@@ -1,7 +1,7 @@
 # Spec: Additive v1 changes, 405 for a wrong method, corrected 503 comment
 
 Source: Issue #202
-Status: Draft
+Status: Approved by Lead
 
 ## Problem
 
@@ -54,7 +54,8 @@ of [HTTP API](../../docs/areas/http-api.md#open-questions):
 
 ## Non-functional requirements
 
-- N1: The server reads no request body to answer a `405`, and the `405` body contains no request input.
+- N1: No handler or middleware reads the request body to answer a `405` (`net/http` may still discard an
+  unread body after the response, to reuse the connection), and the `405` body contains no request input.
 - N2: No new configuration option. No route, method or response other than the `405` changes.
 - N3: `GET /api/v1/...` clients see no change. The new `405` takes the place of an undocumented `404` that the
   open question in *HTTP API* left undecided, so no documented v1 response changes.
