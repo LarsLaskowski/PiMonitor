@@ -1627,6 +1627,12 @@
         stopPolling();
         return;
       }
+      // A page that was loaded hidden has not run its initial load yet: run
+      // it now instead of the refresh below, never both.
+      if (!initialLoadStarted) {
+        initialLoad().catch((e) => console.error('failed to initialise dashboard', e));
+        return;
+      }
       // Refresh immediately on return so the user never looks at a stale
       // card while waiting for the first interval to elapse. The three
       // refreshes are independent and handle their own fetch errors, so they
@@ -1650,11 +1656,14 @@
     await pollAlerts();
     openhabDisabled = false;
     await pollOpenHAB();
-    startPolling();
+    // A hide during the load stopped the timers; do not re-arm them while
+    // hidden (the show handler does it).
+    if (!document.hidden) startPolling();
   }
 
-  // First load of the dashboard, run once: marks the load as started, then
-  // loads everything.
+  // First load of the dashboard, run once per page: from main when the page
+  // loads visible, else from the first show. The flag is set before the first
+  // request so a second show during the load refreshes instead of loading again.
   async function initialLoad() {
     initialLoadStarted = true;
     await reloadAll();
@@ -1668,7 +1677,7 @@
     wireLayoutModal();
     wireVisibilityPolling();
     applyLayout();
-    await reloadAll();
+    if (!document.hidden) await initialLoad();
   }
 
   main().catch((e) => console.error('failed to initialise dashboard', e));

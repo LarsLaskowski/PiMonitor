@@ -398,7 +398,7 @@ added to the config file automatically reaches this endpoint with no field-by-fi
 mapping to keep in sync. Only `internal/web/assets/app.js`'s client-side fallback
 defaults (rendered before this endpoint resolves) still duplicate the key set by
 necessity; a test in `internal/web` guards that copy against drift via reflection over
-`config.Thresholds`'s json tags.
+`config.Thresholds`'s json tags, and another compares its values with `config.Default()`.
 
 ## Web dashboard (`internal/web`)
 
@@ -467,7 +467,9 @@ Polling is paused while the tab is hidden and resumed with an immediate refresh 
 backgrounded or wall-mounted-display tab would otherwise keep requesting the API forever, since browsers only
 throttle background timers to roughly once a minute rather than stopping them (issue #111). Each poll function also
 guards against overlapping requests with its own in-flight flag, so a slow response (a loaded Pi, flaky Wi-Fi)
-doesn't let requests pile up on top of each other.
+doesn't let requests pile up on top of each other. A page loaded hidden sends no request until it is first shown,
+and runs its initial load then instead of the refresh
+([decision 0031](decisions/0031-dashboard-loaded-hidden-defers-initial-load.md)).
 
 The dashboard layout is configurable (issue #10): `main` lays every card out as a flat list of siblings distributed
 by CSS multi-column rather than explicit column `<div>`s, so `app.js` can show, hide, and reorder cards purely by
