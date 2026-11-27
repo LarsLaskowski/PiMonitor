@@ -387,47 +387,74 @@ func keyedConfig() Config {
 	return cfg
 }
 
-// TestWrongMethod_APIChain_Key pins AC4: the key check comes before the 405.
-func TestWrongMethod_APIChain_Key(t *testing.T) {
+// TestWrongMethod_GoesThroughAPIChain pins AC4: a wrong method on an API
+// route passes the key check, no-store, gzip and the in-flight limit.
+func TestWrongMethod_GoesThroughAPIChain(t *testing.T) {
+	t.Run("AC4 missing key answers 401", checkWrongMethodMissingKey)
+	t.Run("AC4 valid key answers 405 with headers /api/v1/metrics", func(t *testing.T) {
+		checkWrongMethodValidKey(t, "/api/v1/metrics")
+	})
+	t.Run("AC4 valid key answers 405 with headers /metrics", func(t *testing.T) {
+		checkWrongMethodValidKey(t, "/metrics")
+	})
+	t.Run("AC4 gzip is applied on request", checkWrongMethodGzip)
+	t.Run("AC4 in-flight limit answers 503", checkWrongMethodInFlight)
+}
+
+func checkWrongMethodMissingKey(t *testing.T) {
 	s := newTestServerWithDashboard(t, keyedConfig())
 	rec := serveMethod(s, http.MethodPost, "/api/v1/metrics", nil)
 	if rec.Code != http.StatusUnauthorized || rec.Body.String() != "unauthorized\n" {
-		t.Fatalf("AC4 POST without key = %d %q, want 401 %q", rec.Code, rec.Body.String(), "unauthorized\n")
+		t.Fatalf("POST without key = %d %q, want 401 %q", rec.Code, rec.Body.String(), "unauthorized\n")
 	}
 	if rec := serveMethod(s, http.MethodPost, "/metrics", nil); rec.Code != http.StatusUnauthorized {
-		t.Fatalf("AC4 POST /metrics without key = %d, want 401", rec.Code)
+		t.Fatalf("POST /metrics without key = %d, want 401", rec.Code)
 	}
 }
 
-// TestWrongMethod_APIChain_Headers pins AC4: no-store, Vary and security headers.
-func TestWrongMethod_APIChain_Headers(t *testing.T) {
+func checkWrongMethodValidKey(t *testing.T, path string) {
 	s := newTestServerWithDashboard(t, keyedConfig())
-	for _, path := range []string{"/api/v1/metrics", "/metrics"} {
-		rec := serveMethod(s, http.MethodPost, path, map[string]string{"X-Api-Key": wrongMethodKey})
-		assertMethodNotAllowed(t, rec, "AC4 POST "+path+" with key")
-		if got := rec.Header().Get("Cache-Control"); got != "no-store" {
-			t.Errorf("AC4 %s Cache-Control = %q, want no-store", path, got)
-		}
-		vary := strings.Join(rec.Header().Values("Vary"), ",")
-		for _, want := range []string{"Authorization", "X-Api-Key"} {
-			if !strings.Contains(vary, want) {
-				t.Errorf("AC4 %s Vary = %q, want it to name %s", path, vary, want)
-			}
-		}
-		assertSecurityHeaders(t, rec, "AC4 POST "+path)
+	rec := serveMethod(s, http.MethodPost, path, map[string]string{"X-Api-Key": wrongMethodKey})
+	assertMethodNotAllowed(t, rec, "POST "+path+" with key")
+	if got := rec.Header().Get("Cache-Control"); got != "no-store" {
+		t.Errorf("Cache-Control = %q, want no-store", got)
 	}
+	vary := strings.Join(rec.Header().Values("Vary"), ",")
+	for _, want := range []string{"Authorization", "X-Api-Key"} {
+		if !strings.Contains(vary, want) {
+			t.Errorf("Vary = %q, want it to name %s", vary, want)
+		}
+	}
+	assertSecurityHeaders(t, rec, "POST "+path)
 }
 
-// TestWrongMethod_APIChain_Gzip pins AC4: the 405 is gzip-compressed on request.
-func TestWrongMethod_APIChain_Gzip(t *testing.T) {
+func checkWrongMethodGzip(t *testing.T) {
 	s := newTestServerWithDashboard(t, allRoutesConfig())
 	rec := serveMethod(s, http.MethodPost, "/api/v1/metrics", map[string]string{"Accept-Encoding": "gzip"})
 	if rec.Code != http.StatusMethodNotAllowed {
-		t.Fatalf("AC4 status = %d, want 405", rec.Code)
+		t.Fatalf("status = %d, want 405", rec.Code)
 	}
 	if got := rec.Header().Get("Content-Encoding"); got != "gzip" {
-		t.Fatalf("AC4 Content-Encoding = %q, want gzip", got)
+		t.Fatalf("Content-Encoding = %q, want gzip", got)
 	}
+	if got := gunzipBody(t, rec); got != "method not allowed\n" {
+		t.Errorf("decoded body = %q, want %q", got, "method not allowed\n")
+	}
+}
+
+func checkWrongMethodInFlight(t *testing.T) {
+	s := newTestServerWithDashboard(t, allRoutesConfig())
+	for i := 0; i < cap(s.inFlight); i++ {
+		s.inFlight <- struct{}{}
+	}
+	rec := serveMethod(s, http.MethodPost, "/api/v1/metrics", nil)
+	if rec.Code != http.StatusServiceUnavailable || rec.Body.String() != "server busy\n" {
+		t.Fatalf("POST over the limit = %d %q, want 503 %q", rec.Code, rec.Body.String(), "server busy\n")
+	}
+}
+
+func gunzipBody(t *testing.T, rec *httptest.ResponseRecorder) string {
+	t.Helper()
 	zr, err := gzip.NewReader(rec.Body)
 	if err != nil {
 		t.Fatalf("gzip.NewReader error = %v", err)
@@ -436,25 +463,11 @@ func TestWrongMethod_APIChain_Gzip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reading gzip body error = %v", err)
 	}
-	if string(data) != "method not allowed\n" {
-		t.Errorf("AC4 decoded body = %q, want %q", data, "method not allowed\n")
-	}
-}
-
-// TestWrongMethod_APIChain_InFlightLimit pins AC4/E2: beyond the limit it is 503.
-func TestWrongMethod_APIChain_InFlightLimit(t *testing.T) {
-	s := newTestServerWithDashboard(t, allRoutesConfig())
-	for i := 0; i < cap(s.inFlight); i++ {
-		s.inFlight <- struct{}{}
-	}
-	rec := serveMethod(s, http.MethodPost, "/api/v1/metrics", nil)
-	if rec.Code != http.StatusServiceUnavailable || rec.Body.String() != "server busy\n" {
-		t.Fatalf("AC4 POST over the limit = %d %q, want 503 %q", rec.Code, rec.Body.String(), "server busy\n")
-	}
+	return string(data)
 }
 
 // TestWrongMethod_Healthz pins AC4 for /healthz: its own middleware only.
-func TestWrongMethod_Healthz(t *testing.T) {
+func TestWrongMethod_Healthz_AC4(t *testing.T) {
 	cfg := allRoutesConfig()
 	cfg.APIKey = "s3cret"
 	s := newTestServerWithDashboard(t, cfg)
@@ -468,7 +481,7 @@ func TestWrongMethod_Healthz(t *testing.T) {
 
 // TestWrongMethod_CountedInServerStats pins AC4: the 405 is counted under its
 // route's bucket and in the global 4xx class (the two are separate counters).
-func TestWrongMethod_CountedInServerStats(t *testing.T) {
+func TestWrongMethod_CountedInServerStats_AC4(t *testing.T) {
 	s := newTestServerWithDashboard(t, Config{})
 	before := s.stats.snapshot()
 	rec := serveMethod(s, http.MethodPost, "/api/v1/metrics", nil)
@@ -556,7 +569,7 @@ func TestRouteTable_DashboardMethodsUnchanged(t *testing.T) {
 
 // TestWrongMethod_AccessLogged pins spec E4: with access_log_enabled a 405 is
 // logged like any request, with method, path and status.
-func TestWrongMethod_AccessLogged(t *testing.T) {
+func TestWrongMethod_AccessLogged_AC4(t *testing.T) {
 	var buf bytes.Buffer
 	log := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	dash, err := web.Handler()
