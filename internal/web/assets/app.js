@@ -1595,6 +1595,7 @@
   let historyTimer = null;
   let alertsTimer = null;
   let openhabTimer = null;
+  let initialLoadStarted = false;
 
   function startPolling() {
     if (metricsTimer) clearInterval(metricsTimer);
@@ -1650,6 +1651,13 @@
     openhabDisabled = false;
     await pollOpenHAB();
     startPolling();
+  }
+
+  // First load of the dashboard, run once: marks the load as started, then
+  // loads everything.
+  async function initialLoad() {
+    initialLoadStarted = true;
+    await reloadAll();
   }
 
   async function main() {
