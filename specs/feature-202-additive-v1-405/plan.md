@@ -141,3 +141,21 @@ The guarantees of `.squad/project.md` are kept:
 ## Out of scope / follow-ups
 
 The spec's *Out of scope*. No follow-up issue.
+
+## Challenge notes
+
+The plan holds up. The root cause and all nine verified facts match the code. I found no major objection and two minor ones that the Tester can follow without a plan change.
+
+**What I checked against the code**
+- **Root cause:** confirmed. `route.register` installs only `r.pattern()`, which is `GET <path>` (`internal/httpapi/routes.go`, `pattern`/`register`). `mux.Handle("/", staticHandler)` is at `internal/httpapi/server.go:160-162`. `web.Handler()` wraps `http.FileServerFS` and has no method check (`internal/web/embed.go`).
+- **Fact 5:** confirmed on Go 1.27.4. `http.Error` deletes only `Content-Length` and keeps `Content-Encoding`, citing go.dev/issue/66343 (`$GOROOT/src/net/http/server.go:2377-2395`). So the gzip assertion in AC4 is sound. It is the same path the existing `unauthorized` 401 takes inside `withGzip`.
+- **Middleware order:** `apiRoute` is `withNoStore(withMaxInFlight(withGzip(withAPIKey(h))))` (`server.go`, `apiRoute`). A full in-flight limit therefore gives 503 before the key check and before the 405. The 405 row ("after 401/503") and the AC4 subtests match this.
+- **Fact 7:** confirmed. No `*_test.go` sends a method other than GET/HEAD, and no Go file mentions 405 or `MethodNotAllowed`. No existing test pins the old 404.
+- **Fact 8:** confirmed. `cmd/pimonitor/main.go:55,60` wires `web.Handler()` the way the planned `newTestServerWithDashboard` would. `internal/web` imports only the standard library.
+- **Need, alternatives and tier:** all hold. The 405 is the issue owner's decision. Option 1 is the only option that keeps `apiRoute` without duplicating the route set. `standard` fits: no security control changes, and no route becomes reachable without the key.
+
+**Objections**
+1. (minor) **The server statistics assertion asks for a field that does not exist.** It is the plan's *Tests per criterion* row for AC4, `TestWrongMethod_CountedInServerStats`, which says "counts in that bucket as `4xx`". `serverStats` has no status class per route: `record` increments the global `status4xx` and the route counter separately (`internal/httpapi/serverstats.go`, `record`, and `serverStatsSnapshot`: `by_status_class` is global, `by_route` is a plain count).
+   *Instruction for the Tester:* assert that `by_route["/api/v1/metrics"]` and `by_status_class["4xx"]` each grow after one `POST /api/v1/metrics`. Do not look for a status class inside the route's bucket.
+2. (minor) **The AC2 and AC4 tests must turn on the three optional routes.** AC2 says "every table route", but the `/metrics`, `/api/v1/processes` and `/api/v1/openhab` entries are only registered when `PrometheusEnabled`, `ProcessesEnabled` and `OpenHABEnabled` are set (`routes.go`, the `enabled` predicates). With any of them off, that route answers 404 and the loop would have to skip it. `/metrics` is explicitly in scope (issue AC2, spec S4).
+   *Instruction for the Tester:* build the AC2 server (and the AC4 `/metrics` case) with all three options set to true. Keep the three switched-off routes with POST → 404 in AC3, which is a separate config.
