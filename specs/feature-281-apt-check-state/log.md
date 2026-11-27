@@ -18,3 +18,4 @@ are quoted in full.
 | 2026-11-27 17:48 | 6 Implement (G1) | Dev | G1 implemented: New/slowTick set check status, writeUpdatesMetrics guard; full suite green with -race; coverage gate PASS (100% new lines, 94.0% overall); no deviations (sonnet/medium · 75,955 tokens · 4 tool uses · 29 s · 8 in · 1,502 out · 272,020 cache read · 20,890 cache write · 60,832 weighted) |
 | 2026-11-27 17:48 | 6 Coverage skipped (G1) | Orchestrator | skipped — gate passes (100% new lines, 94.0% overall), no deferred tests, no uncovered lines reported |
 | 2026-11-27 17:48 | 4 Skeleton skipped (G2) | Orchestrator | skipped — plan adds no API for G2 (dashboard script only) |
+| 2026-11-27 17:49 | 5 Tests first (G2) | Tester | AC4 source-scan tests written; verified failing on current app.js (5 subtests + adapted pihole test). Deferred: none (sonnet/medium · 7,897 tokens · 7 tool uses · 29 s · 14 in · 3,826 out · 607,379 cache read · 8,300 cache write · 90,257 weighted · continued) |
