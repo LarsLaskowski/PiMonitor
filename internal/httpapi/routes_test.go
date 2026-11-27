@@ -1,9 +1,11 @@
 package httpapi
 
 import (
+	"bytes"
 	"compress/gzip"
 	"encoding/json"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -479,5 +481,96 @@ func TestWrongMethod_CountedInServerStats(t *testing.T) {
 	}
 	if got, want := after.ByStatusClass["4xx"], before.ByStatusClass["4xx"]+1; got != want {
 		t.Errorf("AC4 ByStatusClass[4xx] = %d, want %d", got, want)
+	}
+}
+
+// TestRouteTable_EveryRouteIsGET pins AC2's premise: every table entry is a
+// GET route, so "Allow: GET, HEAD" is true for all of them.
+func TestRouteTable_EveryRouteIsGET(t *testing.T) {
+	for _, rt := range routeTable {
+		t.Run("AC2 "+rt.path, func(t *testing.T) {
+			if rt.method != http.MethodGet {
+				t.Fatalf("route %s method = %q, want GET", rt.path, rt.method)
+			}
+		})
+	}
+}
+
+// TestRouteTable_GetAndHeadStillServed pins AC3: GET and HEAD keep their
+// handlers next to the new bare-path 405 handler.
+func TestRouteTable_GetAndHeadStillServed(t *testing.T) {
+	s := newTestServerWithDashboard(t, allRoutesConfig())
+	for _, rt := range routeTable {
+		for _, m := range []string{http.MethodGet, http.MethodHead} {
+			t.Run("AC3 "+m+" "+rt.path, func(t *testing.T) {
+				rec := serveMethod(s, m, rt.path, nil)
+				if rec.Code != http.StatusOK {
+					t.Fatalf("%s %s = %d, want 200", m, rt.path, rec.Code)
+				}
+			})
+		}
+	}
+}
+
+// TestRouteTable_UnroutedPathsStill404 pins AC3: paths that are no route
+// keep the dashboard's 404 for every method, and so do switched-off routes
+// for POST (a separate config: all optional routes off).
+func TestRouteTable_UnroutedPathsStill404(t *testing.T) {
+	s := newTestServerWithDashboard(t, allRoutesConfig())
+	for _, path := range []string{"/nope", "/api/v1/metrics/", "/api/v1/metrics/cpu/overall", "/api/v1/nope"} {
+		for _, m := range []string{http.MethodGet, http.MethodPost} {
+			t.Run("AC3 "+m+" "+path, func(t *testing.T) {
+				if rec := serveMethod(s, m, path, nil); rec.Code != http.StatusNotFound {
+					t.Fatalf("%s %s = %d, want 404", m, path, rec.Code)
+				}
+			})
+		}
+	}
+	off := newTestServerWithDashboard(t, Config{})
+	for _, rt := range routeTable {
+		if rt.enabled == nil {
+			continue
+		}
+		t.Run("AC3 switched off POST "+rt.path, func(t *testing.T) {
+			if rec := serveMethod(off, http.MethodPost, rt.path, nil); rec.Code != http.StatusNotFound {
+				t.Fatalf("POST %s while disabled = %d, want 404", rt.path, rec.Code)
+			}
+		})
+	}
+}
+
+// TestRouteTable_DashboardMethodsUnchanged pins AC3: the dashboard handler
+// still answers GET, HEAD and POST with 200 on "/" and "/app.js".
+func TestRouteTable_DashboardMethodsUnchanged(t *testing.T) {
+	s := newTestServerWithDashboard(t, allRoutesConfig())
+	for _, path := range []string{"/", "/app.js"} {
+		for _, m := range []string{http.MethodGet, http.MethodHead, http.MethodPost} {
+			t.Run("AC3 "+m+" "+path, func(t *testing.T) {
+				if rec := serveMethod(s, m, path, nil); rec.Code != http.StatusOK {
+					t.Fatalf("%s %s = %d, want 200", m, path, rec.Code)
+				}
+			})
+		}
+	}
+}
+
+// TestWrongMethod_AccessLogged pins spec E4: with access_log_enabled a 405 is
+// logged like any request, with method, path and status.
+func TestWrongMethod_AccessLogged(t *testing.T) {
+	var buf bytes.Buffer
+	log := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	dash, err := web.Handler()
+	if err != nil {
+		t.Fatalf("web.Handler() error = %v", err)
+	}
+	_, fm := newTestServer(Config{})
+	s := New(fm, Config{AccessLogEnabled: true}, dash, log)
+	rec := serveMethod(s, http.MethodPost, "/api/v1/metrics", nil)
+	assertMethodNotAllowed(t, rec, "POST /api/v1/metrics")
+	out := buf.String()
+	for _, want := range []string{"http request", "method=POST", "path=/api/v1/metrics", "status=405"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("E4 log %q does not contain %q", out, want)
+		}
 	}
 }
