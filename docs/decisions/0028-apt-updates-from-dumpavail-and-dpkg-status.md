@@ -43,11 +43,17 @@ record on either side, or a change of the apt or dpkg state during the check fai
 ## Consequences
 
 - A future change of the `Packages` or status format fails the check visibly instead of reporting 0.
-- Accepted risks, checked by hand on a Pi before approval: the Bookworm apt (2.6) and armhf were not sampled (the
-  rule was read in apt's current source); the 10 s bound was measured on one Trixie arm64 host only (0.325 s), so a
-  slow board fails closed (failed check, last result kept) rather than reporting a wrong count. If `dumpavail` takes
-  more than 5 s on an armv6 board, or none can be measured, the Lead decides between a longer bound for this check
-  and keeping `apt list --upgradable` there, and records it here.
+- Manual check (Product Manager, Trixie arm64 only): the API output equals `apt list --upgradable` (33 of 33);
+  `apt-cache dumpavail` took 0.322 s, `apt list --upgradable` 0.547 s. No armv6 board, no Bookworm host and no hold
+  or pin were available; those checks are waived as accepted risks: the Bookworm apt (2.6) and armhf were not
+  sampled (the rule was read in apt's current source), holds and pins are covered by unit tests only.
+- The 10 s bound stays unchanged on every architecture. `dumpavail` was faster than the `apt list --upgradable` it
+  replaces on the one measured host and used about 3 % of the bound, so a board that misses 10 s would come close
+  to it with the old source as well. A longer bound lost because the slow tick delays the fast tick by as long as it
+  runs ([Metrics](../areas/metrics.md)); keeping `apt list --upgradable` on armv6 lost because it keeps the defect
+  of the issue there and adds a second code path. Accepted risk: on armv6 neither `dumpavail` nor the streamed
+  parse of its output was measured; a board that exceeds 10 s fails closed (failed check, last result kept, warning
+  logged), never reports a wrong count. Revisit when such a failure is reported.
 - The consistency check assumes apt gives a downloaded list the server's `Last-Modified` as mtime (so a newer list
   can look older) and moves finished lists in by `rename`; it therefore also compares the lists directory's mtime
   and the count and total size of list files, not only the newest mtime.

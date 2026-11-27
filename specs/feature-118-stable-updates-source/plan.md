@@ -12,11 +12,11 @@ Security areas touched: Subprocesses (`internal/collector/updates.go`: `apt-cach
 
 | # | Claim | Evidence | Status |
 | - | ----- | ------ | ------ |
-| 1 | `apt list --upgradable` = installed and policy candidate newer, holds and kept-back included; `dumpavail` prints the policy candidate per package and architecture; apt counts every status state but `not-installed` and `config-files` as installed (Status word lists in *Approach*) | apt `main` source, files and functions in [0028](../../docs/decisions/0028-apt-updates-from-dumpavail-and-dpkg-status.md) *Context*; Bookworm's apt 2.6 by the manual check | confirmed |
+| 1 | `apt list --upgradable` = installed and policy candidate newer, holds and kept-back included; `dumpavail` prints the policy candidate per package and architecture; apt counts every status state but `not-installed` and `config-files` as installed (Status word lists in *Approach*) | apt `main` source, files and functions in [0028](../../docs/decisions/0028-apt-updates-from-dumpavail-and-dpkg-status.md) *Context*; Bookworm's apt 2.6 not checked (waived by the PM, 0028) | confirmed |
 | 2 | The approach reproduces `apt list --upgradable` on the Trixie arm64 sample: 28 of 28, none extra | Lead probe on the PM's samples (scratchpad, not in the repository) | confirmed |
 | 3 | Sample: 102,829 records, 88,662,148 bytes, longest line 75,649 bytes, both files end with a blank line; every line a field, continuation or blank; versions match `^([0-9]+:)?[0-9][A-Za-z0-9.+~-]*$`, names `^[a-z0-9][a-z0-9.+-]+$`; architectures `all`, `arm64`, `armhf`; two `dpkg` records; 890 status records, all `install ok installed` | probe on the samples | confirmed |
 | 4 | `apt-cache dumpavail` with empty lists prints nothing and exits 0 | this session, apt 2.8.4 | confirmed |
-| 5 | `dumpavail` takes 0.325 s on the sample host | PM (Trixie arm64); armv6 by the manual check | confirmed |
+| 5 | `dumpavail` takes 0.325 s on the sample host | PM (Trixie arm64; manual check 0.322 s); armv6 not measured (0028) | confirmed |
 | 6 | `/var/lib/dpkg/status` is readable in `pimonitor.service` (no `InaccessiblePaths`) | `packaging/pimonitor.service` lines 51–55 | confirmed |
 | 7 | apt sets a list's mtime from `Last-Modified`; `rename` sets the directory mtime | to verify: not checkable from the samples; documented assumption in 0028, covered by the stamp's count, size and directory mtime | unverified |
 
@@ -101,10 +101,8 @@ in `/etc/apt/preferences.d` that holds a package back, and compares `GET /api/v1
 `apt list --upgradable`: same names, versions, architectures and `count`. On an armv6 board (Pi Zero/1, `make
 build-arm`) the PM also runs, as the `pimonitor` user, `time apt-cache dumpavail | wc -c` and, as the baseline,
 `time apt list --upgradable`, and records both times in `log.md`; the journal must show no `updates collection
-failed`. A mismatch is a blocking finding for the Dev. **Fallback:** if `dumpavail` takes more than 5 s (half the
-bound) on armv6, or no armv6 board is available, the Lead decides in mode `decide` with the numbers: amend N4 to a
-longer bound for this check alone (it delays the fast tick by as long, `docs/areas/metrics.md`), or escalate keeping
-`apt list --upgradable` on armv6; the decision goes into 0028.
+failed`. A mismatch is a blocking finding for the Dev. **Outcome:** Trixie arm64 only, 33 of 33 match;
+armv6, Bookworm, hold and pin waived by the PM; the 10 s bound stays (Lead `decide`, 0028).
 
 ## Options considered
 
