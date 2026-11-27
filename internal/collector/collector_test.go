@@ -1148,93 +1148,108 @@ func aptStatusCollector(t *testing.T, env *aptTestEnv, stub string, clock *time.
 // updates snapshot: not_checked from New, ok with each successful check,
 // failed after a failure with the last result kept.
 func TestCollector_SlowTick_UpdatesCheckStatus(t *testing.T) {
-	start := time.Date(2026, 11, 26, 12, 0, 0, 0, time.UTC)
+	t.Run("AC1 not_checked before any check", testUpdatesNotCheckedBeforeAnyCheck)
+	t.Run("AC1 ok after a successful check", testUpdatesOKAfterSuccessfulCheck)
+	t.Run("AC1 failed after a success keeps the result", testUpdatesFailedAfterSuccessKeepsResult)
+	t.Run("AC1 failed before any success keeps the zero values", testUpdatesFailedBeforeSuccessKeepsZero)
+	t.Run("AC1 ok again after a failure", testUpdatesOKAgainAfterFailure)
+}
 
-	t.Run("AC1 not_checked before any check", func(t *testing.T) {
-		c := newTestCollector()
-		got := c.Snapshot().Updates
-		if got.CheckStatus != UpdatesCheckNotChecked {
-			t.Errorf("CheckStatus after New = %q, want %q", got.CheckStatus, UpdatesCheckNotChecked)
-		}
-		if got.Count != 0 || len(got.Packages) != 0 || !got.CheckedAt.IsZero() {
-			t.Errorf("Updates after New = %+v, want the zero result", got)
-		}
-	})
+// updatesTestStart is the clock reading the updates status tests start from.
+func updatesTestStart() time.Time {
+	return time.Date(2026, 11, 26, 12, 0, 0, 0, time.UTC)
+}
 
-	t.Run("AC1 ok after a successful check", func(t *testing.T) {
-		env := newAptTestEnv(t)
-		clock := start
-		c := aptStatusCollector(t, env, env.stub(t, env.printFixture()), &clock)
+// expectUpdatesStatus fails t when the check_status of got is not want.
+func expectUpdatesStatus(t *testing.T, got Updates, want string) {
+	t.Helper()
+	if got.CheckStatus != want {
+		t.Errorf("CheckStatus = %q, want %q", got.CheckStatus, want)
+	}
+}
 
-		c.slowTick(context.Background())
+// expectUpdatesCount fails t when got does not hold count packages checked at
+// checkedAt.
+func expectUpdatesCount(t *testing.T, got Updates, count int, checkedAt time.Time) {
+	t.Helper()
+	if got.Count != count || !got.CheckedAt.Equal(checkedAt) {
+		t.Errorf("Updates = count %d, checked_at %v; want %d, %v", got.Count, got.CheckedAt, count, checkedAt)
+	}
+}
 
-		got := c.Snapshot().Updates
-		if got.CheckStatus != UpdatesCheckOK {
-			t.Errorf("CheckStatus = %q, want %q", got.CheckStatus, UpdatesCheckOK)
-		}
-		if got.Count != aptSampleUpgradeCount || !got.CheckedAt.Equal(start) {
-			t.Errorf("Updates = count %d, checked_at %v; want %d, %v", got.Count, got.CheckedAt, aptSampleUpgradeCount, start)
-		}
-	})
+func testUpdatesNotCheckedBeforeAnyCheck(t *testing.T) {
+	c := newTestCollector()
+	got := c.Snapshot().Updates
+	expectUpdatesStatus(t, got, UpdatesCheckNotChecked)
+	if got.Count != 0 || len(got.Packages) != 0 || !got.CheckedAt.IsZero() {
+		t.Errorf("Updates after New = %+v, want the zero result", got)
+	}
+}
 
-	t.Run("AC1 failed after a success keeps the result", func(t *testing.T) {
-		env := newAptTestEnv(t)
-		clock := start
-		c := aptStatusCollector(t, env, env.stub(t, env.printFixture()), &clock)
-		c.slowTick(context.Background())
-		first := c.Snapshot().Updates
+func testUpdatesOKAfterSuccessfulCheck(t *testing.T) {
+	start := updatesTestStart()
+	env := newAptTestEnv(t)
+	clock := start
+	c := aptStatusCollector(t, env, env.stub(t, env.printFixture()), &clock)
 
-		env.stub(t, "exit 1")
-		clock = start.Add(time.Hour)
-		c.slowTick(context.Background())
+	c.slowTick(context.Background())
 
-		got := c.Snapshot().Updates
-		if got.CheckStatus != UpdatesCheckFailed {
-			t.Errorf("CheckStatus = %q, want %q", got.CheckStatus, UpdatesCheckFailed)
-		}
-		got.CheckStatus = first.CheckStatus
-		if !reflect.DeepEqual(got, first) {
-			t.Errorf("Updates after the failure = %+v, want the first result %+v", got, first)
-		}
-		if first.Count != aptSampleUpgradeCount || len(first.Packages) != aptSampleUpgradeCount {
-			t.Errorf("first result = count %d, %d packages, want %d", first.Count, len(first.Packages), aptSampleUpgradeCount)
-		}
-	})
+	got := c.Snapshot().Updates
+	expectUpdatesStatus(t, got, UpdatesCheckOK)
+	expectUpdatesCount(t, got, aptSampleUpgradeCount, start)
+}
 
-	t.Run("AC1 failed before any success keeps the zero values", func(t *testing.T) {
-		env := newAptTestEnv(t)
-		clock := start
-		c := aptStatusCollector(t, env, env.stub(t, "exit 1"), &clock)
+func testUpdatesFailedAfterSuccessKeepsResult(t *testing.T) {
+	start := updatesTestStart()
+	env := newAptTestEnv(t)
+	clock := start
+	c := aptStatusCollector(t, env, env.stub(t, env.printFixture()), &clock)
+	c.slowTick(context.Background())
+	first := c.Snapshot().Updates
 
-		c.slowTick(context.Background())
+	env.stub(t, "exit 1")
+	clock = start.Add(time.Hour)
+	c.slowTick(context.Background())
 
-		got := c.Snapshot().Updates
-		if got.CheckStatus != UpdatesCheckFailed {
-			t.Errorf("CheckStatus = %q, want %q", got.CheckStatus, UpdatesCheckFailed)
-		}
-		if got.Count != 0 || len(got.Packages) != 0 || !got.CheckedAt.IsZero() || got.Stale || got.CacheAgeSeconds != 0 {
-			t.Errorf("Updates = %+v, want the zero result with only the status set", got)
-		}
-	})
+	got := c.Snapshot().Updates
+	expectUpdatesStatus(t, got, UpdatesCheckFailed)
+	got.CheckStatus = first.CheckStatus
+	if !reflect.DeepEqual(got, first) {
+		t.Errorf("Updates after the failure = %+v, want the first result %+v", got, first)
+	}
+	if first.Count != aptSampleUpgradeCount || len(first.Packages) != aptSampleUpgradeCount {
+		t.Errorf("first result = count %d, %d packages, want %d", first.Count, len(first.Packages), aptSampleUpgradeCount)
+	}
+}
 
-	t.Run("AC1 ok again after a failure", func(t *testing.T) {
-		env := newAptTestEnv(t)
-		clock := start
-		c := aptStatusCollector(t, env, env.stub(t, "exit 1"), &clock)
-		c.slowTick(context.Background())
+func testUpdatesFailedBeforeSuccessKeepsZero(t *testing.T) {
+	env := newAptTestEnv(t)
+	clock := updatesTestStart()
+	c := aptStatusCollector(t, env, env.stub(t, "exit 1"), &clock)
 
-		env.stub(t, env.printFixture())
-		clock = start.Add(time.Hour)
-		c.slowTick(context.Background())
+	c.slowTick(context.Background())
 
-		got := c.Snapshot().Updates
-		if got.CheckStatus != UpdatesCheckOK {
-			t.Errorf("CheckStatus = %q, want %q", got.CheckStatus, UpdatesCheckOK)
-		}
-		if got.Count != aptSampleUpgradeCount || !got.CheckedAt.Equal(clock) {
-			t.Errorf("Updates = count %d, checked_at %v; want %d, %v", got.Count, got.CheckedAt, aptSampleUpgradeCount, clock)
-		}
-	})
+	got := c.Snapshot().Updates
+	expectUpdatesStatus(t, got, UpdatesCheckFailed)
+	if got.Count != 0 || len(got.Packages) != 0 || !got.CheckedAt.IsZero() || got.Stale || got.CacheAgeSeconds != 0 {
+		t.Errorf("Updates = %+v, want the zero result with only the status set", got)
+	}
+}
+
+func testUpdatesOKAgainAfterFailure(t *testing.T) {
+	start := updatesTestStart()
+	env := newAptTestEnv(t)
+	clock := start
+	c := aptStatusCollector(t, env, env.stub(t, "exit 1"), &clock)
+	c.slowTick(context.Background())
+
+	env.stub(t, env.printFixture())
+	clock = start.Add(time.Hour)
+	c.slowTick(context.Background())
+
+	got := c.Snapshot().Updates
+	expectUpdatesStatus(t, got, UpdatesCheckOK)
+	expectUpdatesCount(t, got, aptSampleUpgradeCount, clock)
 }
 
 // updatesStatusViolation names how u breaks the status/result pairing, or
@@ -1260,50 +1275,65 @@ func updatesStatusViolation(u Updates) string {
 // alternate success and failure while a goroutine reads snapshots; run under
 // -race.
 func TestCollector_SlowTick_UpdatesStatusMatchesResult(t *testing.T) {
-	t.Run("AC2 snapshot never mixes status and result", func(t *testing.T) {
-		env := newAptTestEnv(t)
-		clock := time.Date(2026, 11, 26, 12, 0, 0, 0, time.UTC)
-		c := aptStatusCollector(t, env, env.stub(t, "exit 1"), &clock)
+	t.Run("AC2 snapshot never mixes status and result", testUpdatesSnapshotNeverMixes)
+}
 
-		stop := make(chan struct{})
-		violations := make(chan string, 1)
-		var wg sync.WaitGroup
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for {
-				select {
-				case <-stop:
-					return
-				default:
-				}
-				if v := updatesStatusViolation(c.Snapshot().Updates); v != "" {
-					violations <- v
-					return
-				}
-			}
-		}()
+func testUpdatesSnapshotNeverMixes(t *testing.T) {
+	env := newAptTestEnv(t)
+	clock := updatesTestStart()
+	c := aptStatusCollector(t, env, env.stub(t, "exit 1"), &clock)
 
-		for i := 0; i < 8; i++ {
-			if i%2 == 0 {
-				env.stub(t, env.printFixture())
-			} else {
-				env.stub(t, "exit 1")
-			}
-			c.slowTick(context.Background())
-		}
-		close(stop)
-		wg.Wait()
+	stop := make(chan struct{})
+	violations := make(chan string, 1)
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		readUpdatesUntilStop(c, stop, violations)
+	}()
 
+	alternateSlowTicks(t, env, c, 8)
+	close(stop)
+	wg.Wait()
+
+	select {
+	case v := <-violations:
+		t.Fatalf("a read saw %s", v)
+	default:
+	}
+	if v := updatesStatusViolation(c.Snapshot().Updates); v != "" {
+		t.Fatalf("final snapshot has %s", v)
+	}
+}
+
+// readUpdatesUntilStop reads the updates snapshot of c until stop is closed,
+// sending the first violation it sees on violations.
+func readUpdatesUntilStop(c *Collector, stop <-chan struct{}, violations chan<- string) {
+	for {
 		select {
-		case v := <-violations:
-			t.Fatalf("a read saw %s", v)
+		case <-stop:
+			return
 		default:
 		}
 		if v := updatesStatusViolation(c.Snapshot().Updates); v != "" {
-			t.Fatalf("final snapshot has %s", v)
+			violations <- v
+			return
 		}
-	})
+	}
+}
+
+// alternateSlowTicks runs n slow ticks: the even ones with a successful apt
+// check, the odd ones with a failing one.
+func alternateSlowTicks(t *testing.T, env *aptTestEnv, c *Collector, n int) {
+	t.Helper()
+	for i := 0; i < n; i++ {
+		if i%2 == 0 {
+			env.stub(t, env.printFixture())
+		} else {
+			env.stub(t, "exit 1")
+		}
+		c.slowTick(context.Background())
+	}
 }
 
 // TestCollector_SlowTick_PiholeErrorKeepsPreviousState pins that a failed

@@ -23,3 +23,4 @@ are quoted in full.
 | 2026-11-27 17:50 | 6 Coverage skipped (G2) | Orchestrator | skipped — gate passes, no deferred tests, no uncovered lines (app.js outside Go coverage paths) |
 | 2026-11-27 17:50 | 6 Documentation | Orchestrator | written in 6 Implement (G2) |
 | 2026-11-27 17:50 | 7 Gate stamp | Orchestrator | FAIL on dbf8f4eacbce085de22900542d13136f394124ea (tier standard): Format check pass; Analyzer gate FAIL; Test with coverage pass; Coverage gate pass; decision-check.py pass; scope-check.py pass · figure-check.py 0 hit(s) |
+| 2026-11-27 17:51 | 7 Code check | Code Officer | Fixed 2 gocognit findings in collector_test.go by extracting helpers; assertions unchanged; analyzer PASS (haiku/medium · 99,365 tokens · 8 tool uses · 71 s · 12 in · 13,948 out · 421,413 cache read · 98,342 cache write · 11,741 weighted) |
