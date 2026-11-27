@@ -30,8 +30,7 @@ polls, and the repository has no JavaScript test framework, so the behavior can 
 ## Decision
 
 A page loaded hidden sends no `/api/v1/...` request until it is first shown; that first show runs the initial load
-once, instead of the refresh a later show does. A load that a hide interrupts runs to its end but starts no timer
-while the page is hidden. The rules are in [Dashboard](../areas/dashboard.md#data-sources-and-polling).
+once, instead of the refresh a later show does. The rules are in [Dashboard](../areas/dashboard.md#data-sources-and-polling).
 
 ## Consequences
 

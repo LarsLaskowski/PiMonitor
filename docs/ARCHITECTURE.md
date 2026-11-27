@@ -442,7 +442,7 @@ bug that produced issue #19 (see the test's own doc comment). Any new dashboard 
 touching `app.js` is bound by this same rule, enforced automatically rather than by review
 alone.
 
-The dashboard is a client of the API like any other: it reads `/api/v1/config` on page load and again only after
+The dashboard is a client of the API like any other: it reads `/api/v1/config` on page load (at its first show when the page loads hidden) and again only after
 an API key is accepted, polls `/api/v1/metrics` and `/api/v1/alerts` every poll interval that endpoint reports, and
 polls `/api/v1/metrics/history` every poll interval or 60 s, whichever is longer — the exact schedule is in
 [Dashboard](areas/dashboard.md#data-sources-and-polling). It colors metric cards using the same warn/crit cutoffs
