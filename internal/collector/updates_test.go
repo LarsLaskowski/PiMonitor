@@ -784,6 +784,11 @@ func newAptTestEnv(t *testing.T) *aptTestEnv {
 	}
 	e.statusPath = writeTempFile(t, dir, "status", readAptFixture(t, "trixie-arm64-status.txt"))
 	e.dumpavailPath = writeTempFile(t, dir, "dumpavail.txt", readAptFixture(t, "trixie-arm64-dumpavail.txt"))
+	// A real lists directory has a partial/ subdirectory; it must exist before
+	// setListTimes, which fixes the directory's mtime.
+	if err := os.Mkdir(filepath.Join(e.listsDir, "partial"), 0o755); err != nil {
+		t.Fatalf("create partial dir: %v", err)
+	}
 	e.olderList = writeTempFile(t, e.listsDir, "a_Packages", strings.Repeat("a", 32))
 	e.newerList = writeTempFile(t, e.listsDir, "b_Packages", strings.Repeat("b", 32))
 	e.setListTimes(t, time.Now().Add(-time.Hour), time.Now().Add(-30*time.Minute), time.Now().Add(-2*time.Hour))
