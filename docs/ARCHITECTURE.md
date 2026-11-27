@@ -310,6 +310,9 @@ snapshot field name/accessor pairs that `routeTable` is built by appending, so e
 gets its route, its middleware chain and its own counter bucket from a single entry —
 and, because the accessor returns the snapshot field itself, its response can never
 become a second representation of a metric that drifts from `GET /api/v1/metrics`.
+`register` also installs the bare path of each route, which answers `405` for any method
+other than `GET` and `HEAD` through the route's own layer (`apiRoute` or none), so a wrong
+method is not left to the dashboard's `404` ([0030](decisions/0030-wrong-method-answers-405-in-v1.md)).
 Bucketing deliberately ignores the predicate, so the response shape does not vary with configuration and a request
 to a disabled route is still visible under its own key — the bucket comes from the request path, not from which
 handler (or the mux's `404` fallback) served the request.
