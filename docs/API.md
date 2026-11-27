@@ -4,9 +4,12 @@ PiMonitor exposes a small, versioned REST API under `/api/v1/...` intended
 both for its own web dashboard and for third-party consumers (e.g. home
 automation systems such as openHAB, Home Assistant, or Node-RED).
 
-Breaking changes to an existing version's response shape will not happen
-in place — a new `/api/v2/...` path would be introduced instead, so
-existing integrations against `/api/v1/...` keep working.
+A `/api/v1/...` response may gain keys: clients must ignore keys they do not
+know. Removing, renaming or retyping a key, or changing its meaning or when it
+is present, will not happen in place — a new `/api/v2/...` path would be
+introduced instead, so existing integrations against `/api/v1/...` keep
+working. The rule is stated in
+[HTTP API](areas/http-api.md#versioning-and-stability).
 
 ## Authentication
 
@@ -92,6 +95,12 @@ polling of `GET /api/v1/metrics/history`, against the same PiMonitor instance.
 
 Any `/api/v1/...` JSON endpoint answers `500 Internal Server Error` with the plain-text body `internal error` when its
 response cannot be encoded. Clients treat it as a server error.
+
+Every method other than `GET` and `HEAD` on a registered route — every `/api/v1/...` route, `/metrics` when
+`prometheus_enabled` is set, and `/healthz` — answers `405 Method Not Allowed` with `Allow: GET, HEAD` and the
+plain-text body `method not allowed`. On a route behind `apiRoute` the same layers apply as for `GET`, so a missing or
+wrong API key gets `401` and a full in-flight limit gets `503` before the `405`. A path that is not a registered route,
+or a route switched off by its option, keeps answering `404`.
 
 ## Endpoints
 

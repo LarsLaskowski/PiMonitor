@@ -55,8 +55,8 @@ var routeTable = append([]route{
 	// /healthz is intentionally not an apiRoute: it must stay answerable
 	// while the API is shedding load, so a monitoring system can still tell
 	// the process is alive. The static dashboard shell is left unwrapped
-	// for the same reason — it has to load to render its "server busy"
-	// state.
+	// for the same reason: the page must still load while the API sheds
+	// load.
 	{method: http.MethodGet, path: "/healthz", handler: (*Server).handleHealthz},
 	{method: http.MethodGet, path: "/api/v1/metrics", handler: (*Server).handleMetrics, api: true},
 	{method: http.MethodGet, path: "/api/v1/metrics/history", handler: (*Server).handleHistory, api: true},
@@ -161,12 +161,25 @@ var routePaths = func() map[string]struct{} {
 	return paths
 }()
 
+// allowGetHead is the Allow header of a 405: every route answers GET, and a
+// GET pattern serves HEAD as well.
+const allowGetHead = "GET, HEAD"
+
+// writeMethodNotAllowed answers a request whose method no route accepts with
+// a fixed 405. It never reads the request body.
+func writeMethodNotAllowed(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Allow", allowGetHead)
+	http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+}
+
 // pattern renders the route as an http.ServeMux pattern.
 func (r route) pattern() string { return r.method + " " + r.path }
 
 // register installs the route on mux, wrapping it in the apiRoute chain when
 // the route asks for it. Routes whose enabled predicate rejects cfg are
-// skipped, so an unconfigured endpoint 404s rather than being served.
+// skipped, so an unconfigured endpoint 404s rather than being served. The
+// bare path is registered too, so any method other than GET and HEAD gets a
+// 405 through the route's own layer instead of the dashboard's 404.
 func (r route) register(mux *http.ServeMux, s *Server) {
 	if r.enabled != nil && !r.enabled(s.cfg) {
 		return
@@ -174,9 +187,12 @@ func (r route) register(mux *http.ServeMux, s *Server) {
 	h := http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		r.handler(s, w, req)
 	})
+	notAllowed := http.HandlerFunc(writeMethodNotAllowed)
 	if r.api {
 		mux.Handle(r.pattern(), s.apiRoute(h))
+		mux.Handle(r.path, s.apiRoute(notAllowed))
 		return
 	}
 	mux.Handle(r.pattern(), h)
+	mux.Handle(r.path, notAllowed)
 }

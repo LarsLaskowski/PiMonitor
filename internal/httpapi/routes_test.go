@@ -1,7 +1,11 @@
 package httpapi
 
 import (
+	"bytes"
+	"compress/gzip"
 	"encoding/json"
+	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -9,6 +13,7 @@ import (
 	"time"
 
 	"github.com/larslaskowski/pimonitor/internal/collector"
+	"github.com/larslaskowski/pimonitor/internal/web"
 )
 
 // TestRouteTable_PathsAreUnique guards the assumption both routeBucket and
@@ -274,5 +279,311 @@ func TestMetricsSubResources_CountedUnderOwnStatsBucket(t *testing.T) {
 	}
 	if got.ByRoute[bucketOtherAPI] != 0 {
 		t.Errorf("ByRoute[%s] = %d, want 0 (sub-resource requests must not fall into the shared bucket)", bucketOtherAPI, got.ByRoute[bucketOtherAPI])
+	}
+}
+
+// newTestServerWithDashboard is newTestServer with production's dashboard
+// handler as the static handler. With a nil handler the mux answers 405 for a
+// wrong method itself, so the wrong-method tests would pass on code that never
+// registers the bare path; the real handler answers every method on "/" the way
+// production does.
+func newTestServerWithDashboard(t *testing.T, cfg Config) *Server {
+	t.Helper()
+	dash, err := web.Handler()
+	if err != nil {
+		t.Fatalf("web.Handler() error = %v", err)
+	}
+	_, fm := newTestServer(cfg)
+	return New(fm, cfg, dash, nil)
+}
+
+// allRoutesConfig switches on every optional route of routeTable.
+func allRoutesConfig() Config {
+	return Config{PrometheusEnabled: true, ProcessesEnabled: true, OpenHABEnabled: true}
+}
+
+func serveMethod(s *Server, method, target string, hdr map[string]string) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(method, target, nil)
+	for k, v := range hdr {
+		req.Header.Set(k, v)
+	}
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	return rec
+}
+
+func assertMethodNotAllowed(t *testing.T, rec *httptest.ResponseRecorder, what string) {
+	t.Helper()
+	if rec.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("%s status = %d, want 405", what, rec.Code)
+	}
+	if got := rec.Header().Get("Allow"); got != "GET, HEAD" {
+		t.Errorf("%s Allow = %q, want %q", what, got, "GET, HEAD")
+	}
+	if got := rec.Body.String(); got != "method not allowed\n" {
+		t.Errorf("%s body = %q, want %q", what, got, "method not allowed\n")
+	}
+}
+
+func assertSecurityHeaders(t *testing.T, rec *httptest.ResponseRecorder, what string) {
+	t.Helper()
+	for _, h := range []string{"Content-Security-Policy", "X-Content-Type-Options", "X-Frame-Options", "Referrer-Policy"} {
+		if rec.Header().Get(h) == "" {
+			t.Errorf("%s: header %s is missing", what, h)
+		}
+	}
+}
+
+// TestRouteTable_WrongMethodAnswers405 pins AC2: every registered route
+// answers any method but GET/HEAD with 405, Allow and the fixed body.
+func TestRouteTable_WrongMethodAnswers405(t *testing.T) {
+	s := newTestServerWithDashboard(t, allRoutesConfig())
+	methods := []string{http.MethodPost, http.MethodPut, http.MethodDelete, http.MethodPatch, http.MethodOptions, "get"}
+	for _, rt := range routeTable {
+		for _, m := range methods {
+			t.Run("AC2 "+m+" "+rt.path, func(t *testing.T) {
+				rec := serveMethod(s, m, rt.path, nil)
+				assertMethodNotAllowed(t, rec, m+" "+rt.path)
+			})
+		}
+	}
+	t.Run("AC2 E3 POST with a bad query", func(t *testing.T) {
+		rec := serveMethod(s, http.MethodPost, "/api/v1/metrics/history?since=bad", nil)
+		assertMethodNotAllowed(t, rec, "POST history?since=bad")
+	})
+}
+
+// countingBody records every Read call.
+type countingBody struct{ reads int }
+
+func (b *countingBody) Read([]byte) (int, error) {
+	b.reads++
+	return 0, io.EOF
+}
+
+// TestRouteTable_WrongMethodReadsNoBody pins N1: no handler or middleware
+// reads the request body to answer a 405.
+func TestRouteTable_WrongMethodReadsNoBody(t *testing.T) {
+	s := newTestServerWithDashboard(t, allRoutesConfig())
+	for _, rt := range routeTable {
+		t.Run("AC2 N1 "+rt.path, func(t *testing.T) {
+			body := &countingBody{}
+			req := httptest.NewRequest(http.MethodPost, rt.path, body)
+			rec := httptest.NewRecorder()
+			s.Handler().ServeHTTP(rec, req)
+			assertMethodNotAllowed(t, rec, "POST "+rt.path)
+			if body.reads != 0 {
+				t.Errorf("POST %s read the body %d times, want 0", rt.path, body.reads)
+			}
+		})
+	}
+}
+
+const wrongMethodKey = "s3cret"
+
+func keyedConfig() Config {
+	cfg := allRoutesConfig()
+	cfg.APIKey = wrongMethodKey
+	return cfg
+}
+
+// TestWrongMethod_GoesThroughAPIChain pins AC4: a wrong method on an API
+// route passes the key check, no-store, gzip and the in-flight limit.
+func TestWrongMethod_GoesThroughAPIChain(t *testing.T) {
+	t.Run("AC4 missing key answers 401", checkWrongMethodMissingKey)
+	t.Run("AC4 valid key answers 405 with headers /api/v1/metrics", func(t *testing.T) {
+		checkWrongMethodValidKey(t, "/api/v1/metrics")
+	})
+	t.Run("AC4 valid key answers 405 with headers /metrics", func(t *testing.T) {
+		checkWrongMethodValidKey(t, "/metrics")
+	})
+	t.Run("AC4 gzip is applied on request", checkWrongMethodGzip)
+	t.Run("AC4 in-flight limit answers 503", checkWrongMethodInFlight)
+}
+
+func checkWrongMethodMissingKey(t *testing.T) {
+	s := newTestServerWithDashboard(t, keyedConfig())
+	rec := serveMethod(s, http.MethodPost, "/api/v1/metrics", nil)
+	if rec.Code != http.StatusUnauthorized || rec.Body.String() != "unauthorized\n" {
+		t.Fatalf("POST without key = %d %q, want 401 %q", rec.Code, rec.Body.String(), "unauthorized\n")
+	}
+	if rec := serveMethod(s, http.MethodPost, "/metrics", nil); rec.Code != http.StatusUnauthorized {
+		t.Fatalf("POST /metrics without key = %d, want 401", rec.Code)
+	}
+}
+
+func checkWrongMethodValidKey(t *testing.T, path string) {
+	s := newTestServerWithDashboard(t, keyedConfig())
+	rec := serveMethod(s, http.MethodPost, path, map[string]string{"X-Api-Key": wrongMethodKey})
+	assertMethodNotAllowed(t, rec, "POST "+path+" with key")
+	if got := rec.Header().Get("Cache-Control"); got != "no-store" {
+		t.Errorf("Cache-Control = %q, want no-store", got)
+	}
+	vary := strings.Join(rec.Header().Values("Vary"), ",")
+	for _, want := range []string{"Authorization", "X-Api-Key"} {
+		if !strings.Contains(vary, want) {
+			t.Errorf("Vary = %q, want it to name %s", vary, want)
+		}
+	}
+	assertSecurityHeaders(t, rec, "POST "+path)
+}
+
+func checkWrongMethodGzip(t *testing.T) {
+	s := newTestServerWithDashboard(t, allRoutesConfig())
+	rec := serveMethod(s, http.MethodPost, "/api/v1/metrics", map[string]string{"Accept-Encoding": "gzip"})
+	if rec.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("status = %d, want 405", rec.Code)
+	}
+	if got := rec.Header().Get("Content-Encoding"); got != "gzip" {
+		t.Fatalf("Content-Encoding = %q, want gzip", got)
+	}
+	if got := gunzipBody(t, rec); got != "method not allowed\n" {
+		t.Errorf("decoded body = %q, want %q", got, "method not allowed\n")
+	}
+}
+
+func checkWrongMethodInFlight(t *testing.T) {
+	s := newTestServerWithDashboard(t, allRoutesConfig())
+	for i := 0; i < cap(s.inFlight); i++ {
+		s.inFlight <- struct{}{}
+	}
+	rec := serveMethod(s, http.MethodPost, "/api/v1/metrics", nil)
+	if rec.Code != http.StatusServiceUnavailable || rec.Body.String() != "server busy\n" {
+		t.Fatalf("POST over the limit = %d %q, want 503 %q", rec.Code, rec.Body.String(), "server busy\n")
+	}
+}
+
+func gunzipBody(t *testing.T, rec *httptest.ResponseRecorder) string {
+	t.Helper()
+	zr, err := gzip.NewReader(rec.Body)
+	if err != nil {
+		t.Fatalf("gzip.NewReader error = %v", err)
+	}
+	data, err := io.ReadAll(zr)
+	if err != nil {
+		t.Fatalf("reading gzip body error = %v", err)
+	}
+	return string(data)
+}
+
+// TestWrongMethod_Healthz pins AC4 for /healthz: its own middleware only.
+func TestWrongMethod_Healthz_AC4(t *testing.T) {
+	cfg := allRoutesConfig()
+	cfg.APIKey = "s3cret"
+	s := newTestServerWithDashboard(t, cfg)
+	rec := serveMethod(s, http.MethodPost, "/healthz", nil)
+	assertMethodNotAllowed(t, rec, "POST /healthz")
+	if got := rec.Header().Get("Cache-Control"); got != "" {
+		t.Errorf("Cache-Control = %q, want none on /healthz", got)
+	}
+	assertSecurityHeaders(t, rec, "POST /healthz")
+}
+
+// TestWrongMethod_CountedInServerStats pins AC4: the 405 is counted under its
+// route's bucket and in the global 4xx class (the two are separate counters).
+func TestWrongMethod_CountedInServerStats_AC4(t *testing.T) {
+	s := newTestServerWithDashboard(t, Config{})
+	before := s.stats.snapshot()
+	rec := serveMethod(s, http.MethodPost, "/api/v1/metrics", nil)
+	if rec.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("status = %d, want 405", rec.Code)
+	}
+	after := s.stats.snapshot()
+	if got, want := after.ByRoute["/api/v1/metrics"], before.ByRoute["/api/v1/metrics"]+1; got != want {
+		t.Errorf("AC4 ByRoute[/api/v1/metrics] = %d, want %d", got, want)
+	}
+	if got, want := after.ByStatusClass["4xx"], before.ByStatusClass["4xx"]+1; got != want {
+		t.Errorf("AC4 ByStatusClass[4xx] = %d, want %d", got, want)
+	}
+}
+
+// TestRouteTable_EveryRouteIsGET pins AC2's premise: every table entry is a
+// GET route, so "Allow: GET, HEAD" is true for all of them.
+func TestRouteTable_EveryRouteIsGET(t *testing.T) {
+	for _, rt := range routeTable {
+		t.Run("AC2 "+rt.path, func(t *testing.T) {
+			if rt.method != http.MethodGet {
+				t.Fatalf("route %s method = %q, want GET", rt.path, rt.method)
+			}
+		})
+	}
+}
+
+// TestRouteTable_GetAndHeadStillServed pins AC3: GET and HEAD keep their
+// handlers next to the new bare-path 405 handler.
+func TestRouteTable_GetAndHeadStillServed(t *testing.T) {
+	s := newTestServerWithDashboard(t, allRoutesConfig())
+	for _, rt := range routeTable {
+		for _, m := range []string{http.MethodGet, http.MethodHead} {
+			t.Run("AC3 "+m+" "+rt.path, func(t *testing.T) {
+				rec := serveMethod(s, m, rt.path, nil)
+				if rec.Code != http.StatusOK {
+					t.Fatalf("%s %s = %d, want 200", m, rt.path, rec.Code)
+				}
+			})
+		}
+	}
+}
+
+// TestRouteTable_UnroutedPathsStill404 pins AC3: paths that are no route
+// keep the dashboard's 404 for every method, and so do switched-off routes
+// for POST (a separate config: all optional routes off).
+func TestRouteTable_UnroutedPathsStill404(t *testing.T) {
+	s := newTestServerWithDashboard(t, allRoutesConfig())
+	for _, path := range []string{"/nope", "/api/v1/metrics/", "/api/v1/metrics/cpu/overall", "/api/v1/nope"} {
+		for _, m := range []string{http.MethodGet, http.MethodPost} {
+			t.Run("AC3 "+m+" "+path, func(t *testing.T) {
+				if rec := serveMethod(s, m, path, nil); rec.Code != http.StatusNotFound {
+					t.Fatalf("%s %s = %d, want 404", m, path, rec.Code)
+				}
+			})
+		}
+	}
+	off := newTestServerWithDashboard(t, Config{})
+	for _, rt := range routeTable {
+		if rt.enabled == nil {
+			continue
+		}
+		t.Run("AC3 switched off POST "+rt.path, func(t *testing.T) {
+			if rec := serveMethod(off, http.MethodPost, rt.path, nil); rec.Code != http.StatusNotFound {
+				t.Fatalf("POST %s while disabled = %d, want 404", rt.path, rec.Code)
+			}
+		})
+	}
+}
+
+// TestRouteTable_DashboardMethodsUnchanged pins AC3: the dashboard handler
+// still answers GET, HEAD and POST with 200 on "/" and "/app.js".
+func TestRouteTable_DashboardMethodsUnchanged(t *testing.T) {
+	s := newTestServerWithDashboard(t, allRoutesConfig())
+	for _, path := range []string{"/", "/app.js"} {
+		for _, m := range []string{http.MethodGet, http.MethodHead, http.MethodPost} {
+			t.Run("AC3 "+m+" "+path, func(t *testing.T) {
+				if rec := serveMethod(s, m, path, nil); rec.Code != http.StatusOK {
+					t.Fatalf("%s %s = %d, want 200", m, path, rec.Code)
+				}
+			})
+		}
+	}
+}
+
+// TestWrongMethod_AccessLogged pins spec E4: with access_log_enabled a 405 is
+// logged like any request, with method, path and status.
+func TestWrongMethod_AccessLogged_AC4(t *testing.T) {
+	var buf bytes.Buffer
+	log := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	dash, err := web.Handler()
+	if err != nil {
+		t.Fatalf("web.Handler() error = %v", err)
+	}
+	_, fm := newTestServer(Config{})
+	s := New(fm, Config{AccessLogEnabled: true}, dash, log)
+	rec := serveMethod(s, http.MethodPost, "/api/v1/metrics", nil)
+	assertMethodNotAllowed(t, rec, "POST /api/v1/metrics")
+	out := buf.String()
+	for _, want := range []string{"http request", "method=POST", "path=/api/v1/metrics", "status=405"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("E4 log %q does not contain %q", out, want)
+		}
 	}
 }

@@ -57,6 +57,10 @@ here.
 
 - Every route answers `GET` and `HEAD`. Paths are matched exactly; a sub-path or a trailing slash that is not in
   the table (`/api/v1/metrics/cpu/overall`, `/api/v1/metrics/`) is not an API route.
+- Every other method on a registered route gets `405` with `Allow: GET, HEAD` and the plain-text body
+  `method not allowed`, through the route's own layer: on an API-chain route after the key check and the concurrency
+  limit, on `/healthz` without either. The request body is never read
+  ([0030](../decisions/0030-wrong-method-answers-405-in-v1.md)).
 - A route whose option is off is not registered at all: a request to it gets `404`, not an empty response.
 - Any path that is not an API route falls through to the dashboard asset handler, which answers `404` for a path
   that is not an asset ([Dashboard](dashboard.md), *Asset serving*). Such a request is not API-key gated.
@@ -205,6 +209,7 @@ under it by design.
 | `since` that is not an RFC 3339 timestamp | `400` | fixed message naming the format; never a full window |
 | A JSON response could not be encoded (any `/api/v1/...` JSON endpoint) | `500` | `internal error`; the failure is logged at error level |
 | No snapshot yet, or one older than the bound | `503` on `/healthz` | fixed message naming the option |
+| A method other than `GET`/`HEAD` on a registered route | `405` | `method not allowed`, `Allow: GET, HEAD`; on an API-chain route only after `401`/`503` |
 | Unknown path, or a route switched off by its option | `404` | from the dashboard asset handler |
 
 - If the listen address cannot be bound, or the TLS certificate or key cannot be loaded, the process exits with a
@@ -216,6 +221,7 @@ under it by design.
 
 ## Related decisions
 
+- [0030: A wrong method on a registered route answers 405 in v1](../decisions/0030-wrong-method-answers-405-in-v1.md)
 - [0022: A v1 response that cannot be encoded answers 500 in v1](../decisions/0022-unencodable-v1-response-answers-500.md)
 - [0025: A new metric in the v1 alert lists is no shape change](../decisions/0025-new-metric-in-v1-alert-lists-is-no-shape-change.md)
 - [0017: openHAB Thing counts are exported to Prometheus as the fixed set of seven statuses](../decisions/0017-openhab-thing-statuses-exported-as-fixed-set.md)
@@ -237,9 +243,4 @@ under it by design.
 
 ## Open questions
 
-- A request with a method other than `GET`/`HEAD` to an API path gets `404` from the dashboard asset handler (which
-  accepts every method) rather than `405 Method Not Allowed`; without the asset handler it would be `405`. Is the
-  `404` intended?
-- The route table's comment says the dashboard shell stays outside the concurrency limit so that it can "render its
-  'server busy' state", but the dashboard has no such state: a `503` shows the same "Connection error" as any other
-  failure ([Dashboard](dashboard.md)). Should the dashboard handle `503` distinctly?
+None.
