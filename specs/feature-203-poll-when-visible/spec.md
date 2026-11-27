@@ -1,7 +1,7 @@
 # Spec: Poll only when visible and guard the fallback values with a test
 
 Source: Issue #203
-Status: Draft
+Status: Approved by Lead
 
 ## Problem
 
