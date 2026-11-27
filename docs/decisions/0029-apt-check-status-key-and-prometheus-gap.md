@@ -1,6 +1,6 @@
 # 0029: The apt check's state is a v1 key, and `/metrics` leaves the count out until a check succeeds
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-27
 - **Area:** Metrics
 - **Source:** Issue #281

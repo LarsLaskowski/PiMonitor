@@ -90,5 +90,5 @@ once in the [area document](../areas/README.md) of the record's area, and the re
 | [0026](0026-openhab-things-alert-is-one-count.md) | The openHAB Things alert is one count with a capped list | Accepted | 2026-11-18 |
 | [0027](0027-filesystem-identified-by-device-id.md) | A filesystem is identified by the device ID of its mountpoint and reported once | Accepted | 2026-11-25 |
 | [0028](0028-apt-updates-from-dumpavail-and-dpkg-status.md) | Available apt updates come from `apt-cache dumpavail` and the dpkg status file | Accepted | 2026-11-26 |
-| [0029](0029-apt-check-status-key-and-prometheus-gap.md) | The apt check's state is a v1 key, and `/metrics` leaves the count out until a check succeeds | Proposed | 2026-11-27 |
+| [0029](0029-apt-check-status-key-and-prometheus-gap.md) | The apt check's state is a v1 key, and `/metrics` leaves the count out until a check succeeds | Accepted | 2026-11-27 |
 <!-- project:end index -->
