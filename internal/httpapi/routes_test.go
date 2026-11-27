@@ -1,7 +1,9 @@
 package httpapi
 
 import (
+	"compress/gzip"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -9,6 +11,7 @@ import (
 	"time"
 
 	"github.com/larslaskowski/pimonitor/internal/collector"
+	"github.com/larslaskowski/pimonitor/internal/web"
 )
 
 // TestRouteTable_PathsAreUnique guards the assumption both routeBucket and
@@ -274,5 +277,207 @@ func TestMetricsSubResources_CountedUnderOwnStatsBucket(t *testing.T) {
 	}
 	if got.ByRoute[bucketOtherAPI] != 0 {
 		t.Errorf("ByRoute[%s] = %d, want 0 (sub-resource requests must not fall into the shared bucket)", bucketOtherAPI, got.ByRoute[bucketOtherAPI])
+	}
+}
+
+// newTestServerWithDashboard is newTestServer with production's dashboard
+// handler as the static handler. With a nil handler the mux answers 405 for a
+// wrong method itself, so the wrong-method tests would pass on code that never
+// registers the bare path; the real handler answers every method on "/" the way
+// production does.
+func newTestServerWithDashboard(t *testing.T, cfg Config) *Server {
+	t.Helper()
+	dash, err := web.Handler()
+	if err != nil {
+		t.Fatalf("web.Handler() error = %v", err)
+	}
+	_, fm := newTestServer(cfg)
+	return New(fm, cfg, dash, nil)
+}
+
+// allRoutesConfig switches on every optional route of routeTable.
+func allRoutesConfig() Config {
+	return Config{PrometheusEnabled: true, ProcessesEnabled: true, OpenHABEnabled: true}
+}
+
+func serveMethod(s *Server, method, target string, hdr map[string]string) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(method, target, nil)
+	for k, v := range hdr {
+		req.Header.Set(k, v)
+	}
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	return rec
+}
+
+func assertMethodNotAllowed(t *testing.T, rec *httptest.ResponseRecorder, what string) {
+	t.Helper()
+	if rec.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("%s status = %d, want 405", what, rec.Code)
+	}
+	if got := rec.Header().Get("Allow"); got != "GET, HEAD" {
+		t.Errorf("%s Allow = %q, want %q", what, got, "GET, HEAD")
+	}
+	if got := rec.Body.String(); got != "method not allowed\n" {
+		t.Errorf("%s body = %q, want %q", what, got, "method not allowed\n")
+	}
+}
+
+func assertSecurityHeaders(t *testing.T, rec *httptest.ResponseRecorder, what string) {
+	t.Helper()
+	for _, h := range []string{"Content-Security-Policy", "X-Content-Type-Options", "X-Frame-Options", "Referrer-Policy"} {
+		if rec.Header().Get(h) == "" {
+			t.Errorf("%s: header %s is missing", what, h)
+		}
+	}
+}
+
+// TestRouteTable_WrongMethodAnswers405 pins AC2: every registered route
+// answers any method but GET/HEAD with 405, Allow and the fixed body.
+func TestRouteTable_WrongMethodAnswers405(t *testing.T) {
+	s := newTestServerWithDashboard(t, allRoutesConfig())
+	methods := []string{http.MethodPost, http.MethodPut, http.MethodDelete, http.MethodPatch, http.MethodOptions, "get"}
+	for _, rt := range routeTable {
+		for _, m := range methods {
+			t.Run("AC2 "+m+" "+rt.path, func(t *testing.T) {
+				rec := serveMethod(s, m, rt.path, nil)
+				assertMethodNotAllowed(t, rec, m+" "+rt.path)
+			})
+		}
+	}
+	t.Run("AC2 E3 POST with a bad query", func(t *testing.T) {
+		rec := serveMethod(s, http.MethodPost, "/api/v1/metrics/history?since=bad", nil)
+		assertMethodNotAllowed(t, rec, "POST history?since=bad")
+	})
+}
+
+// countingBody records every Read call.
+type countingBody struct{ reads int }
+
+func (b *countingBody) Read([]byte) (int, error) {
+	b.reads++
+	return 0, io.EOF
+}
+
+// TestRouteTable_WrongMethodReadsNoBody pins N1: no handler or middleware
+// reads the request body to answer a 405.
+func TestRouteTable_WrongMethodReadsNoBody(t *testing.T) {
+	s := newTestServerWithDashboard(t, allRoutesConfig())
+	for _, rt := range routeTable {
+		t.Run("AC2 N1 "+rt.path, func(t *testing.T) {
+			body := &countingBody{}
+			req := httptest.NewRequest(http.MethodPost, rt.path, body)
+			rec := httptest.NewRecorder()
+			s.Handler().ServeHTTP(rec, req)
+			assertMethodNotAllowed(t, rec, "POST "+rt.path)
+			if body.reads != 0 {
+				t.Errorf("POST %s read the body %d times, want 0", rt.path, body.reads)
+			}
+		})
+	}
+}
+
+const wrongMethodKey = "s3cret"
+
+func keyedConfig() Config {
+	cfg := allRoutesConfig()
+	cfg.APIKey = wrongMethodKey
+	return cfg
+}
+
+// TestWrongMethod_APIChain_Key pins AC4: the key check comes before the 405.
+func TestWrongMethod_APIChain_Key(t *testing.T) {
+	s := newTestServerWithDashboard(t, keyedConfig())
+	rec := serveMethod(s, http.MethodPost, "/api/v1/metrics", nil)
+	if rec.Code != http.StatusUnauthorized || rec.Body.String() != "unauthorized\n" {
+		t.Fatalf("AC4 POST without key = %d %q, want 401 %q", rec.Code, rec.Body.String(), "unauthorized\n")
+	}
+	if rec := serveMethod(s, http.MethodPost, "/metrics", nil); rec.Code != http.StatusUnauthorized {
+		t.Fatalf("AC4 POST /metrics without key = %d, want 401", rec.Code)
+	}
+}
+
+// TestWrongMethod_APIChain_Headers pins AC4: no-store, Vary and security headers.
+func TestWrongMethod_APIChain_Headers(t *testing.T) {
+	s := newTestServerWithDashboard(t, keyedConfig())
+	for _, path := range []string{"/api/v1/metrics", "/metrics"} {
+		rec := serveMethod(s, http.MethodPost, path, map[string]string{"X-Api-Key": wrongMethodKey})
+		assertMethodNotAllowed(t, rec, "AC4 POST "+path+" with key")
+		if got := rec.Header().Get("Cache-Control"); got != "no-store" {
+			t.Errorf("AC4 %s Cache-Control = %q, want no-store", path, got)
+		}
+		vary := strings.Join(rec.Header().Values("Vary"), ",")
+		for _, want := range []string{"Authorization", "X-Api-Key"} {
+			if !strings.Contains(vary, want) {
+				t.Errorf("AC4 %s Vary = %q, want it to name %s", path, vary, want)
+			}
+		}
+		assertSecurityHeaders(t, rec, "AC4 POST "+path)
+	}
+}
+
+// TestWrongMethod_APIChain_Gzip pins AC4: the 405 is gzip-compressed on request.
+func TestWrongMethod_APIChain_Gzip(t *testing.T) {
+	s := newTestServerWithDashboard(t, allRoutesConfig())
+	rec := serveMethod(s, http.MethodPost, "/api/v1/metrics", map[string]string{"Accept-Encoding": "gzip"})
+	if rec.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("AC4 status = %d, want 405", rec.Code)
+	}
+	if got := rec.Header().Get("Content-Encoding"); got != "gzip" {
+		t.Fatalf("AC4 Content-Encoding = %q, want gzip", got)
+	}
+	zr, err := gzip.NewReader(rec.Body)
+	if err != nil {
+		t.Fatalf("gzip.NewReader error = %v", err)
+	}
+	data, err := io.ReadAll(zr)
+	if err != nil {
+		t.Fatalf("reading gzip body error = %v", err)
+	}
+	if string(data) != "method not allowed\n" {
+		t.Errorf("AC4 decoded body = %q, want %q", data, "method not allowed\n")
+	}
+}
+
+// TestWrongMethod_APIChain_InFlightLimit pins AC4/E2: beyond the limit it is 503.
+func TestWrongMethod_APIChain_InFlightLimit(t *testing.T) {
+	s := newTestServerWithDashboard(t, allRoutesConfig())
+	for i := 0; i < cap(s.inFlight); i++ {
+		s.inFlight <- struct{}{}
+	}
+	rec := serveMethod(s, http.MethodPost, "/api/v1/metrics", nil)
+	if rec.Code != http.StatusServiceUnavailable || rec.Body.String() != "server busy\n" {
+		t.Fatalf("AC4 POST over the limit = %d %q, want 503 %q", rec.Code, rec.Body.String(), "server busy\n")
+	}
+}
+
+// TestWrongMethod_Healthz pins AC4 for /healthz: its own middleware only.
+func TestWrongMethod_Healthz(t *testing.T) {
+	cfg := allRoutesConfig()
+	cfg.APIKey = "s3cret"
+	s := newTestServerWithDashboard(t, cfg)
+	rec := serveMethod(s, http.MethodPost, "/healthz", nil)
+	assertMethodNotAllowed(t, rec, "POST /healthz")
+	if got := rec.Header().Get("Cache-Control"); got != "" {
+		t.Errorf("Cache-Control = %q, want none on /healthz", got)
+	}
+	assertSecurityHeaders(t, rec, "POST /healthz")
+}
+
+// TestWrongMethod_CountedInServerStats pins AC4: the 405 is counted under its
+// route's bucket and in the global 4xx class (the two are separate counters).
+func TestWrongMethod_CountedInServerStats(t *testing.T) {
+	s := newTestServerWithDashboard(t, Config{})
+	before := s.stats.snapshot()
+	rec := serveMethod(s, http.MethodPost, "/api/v1/metrics", nil)
+	if rec.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("status = %d, want 405", rec.Code)
+	}
+	after := s.stats.snapshot()
+	if got, want := after.ByRoute["/api/v1/metrics"], before.ByRoute["/api/v1/metrics"]+1; got != want {
+		t.Errorf("AC4 ByRoute[/api/v1/metrics] = %d, want %d", got, want)
+	}
+	if got, want := after.ByStatusClass["4xx"], before.ByStatusClass["4xx"]+1; got != want {
+		t.Errorf("AC4 ByStatusClass[4xx] = %d, want %d", got, want)
 	}
 }
