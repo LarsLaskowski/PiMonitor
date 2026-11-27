@@ -19,3 +19,4 @@ are quoted in full.
 | 2026-11-27 20:20 | 6 Coverage (G1) | Tester | RESULT: DONE — row 5 test documentation written (UNIT_TESTS.md); gate passes (0 coverable changed lines, overall 94.0%); no tests added. (sonnet/medium · 76,802 tokens · 6 tool uses · 15 s · 12 in · 1,712 out · 424,950 cache read · 21,193 cache write · 77,558 weighted) |
 | 2026-11-27 20:20 | 6 Documentation | Orchestrator | written in 6 Implement (G1); full suite re-run green |
 | 2026-11-27 20:20 | 7 Gate stamp | Orchestrator | PASS on 266f63e59f23ff34cf8c4eb325d454682f4b97e1 (tier standard): Format check pass; Analyzer gate pass; Test with coverage pass; Coverage gate pass; decision-check.py pass; scope-check.py pass · figure-check.py 0 hit(s) |
+| 2026-11-27 21:32 | 7 Manual test | Product Manager | AC5 PASS — cases (a), (b) and (c) passed on the stamped head (make run, desktop browser). |
