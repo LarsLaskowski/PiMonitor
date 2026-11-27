@@ -8,12 +8,10 @@ Status: Draft
 The issue ([#202](https://github.com/LarsLaskowski/PiMonitor/issues/202)) raises three points from the open questions
 of [HTTP API](../../docs/areas/http-api.md#open-questions):
 
-1. The versioning rule looked stricter than practice. This point is already settled on `main`:
-   [0018](../../docs/decisions/0018-new-key-in-v1-response-is-no-shape-change.md) (issue #183) allows a new key in a
-   v1 response. `AGENTS.md`, `docs/CONTRIBUTING.md` (*REST API stability*), `.squad/project.md` (*Guarantees*) and
-   *Versioning and stability* in `docs/areas/http-api.md` all state it, and that open question was removed. The
-   only gap is the `docs/API.md` introduction, which client authors read: it says only that breaking changes do not
-   happen in place. It does not say that new keys may appear or that clients must ignore unknown ones.
+1. The versioning rule: already settled on `main` by
+   [0018](../../docs/decisions/0018-new-key-in-v1-response-is-no-shape-change.md) and stated in every document
+   the issue names. Only the `docs/API.md` introduction does not yet say that keys may be added and that clients
+   must ignore unknown keys.
 2. A request to an API route with a method other than `GET`/`HEAD` gets `404`. The catch-all `/` dashboard
    handler (`http.FileServerFS`, `internal/web/embed.go`) matches every method, so `http.ServeMux` sends a `POST
    /api/v1/metrics` to it instead of answering `405`, and the file server finds no such asset. A client that
@@ -40,9 +38,8 @@ of [HTTP API](../../docs/areas/http-api.md#open-questions):
   dashboard asset handler. The dashboard at `/` and its assets also answer every method as today.
 - S7: A developer reading the `routeTable` comment in `routes.go` learns that the dashboard shell stays outside
   the concurrency limit so the page still loads under load. The comment no longer mentions a "server busy" state.
-- S8: An integrator reading `docs/API.md` learns, in its introduction, that v1 responses can gain new keys, that
-  clients must ignore keys they do not know, and that removing, renaming or retyping a key, or changing its meaning,
-  needs `/api/v2/...`.
+- S8: An integrator reading the `docs/API.md` introduction learns the versioning rule of 0018, and reads the
+  `405` under *Errors*.
 
 ## Errors and edge cases
 
@@ -67,10 +64,15 @@ of [HTTP API](../../docs/areas/http-api.md#open-questions):
 - AC1: `docs/API.md` states in its introduction that a v1 response may gain keys, that clients must ignore keys
   they do not know, and that removing, renaming or retyping a key, or changing its meaning or presence, needs
   `/api/v2/...`. `AGENTS.md`, `docs/CONTRIBUTING.md`, `.squad/project.md` and `docs/areas/http-api.md` keep
-  stating that same rule, recorded in decision 0018 (S8).
+  stating that same rule, recorded in decision 0018. The `## Errors` section of `docs/API.md` documents the `405`:
+  the routes that answer it (every `/api/v1/...` route, `/metrics` when enabled, `/healthz`), `Allow: GET, HEAD`, the
+  body `method not allowed`, that on an API-chain route the key check (`401`) and the in-flight limit (`503`) come
+  first, and that unknown paths keep their `404` (S8).
 - AC2: On every registered route (each `/api/v1/...` route, `/metrics` when enabled, `/healthz`), every method
   except `GET` and `HEAD` gets `405` with `Allow: GET, HEAD` and the plain-text body `method not allowed`. The tests
-  cover at least `POST`, `PUT`, `DELETE`, `PATCH`, `OPTIONS` and one lower-case method (S1, S3, S4, E1, E3, N1).
+  cover at least `POST`, `PUT`, `DELETE`, `PATCH`, `OPTIONS` and one lower-case method. The request body is never
+  read: a test sends a body whose `Read` records each call and asserts no call, and that the `405` body is exactly
+  `method not allowed`, with no request input (S1, S3, S4, E1, E3, N1).
 - AC3: `GET` and `HEAD` on every route answer as before. Any method on an unknown path, on a path that is not in
   the route table (`/api/v1/metrics/`) or on a route switched off by its option still gets `404`. The dashboard at
   `/` and its assets answer every method as before (S5, S6, N2, N3).
@@ -79,6 +81,10 @@ of [HTTP API](../../docs/areas/http-api.md#open-questions):
   and the `Vary` values, and it is gzip-compressed when the client accepts gzip. A `405` on `/healthz` gets the same
   middleware as a `/healthz` response. Every `405` carries the security headers and is counted in the server
   statistics under its route's bucket (S2, S3, E2, E4).
+
+The tests of AC2, AC3 and AC4 build the server with a non-nil static handler that behaves like production's: it
+answers every method on `/` and `404` on an unknown path, like `http.FileServerFS`. With a nil handler, Go's
+`ServeMux` already answers `405` and `Allow`, and the tests would pass on today's code.
 - AC5: The comment on `routeTable` in `internal/httpapi/routes.go` says the dashboard shell stays outside the
   concurrency limit so the page still loads under load. It no longer mentions a "server busy" state (S7).
 
@@ -87,15 +93,13 @@ of [HTTP API](../../docs/areas/http-api.md#open-questions):
 - No CORS: `OPTIONS` gets the `405`, not a preflight answer.
 - No new dashboard behavior for `503`.
 - No change to the method handling of the dashboard asset handler.
-- No rewording of the versioning rule in `AGENTS.md`, `docs/CONTRIBUTING.md`, `.squad/project.md` or *Versioning
-  and stability*: those changes were made with 0018.
+- No rewording of the versioning rule outside `docs/API.md` (done with 0018).
 
 ## Open questions
 
 - Does a wrong-method request on an API-chain route have to pass the key check first? Answered: from the issue's
   AC4 ("passes through the same chain as other API responses"): yes, the whole chain. An unauthenticated client
-  gets `401`, as it would for `GET`. This reveals nothing new, because a `GET` already tells a registered route
-  (`401`) from an unknown one (`404`).
+  gets `401`, as for `GET`, which already tells a registered route from an unknown one.
 - Is replacing the `404` with `405` a v1 shape change under 0018? Answered: no. The `404` for a wrong method was
   never documented; *HTTP API* listed it as an open question. The issue owner decided to return `405` in v1. The
   plan records this in a decision record.
@@ -109,4 +113,16 @@ of [HTTP API](../../docs/areas/http-api.md#open-questions):
   keeps unknown paths and switched-off routes. *Concurrency limit* already gives the right reason ("keep
   answering while the API sheds load") and stays. Both remaining open questions are removed, and the new
   decision record goes under *Related decisions*.
+- `docs/API.md` (not an area document, the contract): the introduction as AC1 says, and a `405` entry in `## Errors`
+  beside the `500`.
 - `docs/areas/dashboard.md`: unchanged. The asset handler keeps its method handling.
+
+## Challenge
+
+- 1 (major): no criterion made `docs/API.md` *Errors* document the `405`. Accepted: AC1 now requires that entry,
+  with its routes, `Allow`, body, the `401`/`503` order and the unchanged `404`. *Area documents* lists `docs/API.md`.
+- 2 (minor): with a nil static handler the tests would pass on today's code. Accepted: a paragraph below the
+  criteria requires a non-nil static handler that behaves like production's. AC2 fixes the exact body, and AC4
+  already fixes `401` before `405`.
+- 3 (minor): N1 was not testable. Accepted: AC2 now names the test, a request body whose `Read` records each call
+  (no call allowed), plus the exact body with no request input.
