@@ -152,3 +152,21 @@ one new key with its presence rule, no existing key changed (decision 0018). Slo
 ## Out of scope / follow-ups
 
 See [spec.md](spec.md), *Out of scope*.
+
+## Challenge notes
+
+Devil's Advocate, plan mode: specs/feature-281-apt-check-state/plan.md (checked against spec.md, tasks.md and issue #281)
+
+The plan holds up. I checked its claims against the code and found nothing wrong:
+- **Collector:** `collector.go:877-885` writes `c.latest.Updates` only on success. `collector.go:308` is the only place `latest` is built, and nothing assigns the whole snapshot later, so starting at `not_checked` in `New` is enough.
+- **Prometheus:** `prometheus.go:262-265` writes the family every time, and `writePiholeMetrics` at `prometheus.go:271-274` gives the pattern to copy.
+- **Dashboard:** `app.js:297-311` has the `checked_at` guard and re-renders the open dialog on every poll. No other part of `app.js` reads `snap.updates`; I grepped for it.
+- **Tests to adapt:** `fullSnapshot()` sets `Updates{Count: 3}` (`prometheus_test.go:36`), and the tests at lines 70, 96, 184 and 234 depend on it, so the planned adaptation is needed and complete. `pihole_test.go:59` pins the line that changes. `routes_test.go` has no exact-JSON test for `/api/v1/metrics/updates`, so no other pinned body breaks.
+- **Need:** `updates` feeds no alert rule (`docs/areas/alerts.md:47`). Decision 0029 is in the index as Proposed. No accepted record makes this a NO CHANGE.
+- **Alternatives:** setting the status in `slowTick` rather than in `updates.go` is the less invasive option, and it leaves the security-area file alone.
+
+Two minor objections:
+
+1. **Minor: the AC2 test would pass on one wrong build.** As planned, the race test checks only "`ok` ⇒ non-zero `CheckedAt`" and "`not_checked` ⇒ zero `CheckedAt`". Suppose a build assigns the value from `Collect`, whose `CheckStatus` is `""` because `updates.go:134-138` never sets it, and sets `ok` under a second lock. A reader could then see `""` with a new `CheckedAt`, and both checks would still pass. Tester: in `TestCollector_SlowTick_UpdatesStatusMatchesResult`, also assert on every read that `CheckStatus` is one of `UpdatesCheckOK`, `UpdatesCheckNotChecked` or `UpdatesCheckFailed`, and never empty. Dev: set `CheckStatus = UpdatesCheckOK` on the local `updates` before the single locked assignment, as the *Approach* says, never in a separate locked section.
+
+2. **Minor: closing the dialog sends focus to a hidden element.** `wireModalFocusReturn` (`app.js:525-531`) refocuses `modalReturnFocus` on `close`. That is the `updates-show` button, which `renderUpdates` hides outside `ok` with `.hidden { display: none !important; }` (`style.css:801-803`). A focus call on a `display: none` element fails silently, so keyboard focus drops to the page. Dev: in `renderUpdates`, close the dialog only when `dialog.open` is true. If the button is hidden, move focus to the Updates card or another visible element after `close()`, or accept the drop and say so in `dashboard.md`. No new criterion is needed.
