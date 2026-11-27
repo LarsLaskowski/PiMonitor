@@ -290,7 +290,7 @@ modules:
         help: Swap used percent
       - name: pimonitor_updates_count
         path: '{ .updates.count }'
-        help: Available apt updates (meaningful only while `.updates.check_status` is `ok`; `/metrics` leaves the count out instead)
+        help: Available apt updates, meaningful only while updates.check_status is ok (GET /metrics omits the count instead)
       - name: pimonitor_disk_used_percent
         type: object
         path: '{ .disks[*] }'

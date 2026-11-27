@@ -189,7 +189,8 @@ such as openHAB that poll single values.
   unreadable or without files), `cache_age_seconds` is 0 and `stale` is false.
 - When the check fails for any reason above, `updates` keeps the last successful result with its `checked_at`; a
   warning `updates collection failed` is logged. Before the first success it holds zero values (`count` 0,
-  `checked_at` the zero time, meaning never checked).
+  `checked_at` the zero time, meaning no check has succeeded yet; `check_status` tells a check that has not finished
+  from one that failed).
 - `updates.check_status` says whether the latest apt check succeeded ([decision 0029](../decisions/0029-apt-check-status-key-and-prometheus-gap.md)):
   `not_checked` from the start of the process until the first check finishes (the status is not persisted, so a
   restart begins at `not_checked` again), `ok` after a successful check, `failed` after a failed one. It is set
