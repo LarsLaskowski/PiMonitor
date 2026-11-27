@@ -305,7 +305,7 @@ func New(cfg Config, log *slog.Logger) *Collector {
 		// Disks and DiskIO start as [] rather than nil so they marshal as
 		// [] (not null) before the first fast tick completes, matching
 		// docs/API.md.
-		latest: Snapshot{Disks: []Disk{}, DiskIO: []DiskIO{}},
+		latest: Snapshot{Disks: []Disk{}, DiskIO: []DiskIO{}, Updates: Updates{CheckStatus: UpdatesCheckNotChecked}},
 		// ByCPU/ByMemory start as [] for the same reason, before the first
 		// slow tick has run (or when ProcessesEnabled is false).
 		latestProcesses: Processes{ByCPU: []Process{}, ByMemory: []Process{}},
@@ -878,7 +878,11 @@ func (c *Collector) slowTick(ctx context.Context) {
 	updates, err := c.updates.Collect(ctx)
 	if err != nil {
 		c.log.Warn("updates collection failed", "error", err)
+		c.mu.Lock()
+		c.latest.Updates.CheckStatus = UpdatesCheckFailed
+		c.mu.Unlock()
 	} else {
+		updates.CheckStatus = UpdatesCheckOK
 		c.mu.Lock()
 		c.latest.Updates = updates
 		c.mu.Unlock()

@@ -260,6 +260,9 @@ func writeNetworkMetrics(buf *bytes.Buffer, ifaces []collector.NetworkInterface)
 }
 
 func writeUpdatesMetrics(buf *bytes.Buffer, updates collector.Updates) {
+	if updates.CheckStatus != collector.UpdatesCheckOK {
+		return
+	}
 	writeGaugeHeader(buf, "pimonitor_updates_pending", "Number of upgradable apt packages.")
 	writeMetric(buf, "pimonitor_updates_pending", "", "", float64(updates.Count))
 }
