@@ -100,3 +100,22 @@ calls it `/api/v1/snapshot`, a route that does not exist) or `GET /api/v1/metric
 - `docs/areas/dashboard.md`: the Updates card per check state.
 - Outside `docs/areas/`: `docs/API.md` (the key, its values and presence rule in the example and notes, the
   `updates_pending` row) and the apt line of `README.md`'s feature list.
+
+## Challenge notes
+
+I found no major problems with the spec, and four minor ones that the Lead can fix without changing its approach. I checked its claims against the code and they hold:
+- `slowTick` keeps the last successful `Updates` when a check fails (`/home/user/PiMonitor/internal/collector/collector.go:877-885`).
+- `writeUpdatesMetrics` always writes `pimonitor_updates_pending` (`/home/user/PiMonitor/internal/httpapi/prometheus.go:262-265`).
+- `app.js` shows `Checked <time>` for any non-empty `checked_at`, so the zero time also gets a line (`/home/user/PiMonitor/internal/web/assets/app.js:298-300`).
+- The `/api/v1/snapshot` route does not exist.
+- Nothing persists `Updates`, and the alert engine has no rule on updates.
+
+**Minor objections (each written as an instruction for the Lead's spec):**
+
+1. **minor — the open package-list dialog is not covered.** The spec says what happens to the button outside `ok`, but not to a dialog that is already open. `app.js:303` fills `latestPackages` from `snap.updates.packages`, and `app.js:309-311` re-renders an open `updates-modal` on every refresh. After a failed check, `packages` still holds the last success (S3), so the open dialog would keep showing that list as if current. Instruction: in S3/AC4, say whether an open updates dialog is closed or emptied when `check_status` leaves `ok`, and how it behaves when it returns to `ok`.
+
+2. **minor — the openHAB integration guide is missing from the document list.** `/home/user/PiMonitor/docs/integrations/openhab.md:69` (`JSONPATH:$.updates.count`) and `:289-291` (json_exporter `pimonitor_updates_count` from `.updates.count`) still turn "no check result" into a 0 reading. The json_exporter example rebuilds, through another route, the made-up 0 this feature removes from `/metrics`. Instruction: add `docs/integrations/openhab.md` under *Area documents → Outside `docs/areas/`*, with a `check_status` channel or a note that `count` means something only when `check_status` is `ok`.
+
+3. **minor — the state names differ from the existing openHAB status.** `GET /api/v1/openhab` already uses the key `state` with `pending` for "no poll has finished since startup" (`/home/user/PiMonitor/docs/API.md:801`, `/home/user/PiMonitor/internal/collector/openhab.go:31,76`). The spec adds `check_status` with `not_checked` for the same idea. Instruction: either reuse the openHAB names (`pending`), or record in *Open questions* why this key differs, so the API vocabulary does not split without a reason.
+
+4. **minor — AC4's "nothing else" is ambiguous.** "for `not_checked`, `Not checked yet` and nothing else" could be read as hiding the Pi-hole section too. That section lives in the same card and is rendered separately (`app.js:313`, `renderPihole`), and *Out of scope* leaves it unchanged. Instruction: change it to "nothing else in the apt part of the card; the Pi-hole section is unchanged". Also state that a `Checked` text left over from an earlier render is cleared, since today's code never clears `updates-checked`.
