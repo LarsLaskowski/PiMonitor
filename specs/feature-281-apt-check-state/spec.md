@@ -1,7 +1,7 @@
 # Spec: Signal a never-run or failing apt updates check
 
 Source: Issue #281
-Status: Draft
+Status: Approved by Lead
 
 ## Problem
 
@@ -9,10 +9,9 @@ An operator who reads the apt update count from the dashboard, from `GET /api/v1
 calls it `/api/v1/snapshot`, a route that does not exist) or `GET /api/v1/metrics/updates`, or who scrapes
 `pimonitor_updates_pending` from `GET /metrics`, cannot tell "no updates" from "no check result":
 
-- Before the first successful check (from the start of the service until the first slow tick finishes, or forever on
-  a host where every check fails) `updates.count` is 0 and `pimonitor_updates_pending` is written as `0`, a
-  fabricated reading against the project's guarantee. The dashboard shows `0`, and because the JSON zero time
-  `0001-01-01T00:00:00Z` is a non-empty string, it also shows a meaningless `Checked <time>` line.
+- Before the first successful check (until the first slow tick finishes, or forever where every check fails)
+  `updates.count` and `pimonitor_updates_pending` are `0`, a fabricated reading. The dashboard shows `0` and, since
+  the JSON zero time `0001-01-01T00:00:00Z` is a non-empty string, a meaningless `Checked <time>` line.
 - After a failed check every key keeps the last successful result ([Metrics](../../docs/areas/metrics.md#available-apt-updates)),
   which looks current everywhere; only `checked_at` (the time of the last success) hints at the failure.
 
@@ -29,10 +28,10 @@ calls it `/api/v1/snapshot`, a route that does not exist) or `GET /api/v1/metric
 - S3: Given the latest check failed after an earlier success, when a client reads `updates`, then it carries
   `"check_status": "failed"` and still the last successful result in every other key; `/metrics` has no
   `pimonitor_updates_pending` family; the Updates card shows `Check failed` instead of the count, the line
-  `Last successful check <time>` from `checked_at`, no stale marker and no package-list button.
-- S4: Given every check since start failed, when a client reads `updates`, then it carries
-  `"check_status": "failed"` with the zero values (`checked_at` the zero time); `/metrics` has no
-  `pimonitor_updates_pending` family; the Updates card shows `Check failed` and no second line.
+  `Last successful check <time>` from `checked_at`, no stale marker and no package-list button; an open package
+  list closes and stays closed when the status returns to `ok`.
+- S4: Given every check since start failed, then `updates` carries `"check_status": "failed"` with the zero values;
+  `/metrics` as in S3; the card shows `Check failed` and no second line.
 - S5: Given a check succeeds after failed ones, then S1 holds again with the new result.
 
 ## Errors and edge cases
@@ -41,9 +40,8 @@ calls it `/api/v1/snapshot`, a route that does not exist) or `GET /api/v1/metric
   finishes); a status changes only when a check finishes.
 - E2: One response never mixes two checks: `check_status` and the other `updates` keys come from the same state
   (no `ok` with the zero `checked_at`, no `not_checked` with a non-zero `checked_at`).
-- E3: Every failure that fails the check today (the list in [Metrics](../../docs/areas/metrics.md#available-apt-updates),
-  a timed-out or missing `apt-cache` included) gives `failed`; the warning `updates collection failed` is still logged
-  as today.
+- E3: Every failure of the check ([Metrics](../../docs/areas/metrics.md#available-apt-updates), a missing or timed-out
+  `apt-cache` included) gives `failed`; the warning is logged as today.
 - E4: A service restart starts at `not_checked` again; the status is not persisted.
 - E5: The card's `<time>` is formatted as today's `Checked <time>` (browser-local time of day).
 
@@ -69,9 +67,11 @@ calls it `/api/v1/snapshot`, a route that does not exist) or `GET /api/v1/metric
 - AC3: `GET /metrics` writes the `pimonitor_updates_pending` family (with its `# HELP` and `# TYPE` lines) exactly
   when `check_status` is `ok`, with the value of `count` (S1, S2, S3, S4, N2).
 - AC4: The Updates card shows, for `ok`, the count, `Checked <time>`, the stale marker when `stale` is true and the
-  package-list button when there are packages; for `not_checked`, `Not checked yet` and nothing else; for `failed`,
-  `Check failed`, and `Last successful check <time>` only when `checked_at` is not the zero time — never the count,
-  the stale marker or the button outside `ok`, built without `.innerHTML` (S1, S2, S3, S4, S5, E5, N3).
+  package-list button when there are packages; for `not_checked`, `Not checked yet` and nothing else in the apt part
+  of the card; for `failed`, `Check failed`, and `Last successful check <time>` only when `checked_at` is not the zero
+  time. Outside `ok` it never shows the count, the stale marker or the button, closes an open package list, and
+  clears a second line left from an earlier render; the Pi-hole section is unchanged; nothing is built with
+  `.innerHTML` (S1, S2, S3, S4, S5, E5, N3).
 
 ## Out of scope
 
@@ -90,6 +90,9 @@ calls it `/api/v1/snapshot`, a route that does not exist) or `GET /api/v1/metric
   the count". The last success's time stays visible (S3).
 - One key or two (a flag for "never" and one for "failed")? Answered: one key with three values, since the states
   exclude each other; `checked_at` already tells a failure before any success (S4) from one after it (S3).
+- Why `check_status`/`not_checked` and not openHAB's `state`/`pending`? Answered: in the `updates` object, `pending`
+  would read as "updates pending" (`pimonitor_updates_pending` counts them), and `state` would read as the state of
+  the updates rather than of the check; the openHAB key describes a service, this one a check.
 
 ## Area documents
 
@@ -99,23 +102,16 @@ calls it `/api/v1/snapshot`, a route that does not exist) or `GET /api/v1/metric
   while the latest check has not succeeded.
 - `docs/areas/dashboard.md`: the Updates card per check state.
 - Outside `docs/areas/`: `docs/API.md` (the key, its values and presence rule in the example and notes, the
-  `updates_pending` row) and the apt line of `README.md`'s feature list.
+  `updates_pending` row), the apt line of `README.md`'s feature list, and `docs/integrations/openhab.md` (the
+  `updates` channel and the json_exporter `pimonitor_updates_count` example: a `check_status` channel and a note that
+  `count` means something only while `check_status` is `ok`).
 
-## Challenge notes
+## Challenge
 
-I found no major problems with the spec, and four minor ones that the Lead can fix without changing its approach. I checked its claims against the code and they hold:
-- `slowTick` keeps the last successful `Updates` when a check fails (`/home/user/PiMonitor/internal/collector/collector.go:877-885`).
-- `writeUpdatesMetrics` always writes `pimonitor_updates_pending` (`/home/user/PiMonitor/internal/httpapi/prometheus.go:262-265`).
-- `app.js` shows `Checked <time>` for any non-empty `checked_at`, so the zero time also gets a line (`/home/user/PiMonitor/internal/web/assets/app.js:298-300`).
-- The `/api/v1/snapshot` route does not exist.
-- Nothing persists `Updates`, and the alert engine has no rule on updates.
-
-**Minor objections (each written as an instruction for the Lead's spec):**
-
-1. **minor — the open package-list dialog is not covered.** The spec says what happens to the button outside `ok`, but not to a dialog that is already open. `app.js:303` fills `latestPackages` from `snap.updates.packages`, and `app.js:309-311` re-renders an open `updates-modal` on every refresh. After a failed check, `packages` still holds the last success (S3), so the open dialog would keep showing that list as if current. Instruction: in S3/AC4, say whether an open updates dialog is closed or emptied when `check_status` leaves `ok`, and how it behaves when it returns to `ok`.
-
-2. **minor — the openHAB integration guide is missing from the document list.** `/home/user/PiMonitor/docs/integrations/openhab.md:69` (`JSONPATH:$.updates.count`) and `:289-291` (json_exporter `pimonitor_updates_count` from `.updates.count`) still turn "no check result" into a 0 reading. The json_exporter example rebuilds, through another route, the made-up 0 this feature removes from `/metrics`. Instruction: add `docs/integrations/openhab.md` under *Area documents → Outside `docs/areas/`*, with a `check_status` channel or a note that `count` means something only when `check_status` is `ok`.
-
-3. **minor — the state names differ from the existing openHAB status.** `GET /api/v1/openhab` already uses the key `state` with `pending` for "no poll has finished since startup" (`/home/user/PiMonitor/docs/API.md:801`, `/home/user/PiMonitor/internal/collector/openhab.go:31,76`). The spec adds `check_status` with `not_checked` for the same idea. Instruction: either reuse the openHAB names (`pending`), or record in *Open questions* why this key differs, so the API vocabulary does not split without a reason.
-
-4. **minor — AC4's "nothing else" is ambiguous.** "for `not_checked`, `Not checked yet` and nothing else" could be read as hiding the Pi-hole section too. That section lives in the same card and is rendered separately (`app.js:313`, `renderPihole`), and *Out of scope* leaves it unchanged. Instruction: change it to "nothing else in the apt part of the card; the Pi-hole section is unchanged". Also state that a `Checked` text left over from an earlier render is cleared, since today's code never clears `updates-checked`.
+1. Minor — an open package list after `ok` is left. Accepted: S3 and AC4 close an open list outside `ok`; it stays
+   closed on the return to `ok`.
+2. Minor — `docs/integrations/openhab.md` missing. Accepted: added under *Area documents*.
+3. Minor — state names differ from openHAB's `pending`. Accepted as a question: kept, the reason is under *Open
+   questions*.
+4. Minor — AC4's "nothing else" ambiguous, leftover `Checked` text. Accepted: AC4 now says "in the apt part of the
+   card", keeps the Pi-hole section and clears a leftover second line.
