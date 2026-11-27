@@ -192,7 +192,8 @@ extract the fields you need (e.g. via JSONPath in openHAB's HTTP binding).
     ],
     "cache_age_seconds": 1800,
     "stale": false,
-    "checked_at": "2026-07-12T18:20:00Z"
+    "checked_at": "2026-07-12T18:20:00Z",
+    "check_status": "ok"
   },
   "pihole": {
     "is_installed": true,
@@ -333,6 +334,12 @@ Notes:
   separate root-privileged systemd timer, not by this process) is older
   than the configured staleness threshold — treat the update count as
   possibly outdated when this is set.
+- `updates.check_status` is always present: `not_checked` until the first apt
+  check has finished after the start, `ok` after a successful check, `failed`
+  after a failed one. After a failure the other `updates` keys keep the last
+  successful result (a `count` of `0` with `not_checked` or `failed` is not a
+  reading); the count means something only while the status is `ok`. `GET
+  /metrics` leaves `updates_pending` out instead.
 - `pihole` reports a native [Pi-hole](https://pi-hole.net/) installation
   and its own updates. It is always present, and deliberately separate from
   `updates`: Pi-hole is not installed through apt, so its updates are never
@@ -966,7 +973,7 @@ Metrics exposed (all gauges, prefixed `pimonitor_`):
 | `swap_total_bytes`, `swap_used_bytes`, `swap_used_percent` | — | Omitted together with the memory families after a failed `/proc/meminfo` read; a host without swap writes real `0` values |
 | `disk_total_bytes`, `disk_used_bytes`, `disk_used_percent` | `mount` | One series per mounted filesystem, same set as `disks` in `GET /api/v1/metrics` (pseudo-filesystems and network filesystems already excluded) |
 | `network_receive_bytes_per_second`, `network_transmit_bytes_per_second` | `iface` | Omitted entirely when network monitoring is disabled (`network_enabled: false`), same as `network` in `GET /api/v1/metrics` |
-| `updates_pending` | — | Count of upgradable apt packages |
+| `updates_pending` | — | Count of upgradable apt packages. Omitted entirely while `updates.check_status` is not `ok` |
 | `pihole_update_available` | `component` (`core`, `web`, `ftl`) | `1` when that Pi-hole component has an update, else `0`; same rules as `pihole` in `GET /api/v1/metrics`. Omitted entirely when Pi-hole is not installed |
 | `openhab_up` | — | `1` when the REST root answered (state `ok`), else `0`. All `openhab_*` series are written only in the states `ok`, `running_unreachable` and `installed_not_running` of `GET /api/v1/openhab`; none in `pending`, `not_installed` or when `openhab.enabled` is `false` |
 | `openhab_process_running` | — | `1` when the openHAB Java process was found, else `0`; written together with `openhab_up` |

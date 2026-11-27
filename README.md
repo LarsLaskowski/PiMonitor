@@ -27,7 +27,7 @@ automation systems like openHAB). Runs as a systemd service.
   model
 - **Uptime** - device clock and time since boot
 - **Available apt updates** - count and package list, with a staleness
-  indicator for the underlying apt cache
+  indicator for the underlying apt cache, and whether the last check succeeded
 - **Pi-hole updates** - when a native Pi-hole v6+ is installed, whether
   Core, Web or FTL have an update, read from Pi-hole's own daily version
   check
