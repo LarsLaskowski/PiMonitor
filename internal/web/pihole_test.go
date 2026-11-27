@@ -56,8 +56,11 @@ func TestAppJS_PiholeRenderedSeparatelyFromAptCount(t *testing.T) {
 	if !strings.Contains(src, "pihole.is_update_available") {
 		t.Errorf("expected app.js to show is_update_available in the Pi-hole status")
 	}
-	if !strings.Contains(src, "setText('updates-count', String(snap.updates.count));") {
-		t.Errorf("expected the Updates card's count to remain the apt-only snap.updates.count")
+	if !strings.Contains(src, "renderUpdates(snap.updates)") {
+		t.Errorf("expected app.js to render the Updates card from snap.updates")
+	}
+	if !strings.Contains(src, "setText('updates-count', String(updates.count));") {
+		t.Errorf("expected the Updates card's count to remain the apt-only updates.count")
 	}
 }
 

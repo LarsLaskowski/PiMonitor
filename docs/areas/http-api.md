@@ -157,7 +157,7 @@ under it by design.
   latest temperature collection has not succeeded, the GPU and PMIC temperatures without a `vcgencmd` answer,
   the CPU families (overall and per-core) while the latest fast tick has no CPU reading (the first tick after start,
   a failed `/proc/stat` read), the memory and swap families while the latest fast tick failed to read
-  `/proc/meminfo`, per-core CPU without data, filesystem and network families when they hold no entry, and the Pi-hole family when Pi-hole is not
+  `/proc/meminfo`, per-core CPU without data, filesystem and network families when they hold no entry, the updates family while the latest apt check has not succeeded (`updates.check_status` is not `ok`), and the Pi-hole family when Pi-hole is not
   installed. The openHAB families are left out outside the states `ok`, `running_unreachable` and
   `installed_not_running`, each value family when its field is absent, and `pimonitor_openhab_info` when the version
   is empty or longer than 64 bytes; the Thing counts are the exception to "left out": all seven statuses are written,

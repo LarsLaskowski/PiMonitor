@@ -141,9 +141,13 @@ client of the [HTTP API](http-api.md) like any third-party integration and has n
   `/api/v1/config` and the snapshot holds at least one interface; all three must hold.
 - The Pi-hole section of the Updates card is shown only when the snapshot reports Pi-hole as installed. A Pi-hole
   update is shown separately from the apt update count, never added to it.
-- The Updates card shows the apt update count, when it was checked and a stale marker when the server reports the
-  cache as stale; its button opens a list of the upgradable packages with current and new version, kept up to date
-  while open.
+- The Updates card follows `updates.check_status`. While it is `ok`, the card shows the apt update count, `Checked
+  <time>`, a stale marker when the server reports the cache as stale, and a button that opens a list of the
+  upgradable packages with current and new version, kept up to date while open. While it is `not_checked`, the card
+  shows `Not checked yet` and no time, stale marker or button. While it is `failed` (or any other value), it shows
+  `Check failed` and, when a check succeeded before, `Last successful check <time>`, without stale marker or
+  button. An open package list is closed when the status leaves `ok`; keyboard focus then falls back to the page,
+  because the button that opened the list is hidden.
 - An empty filesystem list shows "No data".
 
 ### Value coloring

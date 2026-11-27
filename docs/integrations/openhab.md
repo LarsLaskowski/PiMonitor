@@ -67,6 +67,7 @@ Thing http:url:pimonitor "PiMonitor" [
         Type number : swap          "Swap Used"          [ stateTransformation="JSONPATH:$.swap.used_percent" ]
         Type number : rootDisk      "Root FS Used"       [ stateTransformation="JSONPATH:$.disks[?(@.mountpoint=='/')].used_percent" ]
         Type number : updates       "Available Updates"  [ stateTransformation="JSONPATH:$.updates.count" ]
+        Type string : updatesCheck  "Updates Check"      [ stateTransformation="JSONPATH:$.updates.check_status" ]
         Type number : uptime        "Uptime (s)"         [ stateTransformation="JSONPATH:$.uptime_seconds" ]
         Type string : piModel       "Pi Model"           [ stateTransformation="JSONPATH:$.system.pi_model" ]
         Type string : kernel        "Kernel"             [ stateTransformation="JSONPATH:$.system.kernel_version" ]
@@ -114,6 +115,7 @@ Number:Dimensionless PiMonitor_Memory      "Memory Used [%.1f %%]"        <memor
 Number:Dimensionless PiMonitor_Swap        "Swap Used [%.1f %%]"          <memory>       { channel="http:url:pimonitor:swap" }
 Number:Dimensionless PiMonitor_RootDisk    "Root FS Used [%.1f %%]"       <harddisk>     { channel="http:url:pimonitor:rootDisk" }
 Number               PiMonitor_Updates     "Available Updates [%d]"       <settings>     { channel="http:url:pimonitor:updates" }
+String               PiMonitor_UpdatesCheck "Updates Check [%s]"          <settings>     { channel="http:url:pimonitor:updatesCheck" }
 Number:Time          PiMonitor_Uptime      "Uptime [%.0f s]"              <time>         { channel="http:url:pimonitor:uptime" }
 String               PiMonitor_Model       "Pi Model [%s]"                <network>      { channel="http:url:pimonitor:piModel" }
 String               PiMonitor_Kernel      "Kernel [%s]"                  <network>      { channel="http:url:pimonitor:kernel" }
@@ -288,7 +290,7 @@ modules:
         help: Swap used percent
       - name: pimonitor_updates_count
         path: '{ .updates.count }'
-        help: Available apt updates
+        help: Available apt updates, meaningful only while updates.check_status is ok (GET /metrics omits the count instead)
       - name: pimonitor_disk_used_percent
         type: object
         path: '{ .disks[*] }'

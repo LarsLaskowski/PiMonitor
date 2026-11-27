@@ -33,7 +33,7 @@ func fullSnapshot() collector.Snapshot {
 		Network: []collector.NetworkInterface{
 			{Name: "eth0", RxBytesPerSec: 1240.5, TxBytesPerSec: 302.1},
 		},
-		Updates: collector.Updates{Count: 3},
+		Updates: collector.Updates{Count: 3, CheckStatus: collector.UpdatesCheckOK},
 		Pihole: collector.Pihole{
 			Installed:       true,
 			UpdateAvailable: true,
@@ -596,5 +596,38 @@ func TestRenderOpenHABMetrics_HelpAndType_AC6(t *testing.T) {
 			t.Fatalf("AC6 family %s has no sample after its header", f.name)
 		}
 		pos = idx + 2
+	}
+}
+
+// TestRenderPrometheusMetrics_UpdatesPendingOnlyWhenOK pins that the updates
+// family is written only while the latest apt check succeeded.
+func TestRenderPrometheusMetrics_UpdatesPendingOnlyWhenOK(t *testing.T) {
+	render := func(count int, status string) string {
+		snap := fullSnapshot()
+		snap.Updates = collector.Updates{Count: count, CheckStatus: status}
+		return string(renderPrometheusMetrics(snap))
+	}
+
+	t.Run("AC3 ok writes the family", func(t *testing.T) {
+		body := render(3, collector.UpdatesCheckOK)
+		for _, want := range []string{"# HELP pimonitor_updates_pending ", "# TYPE pimonitor_updates_pending gauge", "pimonitor_updates_pending 3\n"} {
+			if !strings.Contains(body, want) {
+				t.Errorf("body lacks %q", want)
+			}
+		}
+	})
+
+	t.Run("AC3 ok writes a real 0", func(t *testing.T) {
+		if body := render(0, collector.UpdatesCheckOK); !strings.Contains(body, "pimonitor_updates_pending 0\n") {
+			t.Errorf("body lacks %q", "pimonitor_updates_pending 0")
+		}
+	})
+
+	for _, status := range []string{collector.UpdatesCheckNotChecked, collector.UpdatesCheckFailed} {
+		t.Run("AC3 "+status+" omits the family", func(t *testing.T) {
+			if body := render(3, status); strings.Contains(body, "pimonitor_updates_pending") {
+				t.Errorf("body mentions pimonitor_updates_pending with status %q", status)
+			}
+		})
 	}
 }

@@ -293,24 +293,51 @@
     setText('sys-distro', snap.system.distribution || 'unknown');
     setText('sys-model', snap.system.pi_model || 'unknown');
 
-    // Updates
-    setText('updates-count', String(snap.updates.count));
-    if (snap.updates.checked_at) {
-      setText('updates-checked', 'Checked ' + new Date(snap.updates.checked_at).toLocaleTimeString());
-    }
-    document.getElementById('updates-stale').classList.toggle('hidden', !snap.updates.stale);
-
-    latestPackages = (snap.updates.packages || []);
-    const showBtn = document.getElementById('updates-show');
-    showBtn.classList.toggle('hidden', latestPackages.length === 0);
-    showBtn.textContent = latestPackages.length === 1
-      ? 'Show 1 update' : 'Show all ' + latestPackages.length + ' updates';
-    // Keep the open modal's contents in sync with fresh data.
-    if (document.getElementById('updates-modal').open) {
-      renderUpdatesTable();
-    }
+    renderUpdates(snap.updates);
 
     renderPihole(snap.pihole, snap.timestamp);
+  }
+
+  // aptCheckedLine returns the text of the Updates card's time line: empty
+  // for a check that has never succeeded, "Checked <time>" after a successful
+  // check, "Last successful check <time>" while the latest one failed.
+  function aptCheckedLine(updates) {
+    const checkedAt = Date.parse(updates.checked_at);
+    if (Number.isNaN(checkedAt) || checkedAt <= 0) {
+      return '';
+    }
+    const time = new Date(checkedAt).toLocaleTimeString();
+    return (updates.check_status === 'ok' ? 'Checked ' : 'Last successful check ') + time;
+  }
+
+  // renderUpdates fills the Updates card from snap.updates. The count, the
+  // stale flag and the package list are shown only while the latest apt check
+  // succeeded; otherwise the card says that no check has run yet or that it
+  // failed, and an open package list is closed.
+  function renderUpdates(updates) {
+    const ok = updates.check_status === 'ok';
+    if (ok) {
+      setText('updates-count', String(updates.count));
+    } else {
+      setText('updates-count', updates.check_status === 'not_checked' ? 'Not checked yet' : 'Check failed');
+    }
+    setText('updates-checked', aptCheckedLine(updates));
+    document.getElementById('updates-stale').classList.toggle('hidden', !(ok && updates.stale));
+
+    latestPackages = ok ? (updates.packages || []) : [];
+    const showBtn = document.getElementById('updates-show');
+    showBtn.classList.toggle('hidden', !ok || latestPackages.length === 0);
+    showBtn.textContent = latestPackages.length === 1
+      ? 'Show 1 update' : 'Show all ' + latestPackages.length + ' updates';
+    const dialog = document.getElementById('updates-modal');
+    if (dialog.open) {
+      if (ok) {
+        // Keep the open modal's contents in sync with fresh data.
+        renderUpdatesTable();
+      } else {
+        dialog.close();
+      }
+    }
   }
 
   // How long ago Pi-hole's own update checker last ran. Pi-hole refreshes

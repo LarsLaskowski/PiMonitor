@@ -182,7 +182,19 @@ type Updates struct {
 	CacheAgeSeconds float64         `json:"cache_age_seconds"`
 	Stale           bool            `json:"stale"`
 	CheckedAt       time.Time       `json:"checked_at"`
+	// CheckStatus is the state of the apt check: one of the UpdatesCheck
+	// constants.
+	CheckStatus string `json:"check_status"`
 }
+
+const (
+	// UpdatesCheckOK means the latest apt check succeeded.
+	UpdatesCheckOK = "ok"
+	// UpdatesCheckNotChecked means no apt check has finished yet.
+	UpdatesCheckNotChecked = "not_checked"
+	// UpdatesCheckFailed means the latest apt check failed.
+	UpdatesCheckFailed = "failed"
+)
 
 // PiholeComponent is the version state of one Pi-hole component (core,
 // web or ftl), as last recorded by Pi-hole's own update checker.
