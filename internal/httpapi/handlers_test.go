@@ -134,6 +134,41 @@ func TestHandleMetrics(t *testing.T) {
 	}
 }
 
+// TestHandleMetrics_UpdatesCheckStatus pins that updates.check_status reaches
+// both routes that carry the updates object.
+func TestHandleMetrics_UpdatesCheckStatus(t *testing.T) {
+	decode := func(t *testing.T, body string, nested bool) map[string]any {
+		t.Helper()
+		var root map[string]any
+		if err := json.Unmarshal([]byte(body), &root); err != nil {
+			t.Fatalf("unmarshal %q: %v", body, err)
+		}
+		if !nested {
+			return root
+		}
+		updates, ok := root["updates"].(map[string]any)
+		if !ok {
+			t.Fatalf("no updates object in %q", body)
+		}
+		return updates
+	}
+	check := func(t *testing.T, path string, nested bool) {
+		t.Helper()
+		s, fm := newTestServer(Config{})
+		fm.snapshot.Updates = collector.Updates{Count: 3, CheckStatus: collector.UpdatesCheckFailed}
+		updates := decode(t, getBody(t, s, path), nested)
+		if got := updates["check_status"]; got != "failed" {
+			t.Errorf("GET %s check_status = %v, want %q", path, got, "failed")
+		}
+		if got := updates["count"]; got != float64(3) {
+			t.Errorf("GET %s count = %v, want 3", path, got)
+		}
+	}
+
+	t.Run("AC1 key in /api/v1/metrics", func(t *testing.T) { check(t, "/api/v1/metrics", true) })
+	t.Run("AC1 key in /api/v1/metrics/updates", func(t *testing.T) { check(t, "/api/v1/metrics/updates", false) })
+}
+
 // TestHandleMetrics_CPUValidNotInJSON_AC4 covers issue #243: CPUValid never
 // reaches the v1 JSON, so the bodies of both routes are byte-identical for a
 // snapshot with and without a CPU reading.
