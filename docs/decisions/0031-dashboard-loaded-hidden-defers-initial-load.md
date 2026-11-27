@@ -1,6 +1,6 @@
 # 0031: A dashboard loaded hidden defers its whole initial load until it is first shown
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-27
 - **Area:** Dashboard
 - **Source:** Issue #203
