@@ -157,3 +157,20 @@ The edit stays outside DOM building; `xss_test.go` keeps guarding `.innerHTML` (
 ## Out of scope / follow-ups
 
 As spec *Out of scope*. No follow-up issue.
+
+## Challenge notes
+
+I found no major objections and one minor one. Every claim I checked holds against the code and the issue:
+
+- **Facts 1–5 hold.** `main` ends in `await reloadAll()` (`internal/web/assets/app.js` 1663). `reloadAll` ends in an unconditional `startPolling()` (1652). `scheduleOpenHAB` returns when `document.hidden` is true (1590). The four in-flight guards exist (1483–1486). `submitAPIKey` ends in `await reloadAll()` (881).
+- **The fallback values match.** `app.js` 2–23 equals `config.Default()` in `internal/config/config.go` 276–311.
+- **No top-level field is missed.** The fixed map of three top-level keys covers every field of `ClientConfig` (`internal/httpapi/server.go` 57–71) except `version`, which the spec leaves out.
+- **No other timer or fetch runs at load.** The only `setInterval`/`setTimeout` calls are at 1591 and 1604–1608, and `fetchJSON` is called only at 207, 869, 1494, 1515, 1536, 1545 and 1566.
+- **Option 1's premise is correct.** `startPolling` has exactly two callers, 1637 and 1652.
+- **The new calls will not trip the floating-call scan.** The regex in `internal/web/polling_test.go` 85 does not match `if (…) await initialLoad();` or `initialLoad().catch(…);`, whether `.catch` is on the same line or split onto a new one (fact 9).
+- **The body cuts work.** Cutting a function body at the first `\n  }\n` gives the whole body for `main` and `wireVisibilityPolling`. The inner closers are indented four or more spaces.
+- **Hide/show sequences come out right.** I traced loaded hidden → shown → hidden → shown during the load (E2), and loaded visible with a hide during `loadConfig` (E1). No endpoint gets two requests in flight, and the final `startPolling()` runs only while visible.
+
+Objections:
+
+1. (minor) The AC1b scan would pass on a wrong build that runs both the initial load and the refresh on the first show, which S2 and AC1 forbid ("instead of the S4 refresh, never both"). The plan's handler code ends the branch with `return;`. But the scan only asserts that `if (!initialLoadStarted)` exists and that `initialLoad()` comes before the first `pollMetrics()`. A build without the `return` (and without an `else`) satisfies both. Instruction for the Tester: in the body of `function wireVisibilityPolling(`, also assert that the `if (!initialLoadStarted)` block ends in `return;` before the first `pollMetrics()`, or that the refresh sits in its `else` branch. Confirm this check fails on a hand-made handler without the `return`. Why minor: the Tester can add the assertion without a plan change, and the planned implementation already satisfies it.
