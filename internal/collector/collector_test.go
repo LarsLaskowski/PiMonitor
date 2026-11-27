@@ -25,8 +25,16 @@ import (
 // run in a Linux CI environment; a missing thermal zone (common in
 // containers) is tolerated gracefully rather than failing the test.
 
+// hermeticUpdates points c's apt check at a binary that does not exist, so a
+// tick never runs the host's real apt-cache (slow on a runner with large apt
+// lists) and the result does not depend on the host.
+func hermeticUpdates(c *Collector) *Collector {
+	c.updates = &UpdatesCollector{aptCachePath: "/nonexistent/apt-cache", now: time.Now}
+	return c
+}
+
 func newTestCollector() *Collector {
-	return New(Config{
+	return hermeticUpdates(New(Config{
 		FastInterval:          time.Second,
 		SlowInterval:          time.Minute,
 		HistoryCapacity:       10,
@@ -35,7 +43,7 @@ func newTestCollector() *Collector {
 		UpdatesStaleThreshold: time.Hour,
 		DistroInfoEnabled:     true,
 		PiModelEnabled:        true,
-	}, nil)
+	}, nil))
 }
 
 func TestCollector_FastTick_PopulatesSnapshot(t *testing.T) {
@@ -565,6 +573,7 @@ func TestCollector_Processes_PopulatedOnSlowTick(t *testing.T) {
 	dir := t.TempDir()
 	writeFakeProcess(t, dir, 100, fakeProcess{comm: "hog", utime: 1000, stime: 200, rssKB: 51200, startTime: 1000})
 	c.processes = &ProcessCollector{root: dir, now: time.Now}
+	hermeticUpdates(c)
 
 	c.slowTick(context.Background())
 
@@ -587,10 +596,11 @@ func TestCollector_Processes_CollectedWhenUpdatesFail(t *testing.T) {
 		ProcessesEnabled: true,
 		ProcessesTopN:    5,
 	}, nil)
-	// aptPath is package-private and injectable (see updates_test.go); point
-	// it at a path that can never exist so Collect fails immediately rather
-	// than depending on whether this host happens to have apt installed.
-	c.updates = &UpdatesCollector{aptPath: "/nonexistent/apt", now: time.Now}
+	// aptCachePath is package-private and injectable (see updates_test.go);
+	// point it at a path that can never exist so Collect fails (the dpkg
+	// status path is empty too) rather than depending on whether this host
+	// happens to have apt installed.
+	c.updates = &UpdatesCollector{aptCachePath: "/nonexistent/apt-cache", now: time.Now}
 	dir := t.TempDir()
 	writeFakeProcess(t, dir, 100, fakeProcess{comm: "hog", utime: 1000, stime: 200, rssKB: 51200, startTime: 1000})
 	c.processes = &ProcessCollector{root: dir, now: time.Now}
@@ -836,6 +846,7 @@ func TestCollector_Run_StopsOnContextCancel(t *testing.T) {
 		HistoryCapacity: 10,
 		NetworkEnabled:  false,
 	}, nil)
+	hermeticUpdates(c)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
@@ -1047,7 +1058,7 @@ func TestCollector_FastTick_ThrottledFailureLoggedOnce(t *testing.T) {
 // that it lands in its own snapshot field rather than in Updates.
 func TestCollector_SlowTick_PiholeIndependentOfUpdates(t *testing.T) {
 	c := newTestCollector()
-	c.updates = &UpdatesCollector{aptPath: "/nonexistent/apt", now: time.Now}
+	c.updates = &UpdatesCollector{aptCachePath: "/nonexistent/apt-cache", now: time.Now}
 	c.pihole = newTestPiholeCollector(t, true, piholeVersionsCoreAndFTLUpdate, time.Now())
 
 	c.slowTick(context.Background())
@@ -1061,12 +1072,70 @@ func TestCollector_SlowTick_PiholeIndependentOfUpdates(t *testing.T) {
 	}
 }
 
+// TestCollector_SlowTick_UpdatesFailureKeepsPreviousResult pins that a failed
+// apt check keeps the last successful Updates with its CheckedAt, logs the
+// warning, and leaves the zero values before a first success.
+func TestCollector_SlowTick_UpdatesFailureKeepsPreviousResult(t *testing.T) {
+	newTickCollector := func(t *testing.T, env *aptTestEnv, stub string, clock *time.Time) (*Collector, *bytes.Buffer) {
+		t.Helper()
+		log, buf := newCapturingLogger()
+		c := New(Config{FastInterval: time.Second, SlowInterval: time.Minute, HistoryCapacity: 10}, log)
+		uc := env.collector(stub)
+		uc.now = func() time.Time { return *clock }
+		c.updates = uc
+		return c, buf
+	}
+
+	t.Run("AC4 failure keeps the previous result and its checked_at", func(t *testing.T) {
+		env := newAptTestEnv(t)
+		stub := env.stub(t, env.printFixture())
+		clock := time.Date(2026, 11, 26, 12, 0, 0, 0, time.UTC)
+		first := clock
+		c, buf := newTickCollector(t, env, stub, &clock)
+		c.slowTick(context.Background())
+		if got := c.Snapshot().Updates; got.Count != aptSampleUpgradeCount || !got.CheckedAt.Equal(first) {
+			t.Fatalf("Updates after the first tick = count %d, checked_at %v; want %d, %v", got.Count, got.CheckedAt, aptSampleUpgradeCount, first)
+		}
+
+		env.stub(t, "exit 1")
+		clock = first.Add(time.Hour)
+		c.slowTick(context.Background())
+
+		got := c.Snapshot().Updates
+		if got.Count != aptSampleUpgradeCount || len(got.Packages) != aptSampleUpgradeCount || !got.CheckedAt.Equal(first) {
+			t.Fatalf("Updates after the failed tick = count %d, %d packages, checked_at %v; want the first result (%d, checked_at %v)",
+				got.Count, len(got.Packages), got.CheckedAt, aptSampleUpgradeCount, first)
+		}
+		if n := countLogLines(buf.String(), "WARN", "updates collection failed"); n != 1 {
+			t.Fatalf("WARN lines %q = %d, want 1; log:\n%s", "updates collection failed", n, buf.String())
+		}
+	})
+
+	t.Run("AC4 failure before a first success keeps the zero values", func(t *testing.T) {
+		env := newAptTestEnv(t)
+		stub := env.stub(t, "exit 1")
+		clock := time.Date(2026, 11, 26, 12, 0, 0, 0, time.UTC)
+		c, buf := newTickCollector(t, env, stub, &clock)
+
+		c.slowTick(context.Background())
+
+		got := c.Snapshot().Updates
+		if got.Count != 0 || len(got.Packages) != 0 || !got.CheckedAt.IsZero() {
+			t.Fatalf("Updates after a failed first tick = count %d, %d packages, checked_at %v; want the zero values",
+				got.Count, len(got.Packages), got.CheckedAt)
+		}
+		if n := countLogLines(buf.String(), "WARN", "updates collection failed"); n != 1 {
+			t.Fatalf("WARN lines %q = %d, want 1; log:\n%s", "updates collection failed", n, buf.String())
+		}
+	})
+}
+
 // TestCollector_SlowTick_PiholeErrorKeepsPreviousState pins that a failed
 // Pi-hole read keeps the last good state instead of reporting Pi-hole as
 // uninstalled.
 func TestCollector_SlowTick_PiholeErrorKeepsPreviousState(t *testing.T) {
 	c := newTestCollector()
-	c.updates = &UpdatesCollector{aptPath: "/nonexistent/apt", now: time.Now}
+	c.updates = &UpdatesCollector{aptCachePath: "/nonexistent/apt-cache", now: time.Now}
 	c.pihole = newTestPiholeCollector(t, true, piholeVersionsUpToDate, time.Now())
 	c.slowTick(context.Background())
 
@@ -1978,6 +2047,7 @@ func newOpenHABRunCollector(t *testing.T, srv *ohServer, root string) *Collector
 // the test when Run does not return within 5 s.
 func startRun(t *testing.T, c *Collector) (stop func()) {
 	t.Helper()
+	hermeticUpdates(c)
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	go func() {

@@ -167,7 +167,7 @@ and described in [`ARCHITECTURE.md`](ARCHITECTURE.md) unless a change explicitly
 - Preserve graceful degradation on non-Pi/non-Linux platforms: a missing hardware source
   (e.g. no thermal zone, no `vcgencmd`) must produce an empty/zero value and a logged
   warning, never a crash.
-- Keep new shell-outs (in the style of the existing `apt list --upgradable` /
+- Keep new shell-outs (in the style of the existing `apt-cache dumpavail` /
   `vcgencmd measure_temp` calls) to fixed argument lists — never interpolate external
   input into a shell command.
 - Prefer the Go standard library. The only accepted runtime dependency is `gopkg.in/yaml.v3`

@@ -278,6 +278,7 @@ func TestCollector_Run_PersistsOnShutdown(t *testing.T) {
 		HistoryWindow:   time.Hour,
 	}, nil)
 
+	hermeticUpdates(c)
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	go func() {
@@ -397,6 +398,7 @@ func TestCollector_Run_ShutdownWaitsForFinalFlush(t *testing.T) {
 	var calls int32
 	c.writeFile = blockingWriteFile(started, proceed, &calls)
 
+	hermeticUpdates(c)
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	go func() {
@@ -589,6 +591,7 @@ func TestCollector_Run_FinalWriteWaitsForRunningWrite(t *testing.T) {
 			t.Fatal("write function was never invoked")
 		}
 
+		hermeticUpdates(c)
 		ctx, cancel := context.WithCancel(context.Background())
 		done := make(chan struct{})
 		go func() {

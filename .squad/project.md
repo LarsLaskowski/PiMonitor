@@ -28,7 +28,7 @@ limits, patterns or sequences.
   `localStorage`; config file mode set by `install.sh` — [Authentication](../docs/areas/http-api.md#authentication),
   [Threat model](../SECURITY.md#threat-model--design-notes)
 - Subprocesses: `exec.CommandContext` with fixed argument lists and an explicit minimal environment in
-  `internal/collector/updates.go` (`apt list --upgradable`) and `internal/collector/vcgencmd.go` —
+  `internal/collector/updates.go` (`apt-cache dumpavail`) and `internal/collector/vcgencmd.go` —
   [Metrics](../docs/areas/metrics.md), [Threat model](../SECURITY.md#threat-model--design-notes)
 - HTTP surface: routes and middleware in `internal/httpapi` (security headers, gzip, no-store, `withMaxInFlight`,
   optional TLS via `tls_cert`/`tls_key`) — [HTTP API](../docs/areas/http-api.md),
@@ -36,7 +36,7 @@ limits, patterns or sequences.
 - Dashboard XSS: `internal/web/assets/app.js` builds DOM nodes without `.innerHTML`, guarded by
   `internal/web/xss_test.go`; CSP in `internal/httpapi` —
   [Dashboard](../docs/areas/dashboard.md)
-- Parsing of local input: `/proc`, `/sys`, `/etc/os-release`, `/etc/pihole/versions` and command output in
+- Parsing of local input: `/proc`, `/sys`, `/etc/os-release`, `/etc/pihole/versions`, `/var/lib/dpkg/status` and command output in
   `internal/collector`; the YAML config in `internal/config` —
   [Metrics](../docs/areas/metrics.md),
   [Configuration](../docs/areas/configuration.md)

@@ -83,7 +83,7 @@ is running: it does not wait to see whether `pimonitor.service` stays up (check 
 
 - `PrivateDevices=` and `ProtectClock=` are deliberately not set: either would block the device nodes `vcgencmd`
   needs.
-- The same restrictions apply to the child processes the service starts (`apt list --upgradable`, `vcgencmd`).
+- The same restrictions apply to the child processes the service starts (`apt-cache dumpavail`, `vcgencmd`).
 
 ### `pimonitor-apt-update.service` and `.timer`
 

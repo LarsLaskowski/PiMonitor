@@ -34,8 +34,8 @@ RestartSec=5
 
 # Hardening. PiMonitor only ever reads world-readable files under /proc,
 # /sys/class/thermal, /sys/devices/system/cpu/*/cpufreq, /sys/class/hwmon,
-# /etc/os-release, and the apt cache under
-# /var/lib/apt/lists/ (via `apt list --upgradable`) and, if Pi-hole is
+# /etc/os-release, /var/lib/dpkg/status, and the apt cache under
+# /var/lib/apt/lists/ (via `apt-cache dumpavail`) and, if Pi-hole is
 # installed, the world-readable /etc/pihole/versions, plus binds a TCP
 # listener - it needs no elevated privileges. When the openHAB status is
 # enabled (openhab.enabled in config.yaml, "auto" by default) it also reads
@@ -62,7 +62,7 @@ CapabilityBoundingSet=
 
 # Additional sandboxing (defense in depth). These directives further reduce
 # the kernel attack surface exposed to a process that parses network-facing
-# input and shells out to `apt`/`vcgencmd`. They are cheap and widely
+# input and shells out to `apt-cache`/`vcgencmd`. They are cheap and widely
 # supported on Debian-family systems.
 #
 # NOTE: PrivateDevices is deliberately NOT set - `vcgencmd` needs

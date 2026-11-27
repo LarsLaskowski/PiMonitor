@@ -516,14 +516,14 @@ Behavior: [Deployment](areas/deployment.md) — units, users, sandboxing, the ti
 The project's central security decision is a **strict split between the unprivileged main
 service and a narrowly-scoped privileged helper**, driven by the fact that refreshing the
 apt package cache (`apt-get update`) requires root while reading its result
-(`apt list --upgradable`) and everything else PiMonitor collects does not:
+(`apt-cache dumpavail`, compared with the dpkg status file; [decision 0028](decisions/0028-apt-updates-from-dumpavail-and-dpkg-status.md)) and everything else PiMonitor collects does not:
 
 - **`pimonitor.service`** runs as a dedicated, unprivileged system user. It only reads world-readable state —
-  `/proc`, `/sys`, `/etc/os-release`, the existing apt cache and Pi-hole's `/etc/pihole/versions` — and, when openHAB
+  `/proc`, `/sys`, `/etc/os-release`, `/var/lib/dpkg/status`, the existing apt cache and Pi-hole's `/etc/pihole/versions` — and, when openHAB
   status is enabled, the existence and owner of openHAB's install directories (`/usr/share/openhab`, `/etc/openhab`,
   `/var/lib/openhab`), the `cmdline`, `stat` and `status` files of other users' processes and `/proc/net/tcp*`. Its
   only outbound request is loopback HTTP to openHAB ([decision 0013](decisions/0013-openhab-requests-only-to-loopback-http.md)),
-  and it runs only read-only commands (`apt list --upgradable`, the optional `vcgencmd` queries), all with fixed argument lists
+  and it runs only read-only commands (`apt-cache dumpavail`, the optional `vcgencmd` queries), all with fixed argument lists
   (never user input interpolated into a shell command), further sandboxed via systemd unit hardening directives.
   Its only supplementary group is `video`, which `vcgencmd` needs in order to open its device nodes on Raspberry Pi
   OS. The exact file and command list is in [Metrics](areas/metrics.md) and, as a threat model, in
