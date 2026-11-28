@@ -24,3 +24,5 @@ are quoted in full.
 | 2026-11-28 10:48 | 8 Review | Reviewer | VERDICT: BLOCKING 1 \| NON-BLOCKING 0 on 0de25fa7712aeccdeab591717be60e9c3e54d4fd. [BLOCKING, verbatim] docs/areas/metrics.md:186-188 omits that a deadline or shutdown during the pause also fails the check with the state-change error; exact replacement sentence given. (opus/medium · 50,906 tokens · 10 tool uses · 43 s · 18 in · 3,731 out · 323,671 cache read · 49,584 cache write · 193,673 weighted) |
 | 2026-11-28 10:48 | 8 Verbatim fix | Orchestrator | verbatim: [BLOCKING, verbatim] docs/areas/metrics.md:186-188 |
 | 2026-11-28 10:48 | 7 Gate stamp | Orchestrator | PASS on 14bd62cc37cec538d6b20a0d2fda7b2e87497852 (tier standard, verbatim): Format check pass; decision-check.py pass; scope-check.py pass |
+| 2026-11-28 10:48 | 7 Gate stamp | Orchestrator | PASS on c71e3eaf208bd73f7a84ef2e49ca2c27f6d3b567 (tier standard, verbatim): Format check pass; decision-check.py pass; scope-check.py pass |
+| 2026-11-28 10:48 | 9 PR approval | Orchestrator | approved by checklist |
