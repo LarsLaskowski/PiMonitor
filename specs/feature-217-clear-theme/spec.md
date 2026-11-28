@@ -52,8 +52,9 @@ touch target, and flat charts with a bar percentage no more prominent than the b
 - E2: A stored mode is applied before the first paint (`theme-init.js` unchanged): no flash of the other palette or of
   the other mode icon.
 - E3: A sparkline with fewer than two points draws nothing (no line, fill or dot); a flat series is padded as today.
-- E4: A load gauge in a narrow single column (phone) or a wide three-column layout is never clipped; the value inside
-  the arc does not overlap it.
+- E4: A load gauge is never clipped, from the narrowest gauge (72 px wide: a 320 px viewport, one column, three
+  gauges side by side) to a wide three-column desktop; a value up to `NN.NN` sits inside the arc without overlapping
+  it (the value's font may shrink below 18 px where 18 px does not fit).
 - E5: A long mountpoint or interface name is cut with an ellipsis as today; the percentage and byte figures stay
   visible.
 - E6: The openHAB card (shown only when openHAB is detected; not in the issue's tables or mockups) gets the same
@@ -62,9 +63,14 @@ touch target, and flat charts with a bar percentage no more prominent than the b
 - E7: Text on an `--accent` fill (the active range button, `Unlock`) uses `--on-accent`: the hard-coded white of today
   reaches only 2.5:1 on the dark accent.
 - E8: Status text not named in the issue's list follows its rule too: the new version in the updates list, the API key
-  error, the openHAB state line and `Things offline` toggle.
+  error, the openHAB state line, the openHAB process-memory value and the `Things offline` toggle. The last two are
+  uncoloured today, contrary to `docs/areas/dashboard.md` (*Alerts*): `.bar-label .bar-pct` and
+  `.openhab-things summary` set `--muted` with a higher specificity than `.metric-warn` / `.metric-crit`; this change
+  makes the documented colouring show.
 - E9: Without JavaScript the page shows the static placeholders as today, now with SVG icons.
-- E10: Emoji in character-reference form (today's layout button is `&#9881;&#65039;`) count as emoji.
+- E10: Emoji in escaped form count as emoji: HTML character references (today's layout button is
+  `&#9881;&#65039;`) and JavaScript escapes `\uXXXX` (surrogate pairs included) and `\u{…}` (`app.js` already uses
+  `\u2192`, `\u00b7`, which are not emoji).
 
 ## Non-functional requirements
 
@@ -77,7 +83,9 @@ touch target, and flat charts with a bar percentage no more prominent than the b
 - N4: Contrast: text at least 4.5:1 against its background in both modes (3:1 at 24 px and above and for icons, bar
   fills and gauge arcs against `--card-bg`). Status is never shown by colour alone where it is not already accompanied
   by text.
-- N5: Every colour, radius, shadow, card padding and gap is a custom property, so a later theme is a set of overrides.
+- N5: Every colour (the per-card colours, the dialog shadow and the backdrop included), radius, shadow, card padding
+  and gap is a custom property, so a later theme is a set of overrides; a canvas colour is read from a token and works
+  for any CSS colour value of it, not only a six-digit hex.
 - N6: No API, configuration, polling, history, alert, layout-format or storage change; card ids, default order, the
   multi-column breakpoints (3 / 2 at ≤ 1100 px / 1 at ≤ 720 px) and the element ids scripts and tests use stay.
 - N7: Supported browsers are those with `color-mix()` (already used by `style.css`).
@@ -85,27 +93,35 @@ touch target, and flat charts with a bar percentage no more prominent than the b
 ## Acceptance criteria
 
 - AC1: `index.html` and `app.js` contain no emoji — no Unicode `Extended_Pictographic` code point and no U+FE0F,
-  literal or as a character reference (`↑`/`↓` on the layout dialog's move buttons are neither and stay); every card
+  literal or escaped as E10 lists (`↑`/`↓` on the layout dialog's move buttons are neither and stay); every card
   heading, the header title, both header buttons and the alert banner show an inline SVG icon that is `aria-hidden`
   or has an accessible name; the favicon is an SVG drawing in a `data:` URI (S3, S10, E9, E10).
-- AC2: The palette tokens of issue §1 exist with the listed values in the light block and in both dark blocks, and the
-  two dark blocks hold the same set of tokens with the same values; `--gauge-track` is gone; outside these blocks and
-  the per-card colour rules `style.css` holds no colour literal, and radii, shadows, card padding and gaps are custom
-  properties (S1, S2, N5).
-- AC3: Text in a status colour uses the `*-ink` token of its level — values, bar percentages, banner, badges, stale
-  badges, Pi-hole status and the cases of E8; bar fills and gauge arcs use the base token; text on an `--accent` fill
-  uses `--on-accent` (S5, S10, E7, E8).
+- AC2: The palette tokens of issue §1 exist with the listed values in the light block and in both dark blocks, the
+  per-card colours of issue §2 (and Q1) and the tokens for the dialog shadow, the backdrop and the sparkline fill
+  opacity (28 % light / 30 % dark) are defined in the same three blocks, and the two dark blocks hold the same set of
+  tokens with the same values; `--gauge-track` is gone. Outside the three blocks `style.css` holds no colour literal
+  (a hex colour, `rgb()`/`rgba()`/`hsl()`/`hsla()` or a named colour; `transparent`, `currentColor` and `inherit`
+  are allowed), and radii, shadows, card padding and gaps are custom properties (S1, S2, N5).
+- AC3: Text in a status colour takes the `*-ink` colour of its level in effect — values, bar percentages, banner,
+  badges, stale badges, Pi-hole status and the cases of E8: every rule that gives such text its `warn` / `crit` colour
+  is at least as specific as the rule that gives the same element its default colour (for example
+  `.bar-label .bar-pct.metric-warn`, `.openhab-things summary.metric-warn`); bar fills and gauge arcs use the base
+  token; text on an `--accent` fill uses `--on-accent` (S5, S10, E7, E8).
 - AC4: Cards have no coloured top border; each card's icon chip shows its card colour of issue §2 (the openHAB card:
   `#0369a1` / `#38bdf8`, Q1) in the matching mode at 12 % (light) / 16 % (dark) chip tint (S3, E6).
 - AC5: The header buttons, the heading buttons of clickable cards, the updates button and the dialog buttons (close,
   range, move, reset, unlock) are at least 44 px high, and 44 px wide where icon-only (S12).
 - AC6: In the bar label rows of Memory & Swap and Filesystems the percentage and the byte figures are separate
   elements, both filled with `textContent`; the percentage takes the `warn` / `crit` ink colour at or above the
-  matching threshold and `--text` otherwise; the byte figures are `--muted` (S6, E5).
-- AC7: A sparkline with at least two points is drawn with a 2 px accent line, a gradient fill that fades to
-  transparent and a dot at the newest point; with fewer than two points nothing is drawn (S7, E3).
-- AC8: Each load gauge shows its value inside the arc and its label below; the arc is not clipped at any column width
-  from one-column phone width to three-column desktop width (S8, E4).
+  matching threshold and `--text` otherwise, by a level rule at least as specific as its default rule (AC3); the byte
+  figures are `--muted` (S6, E5).
+- AC7: A sparkline with at least two points is drawn with a 2 px accent line, a gradient fill from the accent at the
+  fill-opacity token to fully transparent, built for any CSS colour value of `--accent`, and a dot at the newest point;
+  with fewer than two points nothing is drawn (S7, E3, N5).
+- AC8: Each load gauge has a 9 px arc whose radius `gauge.js` bounds by half the canvas width and by the height above
+  the baseline, each less half the stroke and the margin (as today, `gauge.js` lines 30–38), so the arc is not clipped
+  at any gauge width from 72 px up; `.gauge-value` is positioned inside the arc by CSS, its label below; at 72 px a
+  value up to `NN.NN` fits inside the arc's inner width (S8, E4).
 - AC9: Clickable cards show a chevron in their heading; the accessible name of the heading button is unchanged,
   including the alert-level suffix (S9).
 - AC10: Switching the mode with the header button swaps the icon (moon in light mode, sun in dark mode), keeps
@@ -128,6 +144,8 @@ touch target, and flat charts with a bar percentage no more prominent than the b
 - Any change to polling, history, alerts, layout customisation, API key handling, the API or configuration; the text
   of every label, including the mode button's `aria-label` (`Switch to … theme`).
 - The openHAB card's rows keep their single value element (issue §7 names only Memory & Swap and Filesystems).
+- A new `docs/dashboard.png` (README) — follow-up issue "Replace the README screenshot with the Clear look, light and
+  dark", best taken once the v1.5.0 series (#221–#223) is built; it needs a running Pi with real data.
 
 ## Open questions
 
@@ -154,3 +172,27 @@ touch target, and flat charts with a bar percentage no more prominent than the b
   inside the arc, the chevron on clickable cards, the per-card colour on the icon chip only, the accessible names of
   the network rates, icons as inline SVG and no emoji, and the 44 px touch targets. *Scope* says "mode" for "theme".
   *Related decisions* links the new record (terminology mode vs theme, per-card colour on the chip only).
+- Outside the area documents: `README.md` (feature list, "Light/dark theme toggle" → mode) and `docs/ARCHITECTURE.md`
+  (component overview, "layout and theme" → "layout and mode").
+
+## Challenge
+
+Devil's Advocate, spec challenge (1 major, 6 minor):
+
+- Major 1 — status rules lose to more specific default rules (openHAB process-memory value, `Things offline`, bar
+  percentages). Accepted: verified at `style.css` 286, 417 against 353/357; E8 now names both openHAB elements and
+  states that their documented colouring does not show today; AC3 and AC6 require the effective result, a level rule
+  at least as specific as the default rule.
+- Minor 2 — dark per-card colours outside the palette blocks escape the dark-block comparison. Accepted: AC2 puts the
+  per-card colours in the three blocks.
+- Minor 3 — dialog shadow and backdrop without tokens; "colour literal" undefined. Accepted: AC2 adds both tokens and
+  defines a colour literal.
+- Minor 4 — JavaScript escapes in `app.js`. Accepted: E10 and AC1 count `\uXXXX` (surrogate pairs) and `\u{…}`.
+- Minor 5 — AC8 not checkable by reading. Accepted: AC8 states the radius bound, the CSS position of the value, the
+  narrowest gauge (72 px, derived from a 320 px viewport) and the longest value `NN.NN`; E4 lets the value's font
+  shrink where 18 px does not fit at that width, the issue's 18 px stays the size elsewhere.
+- Minor 6 — `color + '26'` needs a six-digit hex accent. Accepted: N5 and AC7 require a fill for any CSS colour, its
+  opacity from a mode token.
+- Minor 7 — screenshot and "theme" wording elsewhere. Accepted: the screenshot is out of scope with a named follow-up
+  (it needs a real Pi and is best taken after the series); `README.md` and `docs/ARCHITECTURE.md` are listed under
+  *Area documents*.
