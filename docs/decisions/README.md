@@ -98,5 +98,5 @@ once in the [area document](../areas/README.md) of the record's area, and the re
 | [0034](0034-alert-debounce-windows-capped-at-seven-days.md) | Both alert debounce windows are capped at seven days | Accepted | 2026-11-28 |
 | [0035](0035-float-duration-options-capped-at-seven-or-365-days.md) | The other float seconds and minutes options are capped at seven or 365 days | Accepted | 2026-11-28 |
 | [0036](0036-poll-and-updates-intervals-at-least-one-unit.md) | The fast and slow collection intervals are at least one second and one minute | Accepted | 2026-11-28 |
-| [0037](0037-apt-state-change-repeats-check-once.md) | install.sh refreshes apt before it starts the service, and a changed apt state repeats the check once | Proposed | 2026-11-28 |
+| [0037](0037-apt-state-change-repeats-check-once.md) | install.sh refreshes apt before it starts the service, and a changed apt state repeats the check once | Accepted | 2026-11-28 |
 <!-- project:end index -->

@@ -1,6 +1,6 @@
 # 0037: install.sh refreshes apt before it starts the service, and a changed apt state repeats the check once
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-28
 - **Area:** Metrics
 - **Source:** Issue #292
