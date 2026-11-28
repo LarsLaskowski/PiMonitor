@@ -14,3 +14,4 @@ are quoted in full.
 | 2026-11-28 09:43 | 6 Implement | Dev | RESULT: DONE — validateUpperBounds + atMost in config.go, docs and example config updated. Orchestrator re-ran: gofmt clean, go test -race green, Coverage gate PASS (100% changed lines, 94.1% overall). (sonnet/medium · 94,165 tokens · 14 tool uses · 84 s · 20 in · 5,800 out · 812,423 cache read · 41,353 cache write · 161,954 weighted) |
 | 2026-11-28 09:43 | 6 Coverage pass skipped | Orchestrator | skipped — gate passes, no deferred tests, no open test documentation |
 | 2026-11-28 09:43 | 6 Documentation | Orchestrator | written in 6 Implement |
+| 2026-11-28 09:43 | 7 Gate stamp | Orchestrator | PASS on 2cb2780d5d95c1afce5cd5ee2e2460a4780bebaa (tier standard): Format check pass; Analyzer gate pass; Test with coverage pass; Coverage gate pass; decision-check.py pass; scope-check.py pass · figure-check.py 0 hit(s) |
