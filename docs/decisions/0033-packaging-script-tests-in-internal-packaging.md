@@ -33,5 +33,5 @@ file under test, in package `packaging`, and run with `go test ./...`.
 ## Consequences
 
 - `docs/UNIT_TESTS.md` (*Where tests live*) and `.squad/stack.md` (*Layout*) name the exception.
-- The tests need Linux with `bash`, `tar`, `gzip`, `awk` and `sha256sum`; elsewhere they skip.
+- The tests of `download-latest.sh` need Linux with `bash`, `awk`, `tar`, `gzip`, `sha256sum`, `rm`, `ls`, `cat` and `uname`; elsewhere they skip. The timer test only reads the unit file and runs on every platform.
 - No production Go code is added, so the coverage figures do not change.
