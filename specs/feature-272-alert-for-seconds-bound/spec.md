@@ -1,7 +1,7 @@
 # Spec: Upper bound for alerts.for_seconds and alerts.openhab_for_seconds
 
 Source: Issue #272
-Status: Draft
+Status: Approved by Lead
 
 ## Problem
 
@@ -41,15 +41,17 @@ the operator asked for silently becomes none: every spike fires.
 
 ## Acceptance criteria
 
-- AC1: `alerts.for_seconds` above 604800 fails `Config.Validate()` with
-  `alerts.for_seconds must be <= 604800 (got <value>)`; `604800` passes and `AlertFor()` returns 168 h (S3, E1, E3, E4,
-  N1).
-- AC2: `alerts.openhab_for_seconds` above 604800 fails `Config.Validate()` with
-  `alerts.openhab_for_seconds must be <= 604800 (got <value>)`, also with `alerts.enabled: false`; `604800` passes and
-  `OpenHABAlertFor()` returns 168 h (S2, S3, E2, E3,
-  E4, N1).
-- AC3: `pimonitor` started with a config file holding `alerts.for_seconds: 1e12` writes the one line of E1 to
-  standard error and exits with status 1 (S1, E1, N2).
+- AC1: `Config.Validate()` fails for `alerts.for_seconds` `604800.5` with
+  `alerts.for_seconds must be <= 604800 (got 604800.5)` and for `1e12` with
+  `alerts.for_seconds must be <= 604800 (got 1e+12)`; `604800` passes and `AlertFor()` returns 168 h; `-1` and NaN
+  keep their current texts (S3, E1, E3, E4, N1).
+- AC2: `Config.Validate()` fails for `alerts.openhab_for_seconds` `604800.5` with
+  `alerts.openhab_for_seconds must be <= 604800 (got 604800.5)`, also with `alerts.enabled: false` and
+  `openhab.enabled: false`; `604800` passes and `OpenHABAlertFor()` returns 168 h; `-5` and -Inf keep their current
+  texts (S2, S3, E2, E3, E4, N1).
+- AC3: `run([]string{"-config", path})` with a config file holding `alerts.for_seconds: 1e12` returns the error
+  `load config: alerts.for_seconds must be <= 604800 (got 1e+12)` before the server starts; the `pimonitor: ` prefix
+  and exit status 1 of E1 come from `main()`, which this feature leaves unchanged (S1, E1, N2).
 
 ## Out of scope
 
@@ -72,35 +74,23 @@ the operator asked for silently becomes none: every spike fires.
 ## Area documents
 
 - `docs/areas/configuration.md`: the *Valid values* of both keys in the `alerts` table read "0 to 604800; `0` fires
-  on the first crossing"; *Validation and startup failure* adds the `alerts.for_seconds must be <= 604800 (got
-  <value>)` and `alerts.openhab_for_seconds must be <= 604800 (got <value>)` texts beside the existing `>= 0` ones.
+  on the first crossing". *Validation and startup failure*: the openHAB alert options bullet adds
+  `alerts.openhab_for_seconds must be <= 604800 (got <value>)` beside its `>= 0` text, and a new bullet documents
+  `alerts.for_seconds must be >= 0 (got <value>)` and `alerts.for_seconds must be <= 604800 (got <value>)`, both also
+  while `alerts.enabled` is `false`.
 - `packaging/pimonitor.example.yaml` (not an area document): the comments of both keys name the maximum.
 
-## Challenge notes
+## Challenge
 
-Devil's Advocate, mode `spec`: /home/user/PiMonitor/specs/feature-272-alert-for-seconds-bound/spec.md
+Devil's Advocate, mode `spec`: 0 major, 3 minor objections, all accepted.
 
-The spec holds up. I checked its factual claims against the code and found them correct:
-- `Validate()` checks only the finiteness and `>= 0` of both keys (`internal/config/config.go:453-458`, `:494-495`).
-- Both conversions have no upper bound (`config.go:334-342`).
-- The finiteness check runs first (`config.go:441`), so E4 holds.
-- `openhab.poll_interval_seconds` has a maximum of 86400 (`config.go:221`), so the Q1 rationale holds.
-- `%v` of `1e12` prints `1e+12`, so the E1 text is exact.
-- No existing test, document or example config holds a value above 604800, so N1 holds.
-
-I have only three minor objections:
-
-1. `minor` — AC3 cannot be checked as written at the test seam the project uses; restate it so it can.
-   - The `pimonitor: ` prefix and exit status 1 come from `main()` (`cmd/pimonitor/main.go:26-30`), which no test exercises.
-   - The existing pattern, `TestRun_ConfigErrorNamesOption_AC1` (`cmd/pimonitor/main_test.go:346-365`), checks only the error that `run()` returns.
-   - Instruction for the Tester: assert that `run([]string{"-config", path})` returns the error `load config: alerts.for_seconds must be <= 604800 (got 1e+12)` and returns before the server starts (the 3 s guard of that test). Leave `main()`'s prefix and exit path as they are, unchanged and untested.
-
-2. `minor` — AC1 and AC2 would pass on a wrong build that uses a looser bound (for example 1e9) if the only failing value tested is `1e12`.
-   - Instruction for the Tester: for each key, test a value just above the bound (for example `604801` or `604800.5`, expecting `must be <= 604800 (got 604801)` or `(got 604800.5)`) next to `604800`, which must pass.
-   - Also test `alerts.openhab_for_seconds` above the bound with `alerts.enabled: false` and `openhab.enabled: false`, since E2 names both.
-
-3. `minor` — the *Area documents* section says to add the `<=` texts "beside the existing `>= 0` ones", but only one such text exists.
-   - `docs/areas/configuration.md:184-186` documents only `alerts.openhab_for_seconds must be >= 0 (got <value>)`, in the openHAB alert options bullet. There is no `alerts.for_seconds` `>= 0` text in *Validation and startup failure*.
-   - Instruction for the Lead or Dev: add the `alerts.openhab_for_seconds must be <= 604800 (got <value>)` text to that bullet.
-   - Add `alerts.for_seconds must be <= 604800 (got <value>)` as its own bullet in the same section, next to its `>= 0` text, which may be documented there at the same time.
-   - Q2's "no documented text changes" still holds.
+1. `minor` — AC3 could not be checked at the project's test seam: the `pimonitor: ` prefix and exit status 1 come
+   from `main()` (`cmd/pimonitor/main.go:26-30`), which no test runs; `TestRun_ConfigErrorNamesOption_AC1`
+   (`cmd/pimonitor/main_test.go:346-365`) checks the error `run()` returns. Accepted: AC3 now states the error of
+   `run()` and that it returns before the server starts; `main()` stays unchanged.
+2. `minor` — testing only `1e12` lets a looser bound (say `1e9`) pass. Accepted: AC1 and AC2 test `604800.5`, just
+   above the bound, beside `604800`, and AC2 tests the openHAB key with both `alerts.enabled` and `openhab.enabled`
+   `false`.
+3. `minor` — only `alerts.openhab_for_seconds` has a documented `>= 0` text; `alerts.for_seconds` has none in
+   *Validation and startup failure*. Accepted: *Area documents* now adds the `<=` text to the openHAB bullet and a new
+   bullet with both texts of `alerts.for_seconds`. Q2 holds: no documented text changes.
