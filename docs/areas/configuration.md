@@ -83,8 +83,8 @@ checked at startup; a value outside it fails startup as described under *Validat
 | `listen_addr` | string | `":8080"` | non-empty `host:port`; the format is checked only when the server starts listening | Address of the dashboard and API. See [HTTP API](http-api.md). |
 | `log_level` | string | `"info"` | `debug`, `info`, `warn`, `error` (lower case, exact) | Minimum level of log lines written. |
 | `access_log_enabled` | bool | `true` | — | Whether each HTTP request is logged as a debug line ([HTTP API](http-api.md)). |
-| `poll_interval_seconds` | number | `5` | > 0 and ≤ 604800 | Fast collection interval ([Metrics](metrics.md)). |
-| `updates_check_minutes` | number | `15` | > 0 and ≤ 10080 | Slow collection interval ([Metrics](metrics.md)). |
+| `poll_interval_seconds` | number | `5` | 1 to 604800 | Fast collection interval ([Metrics](metrics.md)). |
+| `updates_check_minutes` | number | `15` | 1 to 10080 | Slow collection interval ([Metrics](metrics.md)). |
 | `updates_stale_threshold_minutes` | number | `720` | 0 to 525600; `0` turns the stale flag off | Age of the apt cache above which the update count is flagged stale ([Metrics](metrics.md)). |
 | `history_window_minutes` | number | `60` | > 0 and ≤ 525600, and `history_window_minutes × 60 / poll_interval_seconds` ≤ 1,000,000 | History retention window ([History](history.md)). |
 | `history_persist_enabled` | bool | `true` | — | Whether history is saved to and restored from disk ([History](history.md)). |
@@ -189,6 +189,9 @@ The values of this section are validated even while `alerts.enabled` is `false`.
   `healthz_max_staleness_seconds` at most 31536000. The alert and webhook bounds are checked also while
   `alerts.enabled` is `false`; the bounds keep the conversion to a duration from overflowing
   ([0035](../decisions/0035-float-duration-options-capped-at-seven-or-365-days.md)).
+- `poll_interval_seconds` and `updates_check_minutes` below 1 fail with `<option> must be >= 1 (got <value>)`, also
+  for zero and negative values
+  ([0036](../decisions/0036-poll-and-updates-intervals-at-least-one-unit.md)).
 - The openHAB alert options fail with `thresholds.<key> must be >= 0 (got <value>)`,
   `thresholds.<warn key> (<value>) must be <= thresholds.<crit key> (<value>)` (only when both are non-zero) and
   `alerts.openhab_for_seconds must be >= 0 (got <value>)` or `alerts.openhab_for_seconds must be <= 604800 (got <value>)`,
@@ -204,7 +207,7 @@ The values of this section are validated even while `alerts.enabled` is `false`.
 - After validation, each webhook `template` is parsed; a template that does not parse ends startup.
 - A startup failure writes one line `pimonitor: <reason>` to standard error and exits with status 1 before any
   port is opened or any metric is collected. The reason names the option, for example
-  `pimonitor: load config: poll_interval_seconds must be > 0 (got 0)`,
+  `pimonitor: load config: poll_interval_seconds must be >= 1 (got 0)`,
   `pimonitor: load config: parse <file>: …` for a file error, and
   `pimonitor: configure alert webhooks: alerts.webhooks[0].template: …` for a template.
 - Webhooks configured while `alerts.enabled` is `false` are valid; startup logs a warning that no notifications will
@@ -227,6 +230,7 @@ The values of this section are validated even while `alerts.enabled` is `false`.
 - [0013: openHAB requests go only to a loopback address over plain HTTP](../decisions/0013-openhab-requests-only-to-loopback-http.md) — why `openhab.base_url` is restricted.
 - [0034: Alert debounce windows are capped at seven days](../decisions/0034-alert-debounce-windows-capped-at-seven-days.md)
 - [0035: Float duration options are capped at seven or 365 days](../decisions/0035-float-duration-options-capped-at-seven-or-365-days.md)
+- [0036: The fast and slow collection intervals are at least one second and one minute](../decisions/0036-poll-and-updates-intervals-at-least-one-unit.md)
 - [0008: Reject non-finite numbers, and fractional values of integer options while reading the file](../decisions/0008-reject-non-finite-and-fractional-config-numbers.md)
 
 ## Not here

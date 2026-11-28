@@ -16,14 +16,14 @@ log_level: "info"
 access_log_enabled: true
 
 # How often live metrics (CPU, load average, temperature, hwmon sensors,
-# memory/swap, disk, disk I/O, network, wireless) are sampled. At most 604800
-# (7 days).
+# memory/swap, disk, disk I/O, network, wireless) are sampled. At least 1 and at most
+# 604800 (7 days).
 poll_interval_seconds: 5
 
 # How often available apt updates are checked. This only reads the
 # existing apt cache (`apt-cache dumpavail`) - it never refreshes it.
 # The cache itself is refreshed by the separate pimonitor-apt-update.timer
-# systemd unit, which runs with root privileges. At most 10080 (7 days).
+# systemd unit, which runs with root privileges. At least 1 and at most 10080 (7 days).
 updates_check_minutes: 15
 
 # How old the apt cache may be (in minutes) before the dashboard flags the
