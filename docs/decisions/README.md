@@ -97,4 +97,5 @@ once in the [area document](../areas/README.md) of the record's area, and the re
 | [0033](0033-packaging-script-tests-in-internal-packaging.md) | Tests of the packaging scripts live in a test-only package internal/packaging | Accepted | 2026-11-28 |
 | [0034](0034-alert-debounce-windows-capped-at-seven-days.md) | Both alert debounce windows are capped at seven days | Accepted | 2026-11-28 |
 | [0035](0035-float-duration-options-capped-at-seven-or-365-days.md) | The other float seconds and minutes options are capped at seven or 365 days | Accepted | 2026-11-28 |
+| [0036](0036-poll-and-updates-intervals-at-least-one-unit.md) | The fast and slow collection intervals are at least one second and one minute | Proposed | 2026-11-28 |
 <!-- project:end index -->
