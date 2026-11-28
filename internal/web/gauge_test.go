@@ -86,28 +86,11 @@ func TestGaugeJS_ArcNeverClipped_AC8(t *testing.T) {
 	}
 
 	t.Run("AC8 stroke, track token and radius bound", func(t *testing.T) {
-		checkAssetParts(t, []assetCheck{
-			{"drawGauge", body, []string{
-				"const lineWidth = 9;", "'--track'",
-				"Math.min(cssWidth / 2 - lineWidth / 2 - margin, cy - lineWidth / 2 - margin)",
-			}},
-		})
-		checkAssetPartsAbsent(t, []assetCheck{{"drawGauge", body, []string{"--gauge-track"}}})
+		checkGaugeStroke(t, body)
 	})
 
 	t.Run("AC8 CSS positions the value inside the arc", func(t *testing.T) {
-		requireCSS(t, css, ".gauge", map[string]string{"container-type": "inline-size"})
-		requireCSS(t, css, ".gauge-dial", map[string]string{"position": "relative"})
-		requireCSS(t, css, ".gauge canvas", map[string]string{"height": "70px"})
-		decls := gaugeValueDecls(css)
-		for prop, want := range map[string]string{"position": "absolute", "text-align": "center", "line-height": "1"} {
-			if decls[prop] != want {
-				t.Errorf("style.css: .gauge-value { %s } = %q, want %q", prop, decls[prop], want)
-			}
-		}
-		if _, ok := decls["bottom"]; !ok {
-			t.Error("style.css: .gauge-value sets no bottom offset")
-		}
+		checkGaugeValueCSS(t, css)
 	})
 
 	lineWidth := gaugeNumber(t, "gauge.js", body, `const lineWidth\s*=\s*(\d+(?:\.\d+)?)\s*;`)
@@ -115,51 +98,92 @@ func TestGaugeJS_ArcNeverClipped_AC8(t *testing.T) {
 
 	for _, w := range []float64{72, 100, 150, 250, 400} {
 		t.Run("AC8 arc inside canvas at "+strconv.FormatFloat(w, 'f', -1, 64)+" px", func(t *testing.T) {
-			cy, r := gaugeArc(w, lineWidth, margin)
-			half := lineWidth / 2
-			if left, right := w/2-r-half, w/2+r+half; left < 0 || right > w {
-				t.Errorf("arc spans x %.2f..%.2f, want inside 0..%.0f", left, right, w)
-			}
-			if top := cy - r - half; top < 0 {
-				t.Errorf("arc top at y %.2f, want at least 0", top)
-			}
-			if bottom := cy + half; bottom > gaugeCanvasHeight {
-				t.Errorf("arc end caps reach y %.2f, want at most %.0f", bottom, gaugeCanvasHeight)
-			}
+			checkGaugeArcInside(t, w, lineWidth, margin)
 		})
 	}
 
 	t.Run("AC8 value NN.NN fits the inner chord at 72 px", func(t *testing.T) {
-		const w = 72.0
-		decls := gaugeValueDecls(css)
-		m := regexp.MustCompile(`^clamp\((\d+(?:\.\d+)?)px,\s*(\d+(?:\.\d+)?)cqi,\s*(\d+(?:\.\d+)?)px\)$`).FindStringSubmatch(decls["font-size"])
-		if m == nil {
-			t.Fatalf("style.css: .gauge-value font-size = %q, want clamp(<min>px, <n>cqi, <max>px)", decls["font-size"])
-		}
-		lo, _ := strconv.ParseFloat(m[1], 64)
-		cqi, _ := strconv.ParseFloat(m[2], 64)
-		hi, _ := strconv.ParseFloat(m[3], 64)
-		font := math.Min(hi, math.Max(lo, cqi*w/100)) // 1cqi is 1 % of the .gauge width
-		bottom, err := strconv.ParseFloat(strings.TrimSuffix(decls["bottom"], "px"), 64)
-		if err != nil {
-			t.Fatalf("style.css: .gauge-value bottom = %q, want a px value", decls["bottom"])
-		}
-		lineHeight, err := strconv.ParseFloat(decls["line-height"], 64)
-		if err != nil {
-			t.Fatalf("style.css: .gauge-value line-height = %q, want a number", decls["line-height"])
-		}
-
-		cy, r := gaugeArc(w, lineWidth, margin)
-		inner := r - lineWidth/2
-		top := gaugeCanvasHeight - bottom - font*lineHeight // top edge of the value box
-		dy := cy - top
-		if dy >= inner {
-			t.Fatalf("value box top at y %.2f is outside the inner circle (cy %.2f, inner radius %.2f)", top, cy, inner)
-		}
-		chord := 2 * math.Sqrt(inner*inner-dy*dy)
-		// 88.88 in bold system-ui measures 2.89 em (plan.md, fact 7).
-		if width := 2.89 * font; width > chord {
-			t.Errorf("value width %.2f px (font %.2f px) exceeds the inner chord %.2f px at the top of the value box", width, font, chord)
-		}
+		checkGaugeValueChord(t, css, lineWidth, margin)
 	})
+}
+
+// checkGaugeStroke checks the stroke width, the track token and the radius bound of drawGauge.
+func checkGaugeStroke(t *testing.T, body string) {
+	t.Helper()
+	checkAssetParts(t, []assetCheck{
+		{"drawGauge", body, []string{
+			"const lineWidth = 9;", "'--track'",
+			"Math.min(cssWidth / 2 - lineWidth / 2 - margin, cy - lineWidth / 2 - margin)",
+		}},
+	})
+	checkAssetPartsAbsent(t, []assetCheck{{"drawGauge", body, []string{"--gauge-track"}}})
+}
+
+// checkGaugeValueCSS checks that the CSS positions the value inside the arc.
+func checkGaugeValueCSS(t *testing.T, css string) {
+	t.Helper()
+	requireCSS(t, css, ".gauge", map[string]string{"container-type": "inline-size"})
+	requireCSS(t, css, ".gauge-dial", map[string]string{"position": "relative"})
+	requireCSS(t, css, ".gauge canvas", map[string]string{"height": "70px"})
+	decls := gaugeValueDecls(css)
+	for prop, want := range map[string]string{"position": "absolute", "text-align": "center", "line-height": "1"} {
+		if decls[prop] != want {
+			t.Errorf("style.css: .gauge-value { %s } = %q, want %q", prop, decls[prop], want)
+		}
+	}
+	if _, ok := decls["bottom"]; !ok {
+		t.Error("style.css: .gauge-value sets no bottom offset")
+	}
+}
+
+// checkGaugeArcInside checks that the arc of a gauge of width w lies inside its canvas.
+func checkGaugeArcInside(t *testing.T, w, lineWidth, margin float64) {
+	t.Helper()
+	cy, r := gaugeArc(w, lineWidth, margin)
+	half := lineWidth / 2
+	if left, right := w/2-r-half, w/2+r+half; left < 0 || right > w {
+		t.Errorf("arc spans x %.2f..%.2f, want inside 0..%.0f", left, right, w)
+	}
+	if top := cy - r - half; top < 0 {
+		t.Errorf("arc top at y %.2f, want at least 0", top)
+	}
+	if bottom := cy + half; bottom > gaugeCanvasHeight {
+		t.Errorf("arc end caps reach y %.2f, want at most %.0f", bottom, gaugeCanvasHeight)
+	}
+}
+
+// checkGaugeValueChord checks that the value fits the inner chord at the top edge of its box, at 72 px.
+func checkGaugeValueChord(t *testing.T, css string, lineWidth, margin float64) {
+	t.Helper()
+	const w = 72.0
+	decls := gaugeValueDecls(css)
+	m := regexp.MustCompile(`^clamp\((\d+(?:\.\d+)?)px,\s*(\d+(?:\.\d+)?)cqi,\s*(\d+(?:\.\d+)?)px\)$`).FindStringSubmatch(decls["font-size"])
+	if m == nil {
+		t.Fatalf("style.css: .gauge-value font-size = %q, want clamp(<min>px, <n>cqi, <max>px)", decls["font-size"])
+	}
+	lo, _ := strconv.ParseFloat(m[1], 64)
+	cqi, _ := strconv.ParseFloat(m[2], 64)
+	hi, _ := strconv.ParseFloat(m[3], 64)
+	font := math.Min(hi, math.Max(lo, cqi*w/100)) // 1cqi is 1 % of the .gauge width
+	bottom, err := strconv.ParseFloat(strings.TrimSuffix(decls["bottom"], "px"), 64)
+	if err != nil {
+		t.Fatalf("style.css: .gauge-value bottom = %q, want a px value", decls["bottom"])
+	}
+	lineHeight, err := strconv.ParseFloat(decls["line-height"], 64)
+	if err != nil {
+		t.Fatalf("style.css: .gauge-value line-height = %q, want a number", decls["line-height"])
+	}
+
+	cy, r := gaugeArc(w, lineWidth, margin)
+	inner := r - lineWidth/2
+	top := gaugeCanvasHeight - bottom - font*lineHeight // top edge of the value box
+	dy := cy - top
+	if dy >= inner {
+		t.Fatalf("value box top at y %.2f is outside the inner circle (cy %.2f, inner radius %.2f)", top, cy, inner)
+	}
+	chord := 2 * math.Sqrt(inner*inner-dy*dy)
+	// 88.88 in bold system-ui measures 2.89 em (plan.md, fact 7).
+	if width := 2.89 * font; width > chord {
+		t.Errorf("value width %.2f px (font %.2f px) exceeds the inner chord %.2f px at the top of the value box", width, font, chord)
+	}
 }

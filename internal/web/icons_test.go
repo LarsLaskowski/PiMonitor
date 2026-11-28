@@ -193,48 +193,72 @@ func TestIndexHTML_IconsAreInlineSVG_AC1(t *testing.T) {
 	html := readAsset(t, "index.html")
 
 	t.Run("AC1 every card heading shows an inline SVG icon", func(t *testing.T) {
-		headings := regexp.MustCompile(`(?s)id="(card-\w+)">\s*<h2>(.*?)</h2>`).FindAllStringSubmatch(html, -1)
-		if len(headings) != 10 {
-			t.Fatalf("index.html: %d card headings, want 10", len(headings))
-		}
-		for _, h := range headings {
-			requireHiddenSVGs(t, h[1]+" heading", h[2], 1)
-		}
+		checkCardHeadingIcons(t, html)
 	})
 
 	t.Run("AC1 header logo tile, mode and layout buttons show an inline SVG icon", func(t *testing.T) {
-		tile := regexp.MustCompile(`(?s)<span class="logo-tile"[^>]*>(.*?)</span>`).FindStringSubmatch(html)
-		if tile == nil {
-			t.Error(`index.html: expected a <span class="logo-tile"> in the header`)
-		} else {
-			requireHiddenSVGs(t, "logo tile", tile[1], 1)
-		}
-		requireHiddenSVGs(t, "#layout-toggle", buttonContent(html, "layout-toggle"), 1)
-		requireHiddenSVGs(t, "#theme-toggle", buttonContent(html, "theme-toggle"), 2)
+		checkHeaderIcons(t, html)
 	})
 
 	t.Run("AC1 alert banner shows an inline SVG icon", func(t *testing.T) {
-		start := strings.Index(html, `id="alert-banner"`)
-		end := strings.Index(html, `id="alert-banner-text"`)
-		if start < 0 || end < start {
-			t.Fatal("index.html: expected #alert-banner followed by #alert-banner-text")
-		}
-		requireHiddenSVGs(t, "#alert-banner", html[start:end], 1)
+		checkAlertBannerIcon(t, html)
 	})
 
 	t.Run("AC1 favicon is an SVG drawing in a data URI", func(t *testing.T) {
-		m := regexp.MustCompile(`<link rel="icon" href="([^"]*)">`).FindStringSubmatch(html)
-		if m == nil {
-			t.Fatal(`index.html: expected a <link rel="icon" href="…">`)
-		}
-		href := m[1]
-		if !strings.HasPrefix(href, "data:image/svg+xml") {
-			t.Errorf("favicon href = %.40q…, want a data:image/svg+xml URI", href)
-		}
-		if strings.Contains(href, "<text") || strings.Contains(href, "%3Ctext") {
-			t.Error("favicon: expected a drawing, not a <text> glyph")
-		}
+		checkFaviconDrawing(t, html)
 	})
+}
+
+// checkCardHeadingIcons checks that every card heading shows one inline SVG icon.
+func checkCardHeadingIcons(t *testing.T, html string) {
+	t.Helper()
+	headings := regexp.MustCompile(`(?s)id="(card-\w+)">\s*<h2>(.*?)</h2>`).FindAllStringSubmatch(html, -1)
+	if len(headings) != 10 {
+		t.Fatalf("index.html: %d card headings, want 10", len(headings))
+	}
+	for _, h := range headings {
+		requireHiddenSVGs(t, h[1]+" heading", h[2], 1)
+	}
+}
+
+// checkHeaderIcons checks the logo tile and the mode and layout buttons of the header.
+func checkHeaderIcons(t *testing.T, html string) {
+	t.Helper()
+	tile := regexp.MustCompile(`(?s)<span class="logo-tile"[^>]*>(.*?)</span>`).FindStringSubmatch(html)
+	if tile == nil {
+		t.Error(`index.html: expected a <span class="logo-tile"> in the header`)
+	} else {
+		requireHiddenSVGs(t, "logo tile", tile[1], 1)
+	}
+	requireHiddenSVGs(t, "#layout-toggle", buttonContent(html, "layout-toggle"), 1)
+	requireHiddenSVGs(t, "#theme-toggle", buttonContent(html, "theme-toggle"), 2)
+}
+
+// checkAlertBannerIcon checks that the alert banner shows one inline SVG icon.
+func checkAlertBannerIcon(t *testing.T, html string) {
+	t.Helper()
+	start := strings.Index(html, `id="alert-banner"`)
+	end := strings.Index(html, `id="alert-banner-text"`)
+	if start < 0 || end < start {
+		t.Fatal("index.html: expected #alert-banner followed by #alert-banner-text")
+	}
+	requireHiddenSVGs(t, "#alert-banner", html[start:end], 1)
+}
+
+// checkFaviconDrawing checks that the favicon is an SVG drawing in a data URI.
+func checkFaviconDrawing(t *testing.T, html string) {
+	t.Helper()
+	m := regexp.MustCompile(`<link rel="icon" href="([^"]*)">`).FindStringSubmatch(html)
+	if m == nil {
+		t.Fatal(`index.html: expected a <link rel="icon" href="…">`)
+	}
+	href := m[1]
+	if !strings.HasPrefix(href, "data:image/svg+xml") {
+		t.Errorf("favicon href = %.40q…, want a data:image/svg+xml URI", href)
+	}
+	if strings.Contains(href, "<text") || strings.Contains(href, "%3Ctext") {
+		t.Error("favicon: expected a drawing, not a <text> glyph")
+	}
 }
 
 func TestIndexHTML_ClickableCardChevron_AC9(t *testing.T) {
@@ -274,50 +298,74 @@ func TestModeToggle_IconByCSS_AC10(t *testing.T) {
 	js := readAsset(t, "app.js")
 
 	t.Run("AC10 both mode icons sit in the toggle button", func(t *testing.T) {
-		content := buttonContent(html, "theme-toggle")
-		for _, class := range []string{"mode-icon-moon", "mode-icon-sun"} {
-			if !strings.Contains(content, class) {
-				t.Errorf("#theme-toggle: expected an element of class %s", class)
-			}
-		}
+		checkModeIconsInToggle(t, html)
 	})
 
 	t.Run("AC10 CSS shows the moon in light mode and the sun in both dark selectors", func(t *testing.T) {
-		rules := parseCSSRules(css)
-		if got := declsFor(rules, ".mode-icon-sun")["display"]; got != "none" {
-			t.Errorf(".mode-icon-sun { display } = %q, want none by default", got)
-		}
-		if got := declsFor(rules, ".mode-icon-moon")["display"]; got == "none" {
-			t.Error(".mode-icon-moon { display } = none, want it shown by default")
-		}
-		for _, root := range []string{selDark, selMediaDark} {
-			if got := declsFor(rules, root+" .mode-icon-moon")["display"]; got != "none" {
-				t.Errorf("%s .mode-icon-moon { display } = %q, want none", root, got)
-			}
-			if got := declsFor(rules, root+" .mode-icon-sun")["display"]; !isShown(got) {
-				t.Errorf("%s .mode-icon-sun { display } = %q, want it shown", root, got)
-			}
-		}
+		checkModeIconCSS(t, css)
 	})
 
 	t.Run("AC10 updateThemeToggle keeps its labels and writes no text", func(t *testing.T) {
-		body := jsFunctionBody(js, "function updateThemeToggle()")
-		if strings.TrimSpace(body) == "" {
-			t.Fatal("app.js: expected a function updateThemeToggle()")
-		}
-		requireContains(t, "updateThemeToggle", body,
-			"btn.setAttribute('aria-label', dark ? 'Switch to light theme' : 'Switch to dark theme');",
-			"btn.setAttribute('aria-pressed', String(dark));",
-		)
-		if strings.Contains(body, "textContent") {
-			t.Error("updateThemeToggle: expected no textContent write, the icon is shown by CSS")
-		}
+		checkUpdateThemeToggle(t, js)
 	})
 
 	t.Run("AC10 applyTheme still redraws charts and gauges", func(t *testing.T) {
-		requireContains(t, "applyTheme", jsFunctionBody(js, "function applyTheme(theme)"),
-			"updateThemeToggle();", "renderMetrics(latestSnapshot)", "renderHistory(latestHistory)")
+		checkApplyThemeRedraws(t, js)
 	})
+}
+
+// checkModeIconsInToggle checks that both mode icons sit in the theme toggle button.
+func checkModeIconsInToggle(t *testing.T, html string) {
+	t.Helper()
+	content := buttonContent(html, "theme-toggle")
+	for _, class := range []string{"mode-icon-moon", "mode-icon-sun"} {
+		if !strings.Contains(content, class) {
+			t.Errorf("#theme-toggle: expected an element of class %s", class)
+		}
+	}
+}
+
+// checkModeIconCSS checks which mode icon the CSS shows in each theme.
+func checkModeIconCSS(t *testing.T, css string) {
+	t.Helper()
+	rules := parseCSSRules(css)
+	if got := declsFor(rules, ".mode-icon-sun")["display"]; got != "none" {
+		t.Errorf(".mode-icon-sun { display } = %q, want none by default", got)
+	}
+	if got := declsFor(rules, ".mode-icon-moon")["display"]; got == "none" {
+		t.Error(".mode-icon-moon { display } = none, want it shown by default")
+	}
+	for _, root := range []string{selDark, selMediaDark} {
+		if got := declsFor(rules, root+" .mode-icon-moon")["display"]; got != "none" {
+			t.Errorf("%s .mode-icon-moon { display } = %q, want none", root, got)
+		}
+		if got := declsFor(rules, root+" .mode-icon-sun")["display"]; !isShown(got) {
+			t.Errorf("%s .mode-icon-sun { display } = %q, want it shown", root, got)
+		}
+	}
+}
+
+// checkUpdateThemeToggle checks that updateThemeToggle keeps its labels and writes no text.
+func checkUpdateThemeToggle(t *testing.T, js string) {
+	t.Helper()
+	body := jsFunctionBody(js, "function updateThemeToggle()")
+	if strings.TrimSpace(body) == "" {
+		t.Fatal("app.js: expected a function updateThemeToggle()")
+	}
+	requireContains(t, "updateThemeToggle", body,
+		"btn.setAttribute('aria-label', dark ? 'Switch to light theme' : 'Switch to dark theme');",
+		"btn.setAttribute('aria-pressed', String(dark));",
+	)
+	if strings.Contains(body, "textContent") {
+		t.Error("updateThemeToggle: expected no textContent write, the icon is shown by CSS")
+	}
+}
+
+// checkApplyThemeRedraws checks that applyTheme redraws the charts and gauges.
+func checkApplyThemeRedraws(t *testing.T, js string) {
+	t.Helper()
+	requireContains(t, "applyTheme", jsFunctionBody(js, "function applyTheme(theme)"),
+		"updateThemeToggle();", "renderMetrics(latestSnapshot)", "renderHistory(latestHistory)")
 }
 
 func TestAppJS_NetworkRateNames_AC13(t *testing.T) {
@@ -325,35 +373,47 @@ func TestAppJS_NetworkRateNames_AC13(t *testing.T) {
 	js := readAsset(t, "app.js")
 
 	t.Run("AC13 arrow templates exist in the page", func(t *testing.T) {
-		for _, id := range []string{"tpl-icon-download", "tpl-icon-upload"} {
-			m := regexp.MustCompile(`(?s)<template id="` + id + `">(.*?)</template>`).FindStringSubmatch(html)
-			if m == nil {
-				t.Errorf("index.html: expected <template id=%q>", id)
-				continue
-			}
-			requireHiddenSVGs(t, id, m[1], 1)
-		}
+		checkArrowTemplates(t, html)
 	})
 
 	t.Run("AC13 networkRow clones the icons and names the rates for screen readers", func(t *testing.T) {
-		body := jsFunctionBody(js, "function networkRow(n)")
-		if strings.TrimSpace(body) == "" {
-			t.Fatal("app.js: expected a function networkRow(n)")
-		}
-		requireContains(t, "networkRow", body, "tpl-icon-download", "tpl-icon-upload", "sr-only", "textContent")
-		for _, word := range []string{"Download", "Upload"} {
-			if !regexp.MustCompile(`['"]` + word + ` ['"]`).MatchString(body) {
-				t.Errorf("networkRow: expected the text %q followed by a space as a string", word+" ")
-			}
-		}
-		if !strings.Contains(body, "cloneNode(true)") && !strings.Contains(body, "importNode(") {
-			t.Error("networkRow: expected the icon templates to be cloned (cloneNode(true) or importNode)")
-		}
-		if strings.Contains(body, "innerHTML") {
-			t.Error("networkRow: expected no innerHTML")
-		}
-		if !strings.Contains(jsFunctionBody(js, "function applyNetworkVisibility(snap)"), "networkRow(") {
-			t.Error("applyNetworkVisibility: expected rows built by networkRow(")
-		}
+		checkNetworkRow(t, js)
 	})
+}
+
+// checkArrowTemplates checks that the download and upload arrow templates exist and hold one inline SVG each.
+func checkArrowTemplates(t *testing.T, html string) {
+	t.Helper()
+	for _, id := range []string{"tpl-icon-download", "tpl-icon-upload"} {
+		m := regexp.MustCompile(`(?s)<template id="` + id + `">(.*?)</template>`).FindStringSubmatch(html)
+		if m == nil {
+			t.Errorf("index.html: expected <template id=%q>", id)
+			continue
+		}
+		requireHiddenSVGs(t, id, m[1], 1)
+	}
+}
+
+// checkNetworkRow checks that networkRow clones the arrow templates and names the rates for screen readers.
+func checkNetworkRow(t *testing.T, js string) {
+	t.Helper()
+	body := jsFunctionBody(js, "function networkRow(n)")
+	if strings.TrimSpace(body) == "" {
+		t.Fatal("app.js: expected a function networkRow(n)")
+	}
+	requireContains(t, "networkRow", body, "tpl-icon-download", "tpl-icon-upload", "sr-only", "textContent")
+	for _, word := range []string{"Download", "Upload"} {
+		if !regexp.MustCompile(`['"]` + word + ` ['"]`).MatchString(body) {
+			t.Errorf("networkRow: expected the text %q followed by a space as a string", word+" ")
+		}
+	}
+	if !strings.Contains(body, "cloneNode(true)") && !strings.Contains(body, "importNode(") {
+		t.Error("networkRow: expected the icon templates to be cloned (cloneNode(true) or importNode)")
+	}
+	if strings.Contains(body, "innerHTML") {
+		t.Error("networkRow: expected no innerHTML")
+	}
+	if !strings.Contains(jsFunctionBody(js, "function applyNetworkVisibility(snap)"), "networkRow(") {
+		t.Error("applyNetworkVisibility: expected rows built by networkRow(")
+	}
 }

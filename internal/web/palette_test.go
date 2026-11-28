@@ -313,18 +313,25 @@ func colourLiterals(css string) []string {
 		}
 		sel := strings.Join(r.selectors, ", ")
 		for _, d := range r.decls {
-			v := cssStringRE.ReplaceAllString(cssURLRE.ReplaceAllString(d.value, ""), "")
-			for _, lit := range cssHexRE.FindAllString(v, -1) {
-				found = append(found, fmt.Sprintf("%s { %s: %s }: %s", sel, d.prop, d.value, lit))
-			}
-			for _, lit := range cssColourFnRE.FindAllString(v, -1) {
-				found = append(found, fmt.Sprintf("%s { %s: %s }: %s", sel, d.prop, d.value, lit))
-			}
-			for _, tok := range cssIdentRE.FindAllString(v, -1) {
-				if cssNamedColours[strings.ToLower(tok)] {
-					found = append(found, fmt.Sprintf("%s { %s: %s }: %s", sel, d.prop, d.value, tok))
-				}
-			}
+			found = append(found, declLiterals(sel, d.prop, d.value)...)
+		}
+	}
+	return found
+}
+
+// declLiterals returns the colour literals of one declaration value of the selector sel outside the palette blocks.
+func declLiterals(sel, prop, value string) []string {
+	var found []string
+	v := cssStringRE.ReplaceAllString(cssURLRE.ReplaceAllString(value, ""), "")
+	for _, lit := range cssHexRE.FindAllString(v, -1) {
+		found = append(found, fmt.Sprintf("%s { %s: %s }: %s", sel, prop, value, lit))
+	}
+	for _, lit := range cssColourFnRE.FindAllString(v, -1) {
+		found = append(found, fmt.Sprintf("%s { %s: %s }: %s", sel, prop, value, lit))
+	}
+	for _, tok := range cssIdentRE.FindAllString(v, -1) {
+		if cssNamedColours[strings.ToLower(tok)] {
+			found = append(found, fmt.Sprintf("%s { %s: %s }: %s", sel, prop, value, tok))
 		}
 	}
 	return found
@@ -402,88 +409,134 @@ func levelRules() []colourRule {
 
 func TestStyleCSS_StatusTextUsesInk_AC3(t *testing.T) {
 	css := readAsset(t, "style.css")
-	rules := parseCSSRules(css)
 
 	t.Run("AC3 no text colour uses a base status token", func(t *testing.T) {
-		for _, r := range rules {
-			if isPaletteRule(r) {
-				continue
-			}
-			for _, d := range r.decls {
-				if d.prop == "color" && cssBaseTokenRE.MatchString(d.value) {
-					t.Errorf("style.css: %s { color: %s }: text takes the *-ink token, fills the base token",
-						strings.Join(r.selectors, ", "), d.value)
-				}
-			}
-		}
+		checkNoBaseTokenText(t, css)
 	})
 	t.Run("AC3 status text, fills and text on accent follow their rules", func(t *testing.T) {
-		for _, w := range levelRules() {
-			if got := declsFor(rules, w.selector)[w.prop]; normCSS(got) != normCSS(w.value) {
-				t.Errorf("style.css: %s { %s } = %q, want %q", w.selector, w.prop, got, w.value)
-			}
-		}
+		checkLevelRules(t, css)
 	})
 	t.Run("AC3 bar and gauge tracks use --track", func(t *testing.T) {
-		if got := declsFor(rules, ".bar-track")["background"]; got != "var(--track)" {
-			t.Errorf("style.css: .bar-track { background } = %q, want %q", got, "var(--track)")
-		}
+		checkBarTrackToken(t, css)
 	})
+}
+
+// checkNoBaseTokenText checks that no text colour in style.css takes a base status token.
+func checkNoBaseTokenText(t *testing.T, css string) {
+	t.Helper()
+	for _, r := range parseCSSRules(css) {
+		if isPaletteRule(r) {
+			continue
+		}
+		for _, d := range r.decls {
+			if d.prop == "color" && cssBaseTokenRE.MatchString(d.value) {
+				t.Errorf("style.css: %s { color: %s }: text takes the *-ink token, fills the base token",
+					strings.Join(r.selectors, ", "), d.value)
+			}
+		}
+	}
+}
+
+// checkLevelRules checks the status text, fill and accent-text rules of levelRules.
+func checkLevelRules(t *testing.T, css string) {
+	t.Helper()
+	rules := parseCSSRules(css)
+	for _, w := range levelRules() {
+		if got := declsFor(rules, w.selector)[w.prop]; normCSS(got) != normCSS(w.value) {
+			t.Errorf("style.css: %s { %s } = %q, want %q", w.selector, w.prop, got, w.value)
+		}
+	}
+}
+
+// checkBarTrackToken checks that the bar track uses the --track token.
+func checkBarTrackToken(t *testing.T, css string) {
+	t.Helper()
+	rules := parseCSSRules(css)
+	if got := declsFor(rules, ".bar-track")["background"]; got != "var(--track)" {
+		t.Errorf("style.css: .bar-track { background } = %q, want %q", got, "var(--track)")
+	}
 }
 
 func TestStyleCSS_CardChips_AC4(t *testing.T) {
 	css := readAsset(t, "style.css")
-	rules := parseCSSRules(css)
 
 	t.Run("AC4 cards have no coloured top border", func(t *testing.T) {
-		for _, sel := range []string{".card", ".card-warn"} {
-			for prop := range declsFor(rules, sel) {
-				if strings.HasPrefix(prop, "border-top") {
-					t.Errorf("style.css: %s sets %s, want no top border", sel, prop)
-				}
-			}
-		}
-		for _, r := range rules {
-			for _, d := range r.decls {
-				if strings.HasPrefix(d.prop, "border-top") && strings.Contains(d.value, "--card-accent") {
-					t.Errorf("style.css: %s { %s: %s }: the card colour stays off the border",
-						strings.Join(r.selectors, ", "), d.prop, d.value)
-				}
-			}
-		}
+		checkCardNoTopBorder(t, css)
 	})
 	t.Run("AC4 every card id maps its colour class to its palette token", func(t *testing.T) {
-		ids := []string{"system", "updates", "uptime", "cpu", "load", "temperature", "memory", "disks", "network", "openhab"}
-		for _, id := range ids {
-			sel := ".accent-" + id
-			want := "var(--accent-" + id + ")"
-			if got := declsFor(rules, sel)["--card-accent"]; got != want {
-				t.Errorf("style.css: %s { --card-accent } = %q, want %q", sel, got, want)
-			}
-		}
+		checkCardAccentTokens(t, css)
 	})
 	t.Run("AC4 chip is 28 px with the chip radius and the tinted card colour", func(t *testing.T) {
-		chip := declsFor(rules, ".card-icon")
-		want := map[string]string{
-			"width":         "28px",
-			"height":        "28px",
-			"border-radius": "var(--radius-chip)",
-			"background":    "color-mix(in srgb, var(--card-accent) var(--chip-tint), transparent)",
-		}
-		for prop, v := range want {
-			if normCSS(chip[prop]) != normCSS(v) {
-				t.Errorf("style.css: .card-icon { %s } = %q, want %q", prop, chip[prop], v)
-			}
-		}
+		checkChipGeometry(t, css)
 	})
 	t.Run("AC4 the chip icon takes the card colour", func(t *testing.T) {
-		for _, sel := range []string{".card-icon", ".card-icon .icon", ".card-icon svg"} {
-			if declsFor(rules, sel)["color"] == "var(--card-accent)" {
-				return
+		checkChipIconColour(t, css)
+	})
+}
+
+// checkCardNoTopBorder checks that cards and the warning card set no coloured top border.
+func checkCardNoTopBorder(t *testing.T, css string) {
+	t.Helper()
+	rules := parseCSSRules(css)
+	for _, sel := range []string{".card", ".card-warn"} {
+		for prop := range declsFor(rules, sel) {
+			if strings.HasPrefix(prop, "border-top") {
+				t.Errorf("style.css: %s sets %s, want no top border", sel, prop)
 			}
 		}
-		t.Error("style.css: expected .card-icon (or .card-icon .icon / .card-icon svg) { color: var(--card-accent) }")
-	})
+	}
+	for _, r := range rules {
+		for _, d := range r.decls {
+			if strings.HasPrefix(d.prop, "border-top") && strings.Contains(d.value, "--card-accent") {
+				t.Errorf("style.css: %s { %s: %s }: the card colour stays off the border",
+					strings.Join(r.selectors, ", "), d.prop, d.value)
+			}
+		}
+	}
+}
+
+// checkCardAccentTokens checks that each card id maps its colour class to its palette token.
+func checkCardAccentTokens(t *testing.T, css string) {
+	t.Helper()
+	rules := parseCSSRules(css)
+	ids := []string{"system", "updates", "uptime", "cpu", "load", "temperature", "memory", "disks", "network", "openhab"}
+	for _, id := range ids {
+		sel := ".accent-" + id
+		want := "var(--accent-" + id + ")"
+		if got := declsFor(rules, sel)["--card-accent"]; got != want {
+			t.Errorf("style.css: %s { --card-accent } = %q, want %q", sel, got, want)
+		}
+	}
+}
+
+// checkChipGeometry checks the size, radius and tinted background of the card icon chip.
+func checkChipGeometry(t *testing.T, css string) {
+	t.Helper()
+	rules := parseCSSRules(css)
+	chip := declsFor(rules, ".card-icon")
+	want := map[string]string{
+		"width":         "28px",
+		"height":        "28px",
+		"border-radius": "var(--radius-chip)",
+		"background":    "color-mix(in srgb, var(--card-accent) var(--chip-tint), transparent)",
+	}
+	for prop, v := range want {
+		if normCSS(chip[prop]) != normCSS(v) {
+			t.Errorf("style.css: .card-icon { %s } = %q, want %q", prop, chip[prop], v)
+		}
+	}
+}
+
+// checkChipIconColour checks that the chip icon takes the card colour.
+func checkChipIconColour(t *testing.T, css string) {
+	t.Helper()
+	rules := parseCSSRules(css)
+	for _, sel := range []string{".card-icon", ".card-icon .icon", ".card-icon svg"} {
+		if declsFor(rules, sel)["color"] == "var(--card-accent)" {
+			return
+		}
+	}
+	t.Error("style.css: expected .card-icon (or .card-icon .icon / .card-icon svg) { color: var(--card-accent) }")
 }
 
 // hexRGB parses #rgb and #rrggbb.
@@ -586,33 +639,13 @@ func contrastFailures(mode string, tokens map[string]string) []string {
 
 func TestStyleCSS_Contrast_AC12(t *testing.T) {
 	t.Run("AC12 ratio helper matches known WCAG values", func(t *testing.T) {
-		black, _ := hexRGB("#000")
-		white, _ := hexRGB("#ffffff")
-		grey, _ := hexRGB("#767676")
-		if got := contrastRatio(black, white); math.Abs(got-21) > 0.01 {
-			t.Errorf("black on white = %.3f, want 21", got)
-		}
-		if got := contrastRatio(grey, white); got < 4.5 || got > 4.6 {
-			t.Errorf("#767676 on white = %.3f, want about 4.54", got)
-		}
-		green, _ := hexRGB("#16a34a")
-		if got := contrastRatio(green, white); got > 3.4 {
-			t.Errorf("#16a34a on white = %.3f, want about 3.3 (the value that motivates --ok-ink)", got)
-		}
+		checkRatioHelper(t)
 	})
 	t.Run("AC12 a pair below 4.5 is reported", func(t *testing.T) {
-		tokens := expectedTokens(false)
-		tokens["--ok-ink"] = "#16a34a"
-		if got := contrastFailures("light", tokens); len(got) != 1 {
-			t.Errorf("failures = %v, want exactly the --ok-ink pair", got)
-		}
+		checkFailureReported(t)
 	})
 	t.Run("AC12 the issue's palette meets 4.5:1 in both modes", func(t *testing.T) {
-		for _, dark := range []bool{false, true} {
-			if got := contrastFailures(fmt.Sprintf("dark=%v", dark), expectedTokens(dark)); len(got) != 0 {
-				t.Errorf("failures = %v, want none", got)
-			}
-		}
+		checkPaletteMeetsContrast(t)
 	})
 
 	light, dark, media := paletteBlocks(t, readAsset(t, "style.css"))
@@ -621,9 +654,53 @@ func TestStyleCSS_Contrast_AC12(t *testing.T) {
 		tokens map[string]string
 	}{{"light", light}, {"dark", dark}, {"OS dark", media}} {
 		t.Run("AC12 style.css tokens reach 4.5:1 in "+mode.name+" mode", func(t *testing.T) {
-			for _, f := range contrastFailures(mode.name, mode.tokens) {
-				t.Error(f)
-			}
+			checkModeContrast(t, mode.name, mode.tokens)
 		})
+	}
+}
+
+// checkRatioHelper checks contrastRatio against known WCAG values.
+func checkRatioHelper(t *testing.T) {
+	t.Helper()
+	black, _ := hexRGB("#000")
+	white, _ := hexRGB("#ffffff")
+	grey, _ := hexRGB("#767676")
+	if got := contrastRatio(black, white); math.Abs(got-21) > 0.01 {
+		t.Errorf("black on white = %.3f, want 21", got)
+	}
+	if got := contrastRatio(grey, white); got < 4.5 || got > 4.6 {
+		t.Errorf("#767676 on white = %.3f, want about 4.54", got)
+	}
+	green, _ := hexRGB("#16a34a")
+	if got := contrastRatio(green, white); got > 3.4 {
+		t.Errorf("#16a34a on white = %.3f, want about 3.3 (the value that motivates --ok-ink)", got)
+	}
+}
+
+// checkFailureReported checks that a pair below 4.5:1 is reported.
+func checkFailureReported(t *testing.T) {
+	t.Helper()
+	tokens := expectedTokens(false)
+	tokens["--ok-ink"] = "#16a34a"
+	if got := contrastFailures("light", tokens); len(got) != 1 {
+		t.Errorf("failures = %v, want exactly the --ok-ink pair", got)
+	}
+}
+
+// checkPaletteMeetsContrast checks that the issue's palette meets 4.5:1 in both modes.
+func checkPaletteMeetsContrast(t *testing.T) {
+	t.Helper()
+	for _, dark := range []bool{false, true} {
+		if got := contrastFailures(fmt.Sprintf("dark=%v", dark), expectedTokens(dark)); len(got) != 0 {
+			t.Errorf("failures = %v, want none", got)
+		}
+	}
+}
+
+// checkModeContrast reports every contrast failure of one mode's tokens.
+func checkModeContrast(t *testing.T, mode string, tokens map[string]string) {
+	t.Helper()
+	for _, f := range contrastFailures(mode, tokens) {
+		t.Error(f)
 	}
 }
