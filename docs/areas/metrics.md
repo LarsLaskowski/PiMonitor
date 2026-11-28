@@ -184,7 +184,7 @@ such as openHAB that poll single values.
   timed-out child, or a change of the status file or the apt lists while the check ran (compared by the lists
   directory's modification time, the count, total size and newest modification time of its files, and the status
   file's modification time and size) fails it too. That change fails the check only when it shows again in the one
-  repeat that follows a **2 s** pause under the same 10 s deadline ([decision 0037](../decisions/0037-apt-state-change-repeats-check-once.md));
+  repeat that follows a **2 s** pause under the same 10 s deadline, or when the deadline or a shutdown ends the pause ([decision 0037](../decisions/0037-apt-state-change-repeats-check-once.md));
   any other failure is not repeated.
 - `cache_age_seconds` is the age of the newest file in `/var/lib/apt/lists`. `stale` is true when
   `updates_stale_threshold_minutes` is above 0 and the age exceeds it. When the age cannot be determined (directory
