@@ -626,13 +626,6 @@
 
   let layout = normalizeLayout(storedLayout());
 
-  // Network card visibility combines three independent things: the layout
-  // preference (issue #10), the server capability flag, and whether this
-  // snapshot actually has data — the server flag alone never lets a
-  // disabled network card appear regardless of the stored layout. Split out
-  // of renderMetrics (which calls it too) so a layout preference change can
-  // re-apply just this, without re-rendering the rest of the page and its
-  // "Last updated" timestamp along with it.
   // One interface: its name on the left, then the download and upload rate,
   // each with an arrow icon cloned from a template and a screen-reader name.
   function networkRow(n) {
@@ -664,6 +657,13 @@
     return row;
   }
 
+  // Network card visibility combines three independent things: the layout
+  // preference (issue #10), the server capability flag, and whether this
+  // snapshot actually has data — the server flag alone never lets a
+  // disabled network card appear regardless of the stored layout. Split out
+  // of renderMetrics (which calls it too) so a layout preference change can
+  // re-apply just this, without re-rendering the rest of the page and its
+  // "Last updated" timestamp along with it.
   function applyNetworkVisibility(snap) {
     const networkCard = document.getElementById('card-network');
     const networkPref = layout.find(e => e.id === 'network')?.visible !== false;
