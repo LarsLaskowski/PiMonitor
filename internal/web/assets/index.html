@@ -4,24 +4,27 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>PiMonitor</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🖥️</text></svg>">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%232563eb' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><rect x='3' y='4' width='18' height='12' rx='2'/><path d='M7 20h10M12 16v4M7 10h2l1.5-3 3 6L15 10h2'/></svg>">
 <link rel="stylesheet" href="style.css">
 <script src="theme-init.js"></script>
 </head>
 <body>
 <header>
   <div class="header-brand">
-    <h1>🖥️ PiMonitor<span class="header-hostname hidden" id="header-hostname">(<span class="header-hostname-name" id="header-hostname-name"></span>)</span></h1>
+    <span class="logo-tile" aria-hidden="true"><svg class="icon logo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M7 20h10M12 16v4M7 10h2l1.5-3 3 6L15 10h2"/></svg></span>
+    <div class="header-title">
+    <h1>PiMonitor<span class="header-hostname hidden" id="header-hostname">(<span class="header-hostname-name" id="header-hostname-name"></span>)</span></h1>
     <div class="subtitle" id="header-subtitle">Loading&hellip;</div>
+    </div>
   </div>
   <div class="header-buttons">
-    <button type="button" class="layout-toggle" id="layout-toggle" aria-label="Customize dashboard layout">&#9881;&#65039;</button>
-    <button type="button" class="theme-toggle" id="theme-toggle" aria-label="Toggle theme"></button>
+    <button type="button" class="layout-toggle" id="layout-toggle" aria-label="Customize dashboard layout"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
+    <button type="button" class="theme-toggle" id="theme-toggle" aria-label="Toggle theme"><svg class="icon mode-icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg><svg class="icon mode-icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></button>
   </div>
 </header>
 
 <div class="alert-banner hidden" id="alert-banner" role="alert" aria-live="polite">
-  <span class="alert-banner-icon" aria-hidden="true">⚠️</span>
+  <span class="alert-banner-icon" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg></span>
   <span id="alert-banner-text"></span>
 </div>
 
@@ -30,7 +33,7 @@
      fallback for JS-disabled/first-paint rendering. -->
 <main>
   <section class="card accent-system" id="card-system">
-    <h2><span class="card-icon">🖥️</span> System</h2>
+    <h2><span class="card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg></span> System</h2>
     <div class="kv-row hidden" id="sys-hostname-row"><span class="kv-key">Hostname</span><span class="kv-val" id="sys-hostname"></span></div>
     <div class="kv-row"><span class="kv-key">Model</span><span class="kv-val" id="sys-model">&ndash;</span></div>
     <div class="kv-row"><span class="kv-key">Distribution</span><span class="kv-val" id="sys-distro">&ndash;</span></div>
@@ -38,7 +41,7 @@
   </section>
 
   <section class="card accent-updates" id="card-updates">
-    <h2><span class="card-icon">📦</span> Updates</h2>
+    <h2><span class="card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 8 12 3 3 8v8l9 5 9-5z"/><path d="M3 8l9 5 9-5M12 13v8"/></svg></span> Updates</h2>
     <div class="metric-value" id="updates-count">&ndash;</div>
     <div class="metric-sub" id="updates-checked"></div>
     <span class="stale-badge hidden" id="updates-stale">cache may be outdated</span>
@@ -52,21 +55,21 @@
   </section>
 
   <section class="card accent-uptime" id="card-uptime">
-    <h2><span class="card-icon">⏱️</span> Uptime</h2>
+    <h2><span class="card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span> Uptime</h2>
     <div class="kv-row"><span class="kv-key">Raspberry Pi time</span><span class="kv-val" id="pi-time">&ndash;</span></div>
     <div class="kv-row"><span class="kv-key">Uptime</span><span class="kv-val" id="uptime-value">&ndash;</span></div>
   </section>
 
-  <section class="card accent-cpu card-clickable" id="card-cpu" data-metric="cpu">
-    <h2><button type="button" class="card-header-btn" aria-label="Open CPU usage detail"><span class="card-icon">⚡</span> CPU Usage<span class="alert-badge hidden" id="badge-cpu"></span></button></h2>
+  <section class="card accent-cpu card-clickable" data-metric="cpu" id="card-cpu">
+    <h2><button type="button" class="card-header-btn" aria-label="Open CPU usage detail"><span class="card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3"/></svg></span> CPU Usage<span class="alert-badge hidden" id="badge-cpu"></span><svg class="icon chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></button></h2>
     <div class="metric-value" id="cpu-overall">&ndash;</div>
     <div class="metric-sub" id="cpu-info"></div>
     <div class="metric-sub" id="cpu-per-core"></div>
     <canvas class="sparkline" id="cpu-sparkline"></canvas>
   </section>
 
-  <section class="card accent-load card-clickable" id="card-load" data-metric="load">
-    <h2><button type="button" class="card-header-btn" aria-label="Open load average detail"><span class="card-icon">🚦</span> Load Average</button></h2>
+  <section class="card accent-load card-clickable" data-metric="load" id="card-load">
+    <h2><button type="button" class="card-header-btn" aria-label="Open load average detail"><span class="card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 0 1 18 0"/><path d="M12 12l4-4"/><path d="M5 18h14"/></svg></span> Load Average<svg class="icon chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></button></h2>
     <div class="gauge-row">
       <div class="gauge">
         <canvas id="gauge-load1"></canvas>
@@ -86,19 +89,20 @@
     </div>
   </section>
 
-  <section class="card accent-temperature card-clickable" id="card-temperature" data-metric="temperature">
-    <h2><button type="button" class="card-header-btn" aria-label="Open temperature detail"><span class="card-icon">🌡️</span> Temperature<span class="alert-badge hidden" id="badge-temperature"></span></button></h2>
+  <section class="card accent-temperature card-clickable" data-metric="temperature" id="card-temperature">
+    <h2><button type="button" class="card-header-btn" aria-label="Open temperature detail"><span class="card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 14.8V4a2 2 0 0 0-4 0v10.8a4 4 0 1 0 4 0z"/></svg></span> Temperature<span class="alert-badge hidden" id="badge-temperature"></span><svg class="icon chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></button></h2>
     <div class="metric-value" id="temp-value">&ndash;</div>
     <div class="metric-sub" id="temp-gpu"></div>
     <canvas class="sparkline" id="temp-sparkline"></canvas>
   </section>
 
-  <section class="card accent-memory card-clickable" id="card-memory" data-metric="memory">
-    <h2><button type="button" class="card-header-btn" aria-label="Open Memory &amp; Swap detail"><span class="card-icon">🧠</span> Memory &amp; Swap<span class="alert-badge hidden" id="badge-memory"></span></button></h2>
+  <section class="card accent-memory card-clickable" data-metric="memory" id="card-memory">
+    <h2><button type="button" class="card-header-btn" aria-label="Open Memory &amp; Swap detail"><span class="card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="7" width="18" height="10" rx="1"/><path d="M7 7v10M11 7v10M15 7v10M7 21v-4M12 21v-4M17 21v-4"/></svg></span> Memory &amp; Swap<span class="alert-badge hidden" id="badge-memory"></span><svg class="icon chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></button></h2>
     <div class="bar-row">
       <div class="bar-label">
         <span class="bar-name">RAM</span>
         <span class="bar-pct" id="mem-pct">&ndash;</span>
+        <span class="bar-bytes" id="mem-bytes"></span>
       </div>
       <div class="bar-track"><div class="bar-fill" id="mem-bar"></div></div>
     </div>
@@ -106,23 +110,24 @@
       <div class="bar-label">
         <span class="bar-name">Swap</span>
         <span class="bar-pct" id="swap-pct">&ndash;</span>
+        <span class="bar-bytes" id="swap-bytes"></span>
       </div>
       <div class="bar-track"><div class="bar-fill" id="swap-bar"></div></div>
     </div>
   </section>
 
   <section class="card accent-disks" id="card-disks">
-    <h2><span class="card-icon">💽</span> Filesystems<span class="alert-badge hidden" id="badge-disks"></span></h2>
+    <h2><span class="card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></svg></span> Filesystems<span class="alert-badge hidden" id="badge-disks"></span></h2>
     <div id="disks-list"></div>
   </section>
 
   <section class="card accent-network hidden" id="card-network">
-    <h2><span class="card-icon">🌐</span> Network</h2>
+    <h2><span class="card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg></span> Network</h2>
     <div id="network-list"></div>
   </section>
 
   <section class="card accent-openhab hidden" id="card-openhab">
-    <h2><span class="card-icon">🏠</span> openHAB<span class="alert-badge hidden" id="badge-openhab"></span></h2>
+    <h2><span class="card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"/><path d="M5 10v10h14V10"/><path d="M10 20v-6h4v6"/></svg></span> openHAB<span class="alert-badge hidden" id="badge-openhab"></span></h2>
     <div id="openhab-body"></div>
   </section>
 </main>
@@ -190,6 +195,9 @@
     <div class="detail-stats" id="detail-stats"></div>
   </div>
 </dialog>
+
+<template id="tpl-icon-download"><svg class="icon net-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v12M6 11l6 6 6-6M5 20h14"/></svg></template>
+<template id="tpl-icon-upload"><svg class="icon net-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20V8M6 13l6-6 6 6M5 4h14"/></svg></template>
 
 <script src="chart.js"></script>
 <script src="gauge.js"></script>

@@ -82,8 +82,7 @@
     const btn = document.getElementById('theme-toggle');
     if (!btn) return;
     const dark = effectiveTheme() === 'dark';
-    // Show the icon of the mode the button switches to.
-    btn.textContent = dark ? '☀️' : '🌙';
+    // The icon of the mode the button switches to is shown by CSS.
     btn.setAttribute('aria-label', dark ? 'Switch to light theme' : 'Switch to dark theme');
     btn.setAttribute('aria-pressed', String(dark));
   }
@@ -273,9 +272,9 @@
     // Memory & swap (show absolute sizes alongside the percentage, like
     // the filesystem rows).
     const memUsed = Math.max(0, (snap.memory.total_bytes || 0) - (snap.memory.available_bytes || 0));
-    renderBar('mem-bar', 'mem-pct', snap.memory.used_percent, t.memory_warn_percent, t.memory_crit_percent,
+    renderBar('mem-bar', 'mem-pct', 'mem-bytes', snap.memory.used_percent, t.memory_warn_percent, t.memory_crit_percent,
       fmtBytes(memUsed) + ' / ' + fmtBytes(snap.memory.total_bytes));
-    renderBar('swap-bar', 'swap-pct', snap.swap.used_percent, t.swap_warn_percent, t.swap_crit_percent,
+    renderBar('swap-bar', 'swap-pct', 'swap-bytes', snap.swap.used_percent, t.swap_warn_percent, t.swap_crit_percent,
       fmtBytes(snap.swap.used_bytes) + ' / ' + fmtBytes(snap.swap.total_bytes));
 
     // Disks
@@ -634,28 +633,43 @@
   // of renderMetrics (which calls it too) so a layout preference change can
   // re-apply just this, without re-rendering the rest of the page and its
   // "Last updated" timestamp along with it.
+  // One interface: its name on the left, then the download and upload rate,
+  // each with an arrow icon cloned from a template and a screen-reader name.
+  function networkRow(n) {
+    const row = document.createElement('div');
+    row.className = 'net-row';
+    const name = document.createElement('span');
+    name.className = 'net-name';
+    name.title = n.name;
+    name.textContent = n.name;
+    const rates = document.createElement('span');
+    rates.className = 'net-rates';
+    const rate = (templateId, srName, bytesPerSec) => {
+      const el = document.createElement('span');
+      el.className = 'net-rate';
+      const tpl = document.getElementById(templateId);
+      if (tpl) el.appendChild(tpl.content.cloneNode(true));
+      const sr = document.createElement('span');
+      sr.className = 'sr-only';
+      sr.textContent = srName;
+      const value = document.createElement('span');
+      value.textContent = fmtBytesPerSec(bytesPerSec);
+      el.append(sr, value);
+      return el;
+    };
+    rates.append(
+      rate('tpl-icon-download', 'Download ', n.rx_bytes_per_sec),
+      rate('tpl-icon-upload', 'Upload ', n.tx_bytes_per_sec));
+    row.append(name, rates);
+    return row;
+  }
+
   function applyNetworkVisibility(snap) {
     const networkCard = document.getElementById('card-network');
     const networkPref = layout.find(e => e.id === 'network')?.visible !== false;
     if (networkPref && config.network_enabled && snap.network?.length) {
       networkCard.classList.remove('hidden');
-      renderList('network-list', snap.network, n => {
-        const row = document.createElement('div');
-        row.className = 'bar-row';
-        const label = document.createElement('div');
-        label.className = 'bar-label';
-        const name = document.createElement('span');
-        name.className = 'bar-name';
-        name.textContent = n.name;
-        const rates = document.createElement('span');
-        rates.className = 'bar-pct';
-        rates.textContent =
-          '↓ ' + fmtBytesPerSec(n.rx_bytes_per_sec) +
-          ' ↑ ' + fmtBytesPerSec(n.tx_bytes_per_sec);
-        label.append(name, rates);
-        row.appendChild(label);
-        return row;
-      });
+      renderList('network-list', snap.network, n => networkRow(n));
     } else {
       networkCard.classList.add('hidden');
     }
@@ -1023,15 +1037,18 @@
     setText(valueId, value.toFixed(2));
   }
 
-  function renderBar(barId, pctId, value, warn, crit, subText) {
+  function renderBar(barId, pctId, bytesId, value, warn, crit, bytesText) {
     const cls = levelClass(value, warn, crit);
     const bar = document.getElementById(barId);
     bar.style.width = Math.min(value, 100).toFixed(1) + '%';
     bar.className = 'bar-fill ' + cls;
-    setText(pctId, value.toFixed(1) + ' %' + (subText ? ' · ' + subText : ''));
+    const pctEl = document.getElementById(pctId);
+    if (pctEl) pctEl.className = 'bar-pct' + (cls === 'metric-ok' ? '' : ' ' + cls);
+    setText(pctId, value.toFixed(1) + ' %');
+    setText(bytesId, bytesText ? '· ' + bytesText : '');
   }
 
-  function barRow(name, pct, warn, crit, subText) {
+  function barRow(name, pct, warn, crit, bytesText) {
     const cls = levelClass(pct, warn, crit);
     const row = document.createElement('div');
     row.className = 'bar-row';
@@ -1043,9 +1060,12 @@
     nameEl.title = name;
     nameEl.textContent = name;
     const pctEl = document.createElement('span');
-    pctEl.className = 'bar-pct';
-    pctEl.textContent = pct.toFixed(1) + '% · ' + subText;
-    label.append(nameEl, pctEl);
+    pctEl.className = 'bar-pct' + (cls === 'metric-ok' ? '' : ' ' + cls);
+    pctEl.textContent = pct.toFixed(1) + '%';
+    const bytesEl = document.createElement('span');
+    bytesEl.className = 'bar-bytes';
+    bytesEl.textContent = '· ' + bytesText;
+    label.append(nameEl, pctEl, bytesEl);
 
     const track = document.createElement('div');
     track.className = 'bar-track';
