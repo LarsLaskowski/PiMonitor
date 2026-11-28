@@ -29,13 +29,16 @@ client of the [HTTP API](http-api.md) like any third-party integration and has n
   `GET /api/v1/metrics/history` and `GET /api/v1/openhab`. It uses no other endpoint, and the browser never contacts
   openHAB itself.
 - On page load it reads `/api/v1/config` once, then fetches metrics, history, alerts and openHAB once each in that
-  order, and then starts the timers. `/api/v1/config` is read again only after an API key has been accepted; a
+  order, and then starts the timers. This initial load runs only while the page is visible: a page loaded hidden
+  sends no request until it is first shown, and then runs the initial load instead of the refresh described below
+  ([decision 0031](../decisions/0031-dashboard-loaded-hidden-defers-initial-load.md)). `/api/v1/config` is read again only after an API key has been accepted; a
   server-side configuration change reaches an open page on the next reload.
 - Metrics and alerts are polled every `poll_interval_seconds` (as reported by `/api/v1/config`), but never more
   often than once per second. History is polled every `poll_interval_seconds` or every 60 s, whichever is longer.
 - Until `/api/v1/config` has answered, and whenever it fails, the dashboard uses built-in fallback values for every
   field of that response. The fallback holds the same threshold keys the server serves; a test keeps the two key
-  sets identical.
+  sets identical, and another keeps the values (every threshold, `poll_interval_seconds`, `history_window_minutes`
+  and `network_enabled`) equal to the server defaults.
 - The openHAB poll is its own timer: it runs every `poll_interval_seconds` of the `/api/v1/openhab` response (at
   least 60 s), and at the metrics interval while the response's state is `pending`, so the card appears within
   seconds of the server's first finished poll. After an answer of `404` (`openhab.enabled: false`) it stops until the
@@ -44,7 +47,8 @@ client of the [HTTP API](http-api.md) like any third-party integration and has n
 - Each of the four polls has at most one request outstanding: a timer tick that fires while the previous request
   of the same kind is still open is skipped, not queued.
 - When the page becomes hidden, all timers stop and no further polls are sent. When it becomes visible
-  again, metrics, history, alerts and openHAB are fetched immediately and the timers restart.
+  again, metrics, history, alerts and openHAB are fetched immediately and the timers restart. A load that a hide
+  interrupts runs to its end but starts no timer while the page is hidden.
 
 ### History in the browser
 
@@ -74,7 +78,7 @@ client of the [HTTP API](http-api.md) like any third-party integration and has n
   the key: connection error", and in both cases nothing is stored.
 - An accepted key is stored in clear text in the browser's `localStorage` under `pimonitor-api-key` and also kept in
   memory, so it works for the current page even when storage is unavailable. The dashboard then reloads
-  `/api/v1/config`, fetches all data again and restarts the timers with the reported interval.
+  `/api/v1/config`, fetches all data again and restarts the timers with the reported interval, the latter only while the page is visible.
 - Every API request carries the key as `X-Api-Key` when one is known; the stored key takes precedence over the
   in-memory one. The dashboard never sends the key in another header or in a URL.
 - The dashboard has no control to remove a stored key. A key that stops working (rotated on the server) leads to a
@@ -250,7 +254,4 @@ None yet.
 
 ## Open questions
 
-- The fallback values the dashboard uses before `/api/v1/config` answers equal the server defaults today, but only
-  the threshold key set is checked by a test, not the values. Should the values be guaranteed too?
-- Polling starts on page load even when the page is opened in a background tab; it stops only at the first change
-  to hidden. Is that intended, or should a page loaded hidden not poll?
+None.

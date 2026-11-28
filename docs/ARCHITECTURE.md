@@ -398,7 +398,7 @@ added to the config file automatically reaches this endpoint with no field-by-fi
 mapping to keep in sync. Only `internal/web/assets/app.js`'s client-side fallback
 defaults (rendered before this endpoint resolves) still duplicate the key set by
 necessity; a test in `internal/web` guards that copy against drift via reflection over
-`config.Thresholds`'s json tags.
+`config.Thresholds`'s json tags, and another compares its values with `config.Default()`.
 
 ## Web dashboard (`internal/web`)
 
@@ -442,7 +442,7 @@ bug that produced issue #19 (see the test's own doc comment). Any new dashboard 
 touching `app.js` is bound by this same rule, enforced automatically rather than by review
 alone.
 
-The dashboard is a client of the API like any other: it reads `/api/v1/config` on page load and again only after
+The dashboard is a client of the API like any other: it reads `/api/v1/config` on page load (at its first show when the page loads hidden) and again only after
 an API key is accepted, polls `/api/v1/metrics` and `/api/v1/alerts` every poll interval that endpoint reports, and
 polls `/api/v1/metrics/history` every poll interval or 60 s, whichever is longer — the exact schedule is in
 [Dashboard](areas/dashboard.md#data-sources-and-polling). It colors metric cards using the same warn/crit cutoffs
@@ -467,7 +467,9 @@ Polling is paused while the tab is hidden and resumed with an immediate refresh 
 backgrounded or wall-mounted-display tab would otherwise keep requesting the API forever, since browsers only
 throttle background timers to roughly once a minute rather than stopping them (issue #111). Each poll function also
 guards against overlapping requests with its own in-flight flag, so a slow response (a loaded Pi, flaky Wi-Fi)
-doesn't let requests pile up on top of each other.
+doesn't let requests pile up on top of each other. A page loaded hidden sends no request until it is first shown,
+and runs its initial load then instead of the refresh
+([decision 0031](decisions/0031-dashboard-loaded-hidden-defers-initial-load.md)).
 
 The dashboard layout is configurable (issue #10): `main` lays every card out as a flat list of siblings distributed
 by CSS multi-column rather than explicit column `<div>`s, so `app.js` can show, hide, and reorder cards purely by
