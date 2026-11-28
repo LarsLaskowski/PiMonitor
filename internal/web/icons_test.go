@@ -162,7 +162,7 @@ func TestAssets_NoEmoji_AC1(t *testing.T) {
 	}
 }
 
-// requireHiddenSVGs fails unless region holds at least min inline SVG icons
+// requireHiddenSVGs fails unless region holds at least minCount inline SVG icons
 // and each one has viewBox="0 0 24 24" and aria-hidden="true".
 func requireHiddenSVGs(t *testing.T, where, region string, minCount int) {
 	t.Helper()
