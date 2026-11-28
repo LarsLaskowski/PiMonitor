@@ -490,8 +490,8 @@ func TestValidate_RejectsBadValues(t *testing.T) {
 			// (amd64 wraps to a negative number, arm64 saturates to
 			// math.MaxInt64), so the cap must be checked on the float64
 			// ratio, not on HistoryCapacity()'s post-conversion int.
-			c.HistoryWindowMinutes = 1e300
-			c.PollIntervalSeconds = 1
+			c.HistoryWindowMinutes = 525600
+			c.PollIntervalSeconds = 1e-300
 		}},
 		{"negative alerts for_seconds", func(c *Config) { c.Alerts.ForSeconds = -1 }},
 		{"negative notify max retries", func(c *Config) { c.Alerts.NotifyMaxRetries = -1 }},
@@ -610,14 +610,17 @@ func TestValidate_HistoryCapacityBoundary(t *testing.T) {
 	cfg := Default()
 	// With poll_interval_seconds: 60, HistoryCapacity() equals
 	// history_window_minutes exactly, giving clean integer boundaries.
-	cfg.PollIntervalSeconds = 60
+	// With poll_interval_seconds: 30, HistoryCapacity() is twice the window in
+	// minutes: 500000 minutes give exactly 1,000,000 points, and the window
+	// stays under its own upper bound (history_window_minutes <= 525600).
+	cfg.PollIntervalSeconds = 30
 
-	cfg.HistoryWindowMinutes = maxHistoryCapacity // exactly at the cap
+	cfg.HistoryWindowMinutes = maxHistoryCapacity / 2 // exactly at the cap
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("Validate() rejected history capacity exactly at the cap: %v", err)
 	}
 
-	cfg.HistoryWindowMinutes = maxHistoryCapacity + 1 // one point over
+	cfg.HistoryWindowMinutes = maxHistoryCapacity/2 + 0.5 // one point over
 	if err := cfg.Validate(); err == nil {
 		t.Fatal("Validate() accepted history capacity one point over the cap")
 	}
@@ -1516,5 +1519,105 @@ func TestOpenHABAlertFor_AtUpperBound_AC2(t *testing.T) {
 	}
 	if got, want := c.OpenHABAlertFor(), 168*time.Hour; got != want {
 		t.Fatalf("OpenHABAlertFor() = %v, want %v", got, want)
+	}
+}
+
+func TestValidate_DurationUpperBounds(t *testing.T) {
+	over := func(key string, v float64, limit int) string {
+		return fmt.Sprintf("%s must be <= %d (got %v)", key, limit, v)
+	}
+	webhook := func(timeouts ...float64) []Webhook {
+		var ws []Webhook
+		for _, to := range timeouts {
+			ws = append(ws, Webhook{URL: "http://127.0.0.1:9/hook", MinLevel: "warn", TimeoutSeconds: to})
+		}
+		return ws
+	}
+	alertsOff := func(c *Config) { c.Alerts.Enabled = false }
+	tests := []struct {
+		name   string
+		mutate func(*Config)
+		want   string // exact error text; empty means Validate must pass
+	}{
+		{"AC1 poll_interval_seconds 604800.5", func(c *Config) { c.PollIntervalSeconds = 604800.5 },
+			over("poll_interval_seconds", 604800.5, 604800)},
+		{"AC1 poll_interval_seconds 1e12", func(c *Config) { c.PollIntervalSeconds = 1e12 },
+			over("poll_interval_seconds", 1e12, 604800)},
+		{"AC1 poll_interval_seconds 604800 passes", func(c *Config) { c.PollIntervalSeconds = 604800 }, ""},
+		{"AC1 poll_interval_seconds 0 keeps its text", func(c *Config) { c.PollIntervalSeconds = 0 },
+			"poll_interval_seconds must be > 0 (got 0)"},
+		{"AC2 updates_check_minutes 10080.5", func(c *Config) { c.UpdatesCheckMinutes = 10080.5 },
+			over("updates_check_minutes", 10080.5, 10080)},
+		{"AC2 updates_check_minutes 10080 passes", func(c *Config) { c.UpdatesCheckMinutes = 10080 }, ""},
+		{"AC2 updates_check_minutes 0 keeps its text", func(c *Config) { c.UpdatesCheckMinutes = 0 },
+			"updates_check_minutes must be > 0 (got 0)"},
+		{"AC3 updates_stale_threshold_minutes 525600.5", func(c *Config) { c.UpdatesStaleThresholdMinutes = 525600.5 },
+			over("updates_stale_threshold_minutes", 525600.5, 525600)},
+		{"AC3 updates_stale_threshold_minutes 525600 passes", func(c *Config) { c.UpdatesStaleThresholdMinutes = 525600 }, ""},
+		{"AC3 updates_stale_threshold_minutes -1 keeps its text", func(c *Config) { c.UpdatesStaleThresholdMinutes = -1 },
+			"updates_stale_threshold_minutes must be >= 0 (got -1)"},
+		{"AC4 healthz_max_staleness_seconds 31536000.5", func(c *Config) { c.HealthzMaxStalenessSeconds = 31536000.5 },
+			over("healthz_max_staleness_seconds", 31536000.5, 31536000)},
+		{"AC4 healthz_max_staleness_seconds 31536000 passes", func(c *Config) { c.HealthzMaxStalenessSeconds = 31536000 }, ""},
+		{"AC4 healthz_max_staleness_seconds 2 below poll interval keeps its text", func(c *Config) {
+			c.PollIntervalSeconds = 10
+			c.HealthzMaxStalenessSeconds = 2
+		}, "healthz_max_staleness_seconds (2) must be >= poll_interval_seconds (10), or /healthz reports unhealthy permanently"},
+		{"AC5 history_window_minutes 525600.5 with poll 60", func(c *Config) {
+			c.PollIntervalSeconds = 60
+			c.HistoryWindowMinutes = 525600.5
+		}, over("history_window_minutes", 525600.5, 525600)},
+		{"AC5 history_window_minutes 1e12 at poll 5 names the key", func(c *Config) {
+			c.PollIntervalSeconds = 5
+			c.HistoryWindowMinutes = 1e12
+		}, over("history_window_minutes", 1e12, 525600)},
+		{"AC5 history_window_minutes 525600 with poll 60 passes", func(c *Config) {
+			c.PollIntervalSeconds = 60
+			c.HistoryWindowMinutes = 525600
+		}, ""},
+		{"AC5 history_window_minutes NaN keeps its text", func(c *Config) { c.HistoryWindowMinutes = math.NaN() },
+			"history_window_minutes must be a finite number"},
+		{"AC6 notify_retry_backoff_seconds 604800.5", func(c *Config) { c.Alerts.NotifyRetryBackoffSeconds = 604800.5 },
+			over("alerts.notify_retry_backoff_seconds", 604800.5, 604800)},
+		{"AC6 notify_retry_backoff_seconds 604800.5 with alerts disabled", func(c *Config) {
+			alertsOff(c)
+			c.Alerts.NotifyRetryBackoffSeconds = 604800.5
+		}, over("alerts.notify_retry_backoff_seconds", 604800.5, 604800)},
+		{"AC6 notify_retry_backoff_seconds 604800 passes", func(c *Config) { c.Alerts.NotifyRetryBackoffSeconds = 604800 }, ""},
+		{"AC6 notify_retry_backoff_seconds -1 keeps its text", func(c *Config) { c.Alerts.NotifyRetryBackoffSeconds = -1 },
+			"alerts.notify_retry_backoff_seconds must be >= 0 (got -1)"},
+		{"AC7 notify_min_interval_seconds 604800.5", func(c *Config) { c.Alerts.NotifyMinIntervalSeconds = 604800.5 },
+			over("alerts.notify_min_interval_seconds", 604800.5, 604800)},
+		{"AC7 notify_min_interval_seconds 604800.5 with alerts disabled", func(c *Config) {
+			alertsOff(c)
+			c.Alerts.NotifyMinIntervalSeconds = 604800.5
+		}, over("alerts.notify_min_interval_seconds", 604800.5, 604800)},
+		{"AC7 notify_min_interval_seconds 604800 passes", func(c *Config) { c.Alerts.NotifyMinIntervalSeconds = 604800 }, ""},
+		{"AC8 second webhook timeout 604800.5 names index 1", func(c *Config) {
+			c.Alerts.Webhooks = webhook(10, 604800.5)
+		}, over("alerts.webhooks[1].timeout_seconds", 604800.5, 604800)},
+		{"AC8 second webhook timeout 604800.5 with alerts disabled", func(c *Config) {
+			alertsOff(c)
+			c.Alerts.Webhooks = webhook(10, 604800.5)
+		}, over("alerts.webhooks[1].timeout_seconds", 604800.5, 604800)},
+		{"AC8 webhook timeout 604800 passes", func(c *Config) { c.Alerts.Webhooks = webhook(604800) }, ""},
+		{"AC8 webhook timeout -1 keeps its text", func(c *Config) { c.Alerts.Webhooks = webhook(-1) },
+			"alerts.webhooks[0].timeout_seconds must be >= 0 (got -1)"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := Default()
+			tt.mutate(&c)
+			err := c.Validate()
+			if tt.want == "" {
+				if err != nil {
+					t.Fatalf("Validate() = %v, want nil", err)
+				}
+				return
+			}
+			if err == nil || err.Error() != tt.want {
+				t.Fatalf("Validate() = %v, want %q", err, tt.want)
+			}
+		})
 	}
 }
