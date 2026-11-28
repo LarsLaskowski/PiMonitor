@@ -1,14 +1,17 @@
 package web
 
 import (
+	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 )
 
 // This file guards the markup and script of the Clear look (issue #217) that
 // is not about icons or the palette: the bar label split of Memory & Swap
-// and Filesystems (AC6). It reads the embedded assets as text.
+// and Filesystems (AC6), the 44 px touch targets (AC5) and the absence of
+// inline styles, inline scripts and foreign origins (AC11). It reads the embedded assets as text.
 
 // unconditionalLevelClass matches a percentage element whose class is
 // always extended with the level class, ok included.
@@ -81,5 +84,201 @@ func TestAppJS_BarLabelSplit_AC6(t *testing.T) {
 			"renderBar('mem-bar', 'mem-pct', 'mem-bytes',",
 			"renderBar('swap-bar', 'swap-pct', 'swap-bytes',",
 		)
+	})
+}
+
+// pxValue parses a whole-pixel length such as "44px"; ok is false for any
+// other unit or spelling.
+func pxValue(v string) (int, bool) {
+	num, found := strings.CutSuffix(strings.TrimSpace(v), "px")
+	if !found {
+		return 0, false
+	}
+	n, err := strconv.Atoi(num)
+	return n, err == nil
+}
+
+// The selectors of AC5: the first group needs a height of at least 44 px
+// (min-height or height), the second one is icon-only and needs 44 px in both
+// directions.
+var (
+	touchHeightOnly = []string{".card h2", ".card-header-btn", ".updates-button", ".range-button", ".layout-reset", ".apikey-submit"}
+	touchSquare     = []string{".theme-toggle", ".layout-toggle", ".modal-close", ".layout-move"}
+)
+
+// atLeast44 reports whether decls give the dimension (its min- form or the
+// plain property) at least 44 px.
+func atLeast44(decls map[string]string, dim string) bool {
+	for _, prop := range []string{"min-" + dim, dim} {
+		if n, ok := pxValue(decls[prop]); ok && n >= 44 {
+			return true
+		}
+	}
+	return false
+}
+
+// touchTargetFailures returns one message per selector of AC5 that css does
+// not size to at least 44 px.
+func touchTargetFailures(css string) []string {
+	rules := parseCSSRules(css)
+	var out []string
+	for _, sel := range touchHeightOnly {
+		if !atLeast44(declsFor(rules, sel), "height") {
+			out = append(out, sel+": height below 44px or missing")
+		}
+	}
+	for _, sel := range touchSquare {
+		d := declsFor(rules, sel)
+		if !atLeast44(d, "height") || !atLeast44(d, "width") {
+			out = append(out, sel+": width or height below 44px or missing")
+		}
+	}
+	return out
+}
+
+func conformingTouchCSS() string {
+	var b strings.Builder
+	for _, sel := range touchHeightOnly {
+		fmt.Fprintf(&b, "%s { min-height: 44px; }\n", sel)
+	}
+	for _, sel := range touchSquare {
+		fmt.Fprintf(&b, "%s { width: 44px; height: 44px; }\n", sel)
+	}
+	return b.String()
+}
+
+func TestStyleCSS_TouchTargets_AC5(t *testing.T) {
+	t.Run("AC5 every control is at least 44 px", func(t *testing.T) {
+		for _, f := range touchTargetFailures(readAsset(t, "style.css")) {
+			t.Error(f)
+		}
+	})
+
+	t.Run("AC5 the scanner flags a small, missing or half-sized target", func(t *testing.T) {
+		good := conformingTouchCSS()
+		if got := touchTargetFailures(good); len(got) != 0 {
+			t.Fatalf("scanner on a conforming sheet: got %v, want none", got)
+		}
+		cases := map[string]string{
+			"43px high":      strings.Replace(good, ".range-button { min-height: 44px; }", ".range-button { min-height: 43px; }", 1),
+			"unit in rem":    strings.Replace(good, ".updates-button { min-height: 44px; }", ".updates-button { min-height: 2.75rem; }", 1),
+			"width only":     strings.Replace(good, ".modal-close { width: 44px; height: 44px; }", ".modal-close { width: 44px; }", 1),
+			"rule missing":   strings.Replace(good, ".layout-reset { min-height: 44px; }", "", 1),
+			"narrow icon":    strings.Replace(good, ".theme-toggle { width: 44px; height: 44px; }", ".theme-toggle { width: 36px; height: 44px; }", 1),
+			"override later": good + ".card-header-btn { min-height: 20px; }\n",
+		}
+		for name, css := range cases {
+			if css == good {
+				t.Fatalf("%s: mutation did not change the sheet", name)
+			}
+			if len(touchTargetFailures(css)) == 0 {
+				t.Errorf("%s: scanner reported nothing, want a failure", name)
+			}
+		}
+	})
+}
+
+var (
+	inlineStyleAttrRE = regexp.MustCompile(`(?i)<[a-z][^>]*\sstyle\s*=`)
+	styleElementRE    = regexp.MustCompile(`(?i)<style[\s>]`)
+	scriptElementRE   = regexp.MustCompile(`(?is)<script([^>]*)>(.*?)</script\s*>`)
+	scriptSrcRE       = regexp.MustCompile(`(?i)\ssrc\s*=`)
+)
+
+// inlineFindings reports a style attribute, a style element and a script
+// element that has no src or has a body.
+func inlineFindings(html string) []string {
+	var out []string
+	if inlineStyleAttrRE.MatchString(html) {
+		out = append(out, "style attribute")
+	}
+	if styleElementRE.MatchString(html) {
+		out = append(out, "style element")
+	}
+	for _, m := range scriptElementRE.FindAllStringSubmatch(html, -1) {
+		if !scriptSrcRE.MatchString(m[1]) || strings.TrimSpace(m[2]) != "" {
+			out = append(out, "inline script")
+		}
+	}
+	return out
+}
+
+func TestIndexHTML_NoInlineStyle_AC11(t *testing.T) {
+	t.Run("AC11 index.html has no inline style or script", func(t *testing.T) {
+		if got := inlineFindings(readAsset(t, "index.html")); len(got) != 0 {
+			t.Errorf("index.html: found %v, want none", got)
+		}
+	})
+
+	t.Run("AC11 the scanner flags each kind of inline code", func(t *testing.T) {
+		if got := inlineFindings(`<script src="a.js"></script><div class="x"><svg viewBox="0 0 1 1"></svg></div>`); len(got) != 0 {
+			t.Fatalf("scanner on clean markup: got %v, want none", got)
+		}
+		for name, html := range map[string]string{
+			"style attribute":       `<div style="width:1px"></div>`,
+			"style attr on svg":     "<svg\n  STYLE = 'fill:red'></svg>",
+			"style element":         `<style>.a{}</style>`,
+			"script body":           `<script>alert(1)</script>`,
+			"script without src":    `<script></script>`,
+			"script src plus body":  `<script src="a.js">x()</script>`,
+			"upper case script tag": `<SCRIPT>x()</SCRIPT>`,
+		} {
+			if len(inlineFindings(html)) == 0 {
+				t.Errorf("%s: scanner reported nothing, want a finding", name)
+			}
+		}
+	})
+}
+
+const svgNamespace = "http://www.w3.org/2000/svg"
+
+var (
+	absoluteURLRE = regexp.MustCompile(`(?i)https?://[^\s'"<>)]*`)
+	protoRelRE    = regexp.MustCompile(`["'(=]\s*//[A-Za-z0-9]`)
+	cssImportRE   = regexp.MustCompile(`(?i)@import\b`)
+)
+
+// originFindings lists every reference to another origin: an absolute URL
+// other than the SVG namespace, a protocol-relative URL or a CSS @import.
+func originFindings(text string) []string {
+	var out []string
+	for _, u := range absoluteURLRE.FindAllString(text, -1) {
+		if u != svgNamespace {
+			out = append(out, u)
+		}
+	}
+	out = append(out, protoRelRE.FindAllString(text, -1)...)
+	if cssImportRE.MatchString(text) {
+		out = append(out, "@import")
+	}
+	return out
+}
+
+func TestAssets_NoOtherOrigin_AC11(t *testing.T) {
+	t.Run("AC11 no asset references another origin", func(t *testing.T) {
+		for _, name := range []string{"index.html", "style.css", "app.js", "chart.js", "gauge.js", "theme-init.js"} {
+			if got := originFindings(readAsset(t, name)); len(got) != 0 {
+				t.Errorf("%s: found %v, want none", name, got)
+			}
+		}
+	})
+
+	t.Run("AC11 the scanner allows the SVG namespace only", func(t *testing.T) {
+		if got := originFindings(`<svg xmlns='http://www.w3.org/2000/svg'> // a comment`); len(got) != 0 {
+			t.Fatalf("scanner on the SVG namespace: got %v, want none", got)
+		}
+		for name, text := range map[string]string{
+			"https url":           `<img src="https://example.com/a.png">`,
+			"http url":            `fetch('http://example.com/x')`,
+			"other xml namespace": `xmlns="http://www.w3.org/1999/xlink"`,
+			"protocol relative":   `<script src="//cdn.example.com/a.js">`,
+			"css url":             `background: url(//cdn.example.com/a.png)`,
+			"css import":          `@import "a.css";`,
+			"upper case scheme":   `HTTPS://example.com`,
+		} {
+			if len(originFindings(text)) == 0 {
+				t.Errorf("%s: scanner reported nothing, want a finding", name)
+			}
+		}
 	})
 }
