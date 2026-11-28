@@ -147,8 +147,8 @@ The values of this section are validated even while `alerts.enabled` is `false`.
 | Key | Type | Default | Valid values | Meaning |
 | --- | ---- | ------- | ------------ | ------- |
 | `alerts.enabled` | bool | `true` | — | Whether the alert engine runs ([Alerts](alerts.md)). |
-| `alerts.for_seconds` | number | `30` | ≥ 0; `0` fires on the first crossing | Debounce window ([Alerts](alerts.md)). |
-| `alerts.openhab_for_seconds` | number | `300` | ≥ 0; `0` fires on the first crossing | Debounce window of the three `openhab_*` alerts, counted per openHAB poll ([Alerts](alerts.md)); with `openhab.enabled: true` on a host without openHAB, `openhab_down` fires once it has held that long. |
+| `alerts.for_seconds` | number | `30` | 0 to 604800; `0` fires on the first crossing | Debounce window ([Alerts](alerts.md)). |
+| `alerts.openhab_for_seconds` | number | `300` | 0 to 604800; `0` fires on the first crossing | Debounce window of the three `openhab_*` alerts, counted per openHAB poll ([Alerts](alerts.md)); with `openhab.enabled: true` on a host without openHAB, `openhab_down` fires once it has held that long. |
 | `alerts.webhooks` | list | empty | entries as below | Webhook destinations ([Notifications](notifications.md)). |
 | `alerts.notify_max_retries` | integer | `3` | ≥ 0; `0` means one attempt | Retries of a failed delivery ([Notifications](notifications.md)). |
 | `alerts.notify_retry_backoff_seconds` | number | `1` | ≥ 0 | Delay before the first retry ([Notifications](notifications.md)). |
@@ -183,7 +183,11 @@ The values of this section are validated even while `alerts.enabled` is `false`.
   `pimonitor: load config: processes_top_n must be a whole number (got 2.5)`.
 - The openHAB alert options fail with `thresholds.<key> must be >= 0 (got <value>)`,
   `thresholds.<warn key> (<value>) must be <= thresholds.<crit key> (<value>)` (only when both are non-zero) and
-  `alerts.openhab_for_seconds must be >= 0 (got <value>)`, also while `alerts.enabled` is `false`.
+  `alerts.openhab_for_seconds must be >= 0 (got <value>)` or `alerts.openhab_for_seconds must be <= 604800 (got <value>)`,
+  also while `alerts.enabled` is `false`.
+- `alerts.for_seconds` fails with `alerts.for_seconds must be >= 0 (got <value>)` or
+  `alerts.for_seconds must be <= 604800 (got <value>)`, also while `alerts.enabled` is `false`; the bound keeps the
+  conversion to a duration from overflowing ([0034](../decisions/0034-alert-debounce-windows-capped-at-seven-days.md)).
 - An invalid `openhab` option fails with its own text, which never quotes the URL or the token:
   `openhab.enabled must be auto, true or false (got "<value>")`,
   `openhab.base_url must be an http URL with a loopback host (127.0.0.0/8, ::1 or localhost) and no user, path, query or fragment`,

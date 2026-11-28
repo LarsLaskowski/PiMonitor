@@ -204,11 +204,11 @@ alerts:
   # Debounce window: a threshold crossing must persist for at least this
   # many seconds before it is reported as an alert, so short-lived spikes
   # (and momentary dips back to ok) don't flap. Set to 0 to fire on the
-  # first crossing.
+  # first crossing. At most 604800 (7 days).
   for_seconds: 30
   # Debounce window of the openHAB alerts (openhab_down, openhab_rss_percent,
   # openhab_things_offline), counted per openHAB poll, so keep it well above
-  # openhab.poll_interval_seconds. 0 fires on the first poll.
+  # openhab.poll_interval_seconds. 0 fires on the first poll. At most 604800 (7 days).
   openhab_for_seconds: 300
 
   # Optional HTTP webhooks. On every fired/cleared transition, PiMonitor
