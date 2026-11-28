@@ -52,10 +52,15 @@ The installer must run as root. It is idempotent: a first install and an upgrade
 6. Installs `pimonitor.service`, `pimonitor-apt-update.service` and `pimonitor-apt-update.timer` to
    `/etc/systemd/system/`, mode `644`, replacing existing ones. Drop-ins under `/etc/systemd/system/<unit>.d/` are
    not touched, so local unit changes belong there.
-7. Reloads systemd, then enables and starts `pimonitor.service` and `pimonitor-apt-update.timer`. Either unit that was
-   already active before the run is restarted, so a new binary, unit or schedule takes effect at once.
-8. Runs `pimonitor-apt-update.service` once and waits for it, so the update count is available on first view. Its
-   failure prints a warning; the installer still succeeds.
+7. Reloads systemd, then enables and starts `pimonitor-apt-update.timer`; when it was already active before the run it
+   is restarted, so a new schedule takes effect at once.
+8. Prints that `pimonitor.service` (re)starts only after the refresh and that an interrupted run is completed with
+   `sudo systemctl restart pimonitor.service` (a re-run of `install.sh` recovers too), then runs
+   `pimonitor-apt-update.service` once and waits for it, so the update count is available on first view and the
+   service's first check does not overlap the refresh ([decision 0037](../decisions/0037-apt-state-change-repeats-check-once.md)).
+   Its failure prints a warning; the installer still succeeds.
+9. Enables and starts `pimonitor.service`; when it was already active before the run it is restarted, so a new binary
+   or unit takes effect at once.
 
 Any other failing step ends the installer with a non-zero status. The installer's success does not mean the service
 is running: it does not wait to see whether `pimonitor.service` stays up (check with
@@ -148,6 +153,8 @@ is running: it does not wait to see whether `pimonitor.service` stays up (check 
 
 - [0032](../decisions/0032-download-checked-against-release-checksums.md): the download is checked against the
   release's `checksums.txt`.
+- [0037](../decisions/0037-apt-state-change-repeats-check-once.md): the installer refreshes apt before it starts the
+  service.
 
 ## Not here
 

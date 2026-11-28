@@ -26,7 +26,8 @@ const maxAptOutputBytes int64 = 256 << 20
 // maxAptLineBytes bounds one line of the dpkg status file or apt-cache output.
 const maxAptLineBytes = 1 << 20
 
-// updatesTimeout bounds one update check.
+// updatesTimeout bounds one update check, its repeat after a state change
+// included.
 const updatesTimeout = 10 * time.Second
 
 // updatesRetryDelay is the pause before the one repeat of a check whose apt or
@@ -128,6 +129,27 @@ func (c *UpdatesCollector) Collect(ctx context.Context) (Updates, error) {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
+	updates, err := c.collectOnce(ctx, cancel, maxOutput)
+	if !errors.Is(err, errAptStateChanged) {
+		return updates, err
+	}
+	// The state changed while the check ran (typically an apt-get update):
+	// pause once and repeat under the same deadline.
+	wait := c.retryAfter
+	if wait == nil {
+		wait = time.After
+	}
+	select {
+	case <-ctx.Done():
+		return Updates{}, err
+	case <-wait(updatesRetryDelay):
+	}
+	return c.collectOnce(ctx, cancel, maxOutput)
+}
+
+// collectOnce runs one attempt of the check; it fails with errAptStateChanged
+// when the apt lists or the dpkg status file changed while it ran.
+func (c *UpdatesCollector) collectOnce(ctx context.Context, cancel context.CancelFunc, maxOutput int64) (Updates, error) {
 	before := aptStateStamp(c.listsDir, c.statusPath)
 	installed, err := c.loadInstalled()
 	if err != nil {
