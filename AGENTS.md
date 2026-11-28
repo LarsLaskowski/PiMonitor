@@ -97,6 +97,7 @@ All commands, with what each one checks, are listed in [`.squad/stack.md`](/.squ
   in-flight limit, security headers), per-route server stats and the Prometheus endpoint.
 - `internal/web` — the embedded dashboard assets (`assets/`: vanilla HTML/CSS/JS, no build step).
 - `internal/config` — YAML config: defaults, parsing, validation.
+- `internal/packaging` — tests of the `packaging/` scripts and units (test files only).
 - `packaging/` — `install.sh`, the systemd units (`pimonitor.service`, `pimonitor-apt-update.service`/`.timer`)
   and `pimonitor.example.yaml`.
 <!-- project:end architecture -->

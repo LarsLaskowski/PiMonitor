@@ -111,13 +111,19 @@ each: the double, where it lives and what it stands in for; how it behaves is re
   Authorization headers, a fake root with install paths and `/proc/<pid>` JVMs, and the collector built against
   them; `peerOwnerRecorder` and `writeProcNet` (`openhab_linux_test.go`) — a recording `PeerOwnerFunc` and fake
   `/proc/net/tcp*`
+- `newScriptEnv`, `writeStubCurl`, `writeReleaseArchive` (`internal/packaging/download_latest_test.go`) — a scratch
+  PATH of real tools for `download-latest.sh`, a `curl` stub serving files and logging URLs, and a generated
+  release archive with its SHA-256
 
 ## Where tests live
 
 - Tests are colocated with the code they test, as `<file>_test.go` next to `<file>.go`,
   in the same package (`internal/collector`, `internal/config`, `internal/alert`,
   `internal/httpapi`, `internal/web`) — never a separate `_test` suffixed package or a
-  top-level `tests/` directory.
+  top-level `tests/` directory. The one exception: tests of the scripts and units under `packaging/` live in the
+  test-only package `internal/packaging/`, one `<file>_test.go` per file under test, because everything under
+  `packaging/` ships in the release archive
+  ([decision 0033](decisions/0033-packaging-script-tests-in-internal-packaging.md)).
 - One test file per source file under test (`cpu.go` → `cpu_test.go`, `disk.go` →
   `disk_test.go`, ...). A package-wide test helper file is named `testhelpers_test.go`
   (see `internal/collector/testhelpers_test.go`) rather than attached to any one metric's
