@@ -1,7 +1,7 @@
 # Spec: Let the user choose a dashboard theme, stored per browser
 
 Source: Issue #218
-Status: Draft
+Status: Approved by Lead
 
 ## Problem
 

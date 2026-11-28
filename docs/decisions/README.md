@@ -102,4 +102,6 @@ once in the [area document](../areas/README.md) of the record's area, and the re
 | [0038](0038-dashboard-mode-and-theme-as-token-overrides.md) | Dashboard "mode" is light or dark, a "theme" is a set of custom-property overrides | Accepted | 2026-11-28 |
 | [0039](0039-card-colour-only-on-icon-chip.md) | The per-card colour appears only on the icon chip; status colours have a fill and an ink variant | Accepted | 2026-11-28 |
 | [0040](0040-dashboard-icons-inline-svg.md) | Dashboard icons are inline stroke SVG in the page, not emoji | Accepted | 2026-11-28 |
+| [0041](0041-theme-choice-per-browser-as-pimonitor-style.md) | The theme choice is a per-browser preference, stored as `pimonitor-style` and applied as `data-style` | Proposed | 2026-11-28 |
+| [0042](0042-theme-registry-in-theme-init-js.md) | The theme registry and the canvas token readers live once in `theme-init.js` | Proposed | 2026-11-28 |
 <!-- project:end index -->
