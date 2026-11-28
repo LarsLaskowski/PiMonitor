@@ -363,3 +363,66 @@ func TestStyleCSS_HeadingButtonTypography_AC5(t *testing.T) {
 		}
 	})
 }
+
+var headerToggleSelectors = []string{".theme-toggle", ".layout-toggle"}
+
+var nonNegativeLengthRE = regexp.MustCompile(`^\+?(?:\d+|\d*\.\d+)(?:px|rem|em)?$`)
+
+// headerToggleFocusFindings checks the keyboard focus ring and the hover
+// state of one header button selector.
+func headerToggleFocusFindings(rules []cssRule, sel string) []string {
+	var out []string
+	focus := declsFor(rules, sel+":focus-visible")
+	if len(focus) == 0 {
+		return []string{sel + ":focus-visible has no rule"}
+	}
+	if normCSS(focus["outline"]) != "2pxsolidvar(--accent)" {
+		out = append(out, fmt.Sprintf("%s:focus-visible outline = %q, want 2px solid var(--accent)", sel, focus["outline"]))
+	}
+	if !nonNegativeLengthRE.MatchString(strings.TrimSpace(focus["outline-offset"])) {
+		out = append(out, fmt.Sprintf("%s:focus-visible outline-offset = %q, want a non-negative length", sel, focus["outline-offset"]))
+	}
+	return append(out, headerToggleHoverFindings(rules, sel)...)
+}
+
+// headerToggleHoverFindings requires the hover rule to change the border
+// colour only, so nothing stacks with the focus ring.
+func headerToggleHoverFindings(rules []cssRule, sel string) []string {
+	var out []string
+	hover := declsFor(rules, sel+":hover")
+	if _, ok := hover["border-color"]; !ok {
+		out = append(out, sel+":hover does not set border-color")
+	}
+	for prop := range hover {
+		if prop != "border-color" {
+			out = append(out, fmt.Sprintf("%s:hover sets %q, want border-color only", sel, prop))
+		}
+	}
+	return out
+}
+
+func TestStyleCSS_HeaderButtonFocusRing_AC5(t *testing.T) {
+	t.Run("AC5 header buttons have an explicit accent focus ring and a border-only hover", func(t *testing.T) {
+		rules := parseCSSRules(readAsset(t, "style.css"))
+		for _, sel := range headerToggleSelectors {
+			for _, f := range headerToggleFocusFindings(rules, sel) {
+				t.Error(f)
+			}
+		}
+	})
+
+	t.Run("AC5 the check accepts a conforming rule and rejects a missing ring", func(t *testing.T) {
+		const hover = ".theme-toggle:hover { border-color: var(--accent); }\n"
+		good := hover + ".theme-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }\n"
+		bad := hover + ".theme-toggle:focus-visible { outline: 2px solid #fff; outline-offset: -2px; }\n"
+		if f := headerToggleFocusFindings(parseCSSRules(good), ".theme-toggle"); len(f) != 0 {
+			t.Errorf("conforming CSS: got findings %v, want none", f)
+		}
+		if f := headerToggleFocusFindings(parseCSSRules(bad), ".theme-toggle"); len(f) != 2 {
+			t.Errorf("literal colour and negative offset: got %d findings %v, want 2", len(f), f)
+		}
+		if f := headerToggleFocusFindings(parseCSSRules(hover), ".theme-toggle"); len(f) != 1 {
+			t.Errorf("no focus rule: got %d findings %v, want 1", len(f), f)
+		}
+	})
+}
