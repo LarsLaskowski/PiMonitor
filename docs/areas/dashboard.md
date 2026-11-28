@@ -4,7 +4,7 @@
 
 The web UI served at `/`: how its assets are delivered, which API endpoints it reads and how often, how it handles
 a configured API key, failures and hidden tabs, how it renders server data, colors values and shows alerts, and the
-per-browser preferences (theme, card layout) it keeps. The user viewing the Pi in a browser relies on it; it is a
+per-browser preferences (mode, card layout) it keeps. The user viewing the Pi in a browser relies on it; it is a
 client of the [HTTP API](http-api.md) like any third-party integration and has no server-side state of its own.
 
 ## Behavior
@@ -192,15 +192,36 @@ client of the [HTTP API](http-api.md) like any third-party integration and has n
   element that opened it on close. Except for the API key dialog, Escape, a click outside the dialog or its close
   button closes it.
 
-### Theme
+### Mode
 
-- The page has a light and a dark palette. With no stored choice it follows the operating system's
+- The page has a light and a dark palette (the two modes). With no stored choice it follows the operating system's
   `prefers-color-scheme` and follows live changes of it.
-- The theme button switches to the other palette and stores the choice under `pimonitor-theme` (`light` or `dark`)
+- The mode button switches to the other palette and stores the choice under `pimonitor-theme` (`light` or `dark`)
   in `localStorage`; from then on the stored choice wins over the operating system setting. The page offers no
   control to return to following the operating system.
 - A stored choice is applied before the first paint, so the page never flashes the other palette. Charts and gauges
   are redrawn in the new palette immediately on a switch.
+
+### Look
+
+- Every color comes from a token of the palette blocks of `style.css` (light, explicit dark and OS dark, the two
+  dark blocks identical); no rule outside them holds a color literal. Both the text and the fills of the page use
+  these tokens, so a mode switch changes tokens only.
+- Status text (values, percentages, badges, the alert banner, the API-key error) uses the `*-ink` variant of
+  `ok`/`warn`/`crit`; bar fills and the card border of an alerting card use the base color. Text on an accent fill
+  uses `--on-accent`.
+- A bar label shows the percentage emphasised, colored only at `warn` and `crit`, and the byte sizes muted beside it.
+- The load gauge draws a 9 px arc on the `--track` color and shows its value inside the arc; the value's font size
+  scales with the gauge width.
+- A sparkline is a 2 px line with a fill that fades towards the bottom and a dot with a ring at the newest point,
+  inset so the dot is never clipped.
+- A card's own color appears only on its 28 px icon chip and on the hover/focus highlight of a clickable card; cards
+  have no colored top border. Clickable cards end their heading with a chevron.
+- Icons are inline SVG drawn in `currentColor`, hidden from assistive technology; the page uses no emoji. The mode
+  button shows the moon in light mode and the sun in dark mode, chosen by CSS. The network card names its rates
+  Download and Upload for screen readers next to the arrow icons.
+- Interactive controls are 44 px high or wide at least. The text and status colors reach a contrast of 4.5:1 on
+  their backgrounds in both modes, guarded by a test (`palette_test.go`).
 
 ### Card layout
 
@@ -238,7 +259,9 @@ client of the [HTTP API](http-api.md) like any third-party integration and has n
 
 ## Related decisions
 
-None yet.
+- [0038](../decisions/0038-dashboard-mode-and-theme-as-token-overrides.md): mode and theme as token overrides
+- [0039](../decisions/0039-card-colour-only-on-icon-chip.md): card colour only on the icon chip
+- [0040](../decisions/0040-dashboard-icons-inline-svg.md): inline SVG icons
 
 ## Not here
 

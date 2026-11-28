@@ -29,7 +29,9 @@ function drawSparkline(canvas, points, opts) {
     max += 1;
   }
 
-  const pad = 3;
+  // The plot is inset far enough that the newest-point dot (radius 4 plus a
+  // 3 px ring) stays inside the canvas at the right, top and bottom edges.
+  const pad = 7;
   const stepX = (cssWidth - pad * 2) / (points.length - 1);
 
   const yFor = v => {
@@ -37,24 +39,62 @@ function drawSparkline(canvas, points, opts) {
     return cssHeight - pad - t * (cssHeight - pad * 2);
   };
 
-  ctx.beginPath();
-  points.forEach((p, i) => {
-    const x = pad + i * stepX;
-    const y = yFor(p.v);
-    if (i === 0) {
-      ctx.moveTo(x, y);
-    } else {
-      ctx.lineTo(x, y);
-    }
-  });
-  ctx.strokeStyle = color;
-  ctx.lineWidth = 1.5;
-  ctx.stroke();
+  const rootStyle = getComputedStyle(document.documentElement);
+  const fillAlpha = parseFloat(rootStyle.getPropertyValue('--spark-fill-alpha')) || 0.28;
+  const cardBg = rootStyle.getPropertyValue('--card-bg').trim() || '#ffffff';
+  const lastX = pad + (points.length - 1) * stepX;
+  const lastY = yFor(points[points.length - 1].v);
 
-  ctx.lineTo(pad + (points.length - 1) * stepX, cssHeight);
+  const linePath = () => {
+    ctx.beginPath();
+    points.forEach((p, i) => {
+      const x = pad + i * stepX;
+      const y = yFor(p.v);
+      if (i === 0) {
+        ctx.moveTo(x, y);
+      } else {
+        ctx.lineTo(x, y);
+      }
+    });
+  };
+
+  // Fill under the line in the line colour, faded to transparent towards
+  // the bottom: the gradient erases the fill (destination-out) from none at
+  // the top to all of it at the bottom, so any CSS colour works.
+  linePath();
+  ctx.lineTo(lastX, cssHeight);
   ctx.lineTo(pad, cssHeight);
   ctx.closePath();
-  ctx.fillStyle = color + '26'; // ~15% alpha fill under the line
+  ctx.save();
+  ctx.clip();
+  ctx.globalAlpha = fillAlpha;
+  ctx.fillStyle = color;
+  ctx.fill();
+  ctx.globalAlpha = 1;
+  const fade = ctx.createLinearGradient(0, 0, 0, cssHeight);
+  fade.addColorStop(0, 'rgba(0, 0, 0, 0)');
+  fade.addColorStop(1, 'rgba(0, 0, 0, 1)');
+  ctx.globalCompositeOperation = 'destination-out';
+  ctx.fillStyle = fade;
+  ctx.fillRect(0, 0, cssWidth, cssHeight);
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.restore();
+
+  linePath();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2;
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+  ctx.stroke();
+
+  // Newest point: a dot with a ring in the card colour.
+  ctx.beginPath();
+  ctx.arc(lastX, lastY, 7, 0, 2 * Math.PI);
+  ctx.fillStyle = cardBg;
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(lastX, lastY, 4, 0, 2 * Math.PI);
+  ctx.fillStyle = color;
   ctx.fill();
 }
 
