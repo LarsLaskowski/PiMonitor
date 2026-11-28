@@ -385,6 +385,27 @@ func TestRun_AlertWindowAboveBound_AC3(t *testing.T) {
 	}
 }
 
+func TestRun_DurationOptionAboveBound_AC9(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	content := "listen_addr: 127.0.0.1:0\nhistory_window_minutes: 1e12\n"
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	done := make(chan error, 1)
+
+	go func() { done <- run([]string{"-config", path}) }()
+
+	select {
+	case err := <-done:
+		want := "load config: history_window_minutes must be <= 525600 (got 1e+12)"
+		if err == nil || err.Error() != want {
+			t.Fatalf("run error = %v, want %q", err, want)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("run did not return: the config with history_window_minutes: 1e12 was accepted and the server started")
+	}
+}
+
 func TestServerConfig_OpenHABEnabled_AC9(t *testing.T) {
 	tests := []struct {
 		enabled string

@@ -167,7 +167,7 @@ Implemented in `internal/alert/notify.go`.
 
 ## Limits and errors
 
-- At startup a webhook needs a non-empty `url`, a valid `min_level` and a non-negative `timeout_seconds`
+- At startup a webhook needs a non-empty `url`, a valid `min_level` and a `timeout_seconds` from 0 to 604800
   ([Configuration](configuration.md)). Beyond that the URL is not checked: a malformed or unsupported URL is
   accepted and every delivery to it fails with a transport error, which is retried until the budget is used up. The
   failure of a malformed URL is logged with `endpoint` `[invalid URL]`.

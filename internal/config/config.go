@@ -445,8 +445,59 @@ func validateAlertWindow(key string, seconds float64) error {
 	if seconds < 0 {
 		return fmt.Errorf("%s must be >= 0 (got %v)", key, seconds)
 	}
-	if seconds > maxAlertWindowSeconds {
-		return fmt.Errorf("%s must be <= %d (got %v)", key, maxAlertWindowSeconds, seconds)
+	return atMost(key, seconds, maxAlertWindowSeconds)
+}
+
+// Upper bounds of the float options that are multiplied into a time.Duration
+// (decision 0035): a larger value overflows the conversion to a
+// platform-dependent, possibly negative duration.
+const (
+	// maxWaitSeconds is the largest accepted interval, backoff, rate-limit
+	// window or webhook timeout, in seconds (7 days).
+	maxWaitSeconds = maxAlertWindowSeconds
+	// maxWaitMinutes is the largest accepted updates check interval (7 days).
+	maxWaitMinutes = 10080
+	// maxAgeSeconds is the largest accepted staleness limit in seconds (365 days).
+	maxAgeSeconds = 31536000
+	// maxAgeMinutes is the largest accepted stale threshold or history window
+	// in minutes (365 days).
+	maxAgeMinutes = 525600
+)
+
+// atMost returns an error naming key when value exceeds limit.
+func atMost(key string, value float64, limit int) error {
+	if value > float64(limit) {
+		return fmt.Errorf("%s must be <= %d (got %v)", key, limit, value)
+	}
+	return nil
+}
+
+// validateUpperBounds rejects values whose conversion to a time.Duration would
+// overflow. It runs right after validateFinite, so the key-naming bound wins
+// over every other range check.
+func (c Config) validateUpperBounds() error {
+	checks := []struct {
+		name  string
+		value float64
+		limit int
+	}{
+		{"poll_interval_seconds", c.PollIntervalSeconds, maxWaitSeconds},
+		{"updates_check_minutes", c.UpdatesCheckMinutes, maxWaitMinutes},
+		{"updates_stale_threshold_minutes", c.UpdatesStaleThresholdMinutes, maxAgeMinutes},
+		{"healthz_max_staleness_seconds", c.HealthzMaxStalenessSeconds, maxAgeSeconds},
+		{"history_window_minutes", c.HistoryWindowMinutes, maxAgeMinutes},
+		{"alerts.notify_retry_backoff_seconds", c.Alerts.NotifyRetryBackoffSeconds, maxWaitSeconds},
+		{"alerts.notify_min_interval_seconds", c.Alerts.NotifyMinIntervalSeconds, maxWaitSeconds},
+	}
+	for _, ck := range checks {
+		if err := atMost(ck.name, ck.value, ck.limit); err != nil {
+			return err
+		}
+	}
+	for i, w := range c.Alerts.Webhooks {
+		if err := atMost(fmt.Sprintf("alerts.webhooks[%d].timeout_seconds", i), w.TimeoutSeconds, maxWaitSeconds); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -457,6 +508,9 @@ func validateAlertWindow(key string, seconds float64) error {
 // daemon fails fast at startup rather than later at runtime.
 func (c Config) Validate() error {
 	if err := c.validateFinite(); err != nil {
+		return err
+	}
+	if err := c.validateUpperBounds(); err != nil {
 		return err
 	}
 	if err := c.validateTiming(); err != nil {
