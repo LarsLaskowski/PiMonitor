@@ -58,7 +58,7 @@ touch target, and flat charts with a bar percentage no more prominent than the b
   visible.
 - E6: The openHAB card (shown only when openHAB is detected; not in the issue's tables or mockups) gets the same
   treatment: chip, stroke icon, no top border; its warning state stays a warning-coloured border without a top border.
-  Its icon and chip colour: *Open questions*, Q1.
+  Its icon is a house, its chip colour `#0369a1` light / `#38bdf8` dark (Q1).
 - E7: Text on an `--accent` fill (the active range button, `Unlock`) uses `--on-accent`: the hard-coded white of today
   reaches only 2.5:1 on the dark accent.
 - E8: Status text not named in the issue's list follows its rule too: the new version in the updates list, the API key
@@ -96,7 +96,7 @@ touch target, and flat charts with a bar percentage no more prominent than the b
   badges, Pi-hole status and the cases of E8; bar fills and gauge arcs use the base token; text on an `--accent` fill
   uses `--on-accent` (S5, S10, E7, E8).
 - AC4: Cards have no coloured top border; each card's icon chip shows its card colour of issue §2 (the openHAB card:
-  Q1's answer) in the matching mode at 12 % (light) / 16 % (dark) chip tint (S3, E6).
+  `#0369a1` / `#38bdf8`, Q1) in the matching mode at 12 % (light) / 16 % (dark) chip tint (S3, E6).
 - AC5: The header buttons, the heading buttons of clickable cards, the updates button and the dialog buttons (close,
   range, move, reset, unlock) are at least 44 px high, and 44 px wide where icon-only (S12).
 - AC6: In the bar label rows of Memory & Swap and Filesystems the percentage and the byte figures are separate
@@ -114,7 +114,8 @@ touch target, and flat charts with a bar percentage no more prominent than the b
 - AC11: `index.html` contains no `style` attribute and no `<style>` element, and the page works under the unchanged
   Content-Security-Policy; no asset references another origin (N1, N2).
 - AC12: The contrast ratio of `--text`, `--muted` and the three `*-ink` tokens against `--card-bg`, of `--text` and
-  `--muted` against `--bg`, and of `--on-accent` against `--accent` is at least 4.5:1 in both modes (N4, E7).
+  `--muted` against `--bg`, of `--on-accent` against `--accent`, and of the updates button's `--accent` label against
+  its tint (`--accent` at 8 % light / 14 % dark over `--card-bg`, Q2) is at least 4.5:1 in both modes (N4, E7).
 - AC13: Behaviour described in `docs/areas/dashboard.md` outside its *Theme* section (polling, API key, failures,
   rendering rules, alerts, detail view, card layout, browser storage) is unchanged, and the existing tests under
   `internal/web` pass, adapted only where they assert markup this change deliberately changes (S1, S11, N3, N6, N7).
@@ -132,13 +133,12 @@ touch target, and flat charts with a bar percentage no more prominent than the b
 
 - Q1: Which icon and chip colour does the openHAB card get? The issue says "nine cards" and its §2 and §3 tables list
   nine, but the page has ten (`card-openhab`, emoji `🏠`, colour `#0ea5e9`, which reaches only 2.5:1 as a chip icon
-  on white). AC1 removes its emoji, so it needs both. Answered: not yet — escalated to the Product Manager
-  (recommendation: a house icon
-  `<path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/><path d="M10 20v-5h4v5"/>`, `#0369a1` light / `#38bdf8` dark,
-  4.98:1 and 5.78:1 on their tinted chips).
+  on white). AC1 removes its emoji, so it needs both. Answered: by the Product Manager — a house icon
+  `<path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/><path d="M10 20v-5h4v5"/>` with chip colour `#0369a1` (light)
+  / `#38bdf8` (dark), 4.98:1 and 5.78:1 on their tinted chips.
 - Q2: The updates button's label (`--accent` on `--accent` at 10 % over `--card-bg`) reaches 4.49:1 in light mode,
-  below the issue's own 4.5:1 constraint (dark: 5.17:1). Answered: not yet — escalated with Q1 (recommendation: a light tint of
-  8 %, 4.65:1; dark 14 % unchanged).
+  below the issue's own 4.5:1 constraint (dark: 5.17:1). Answered: by the Product Manager — the light background tint
+  is 8 % (4.65:1); dark stays 14 %. All other values of issue §10 stay.
 - Q3: Does an existing test protect the gauge arc from clipping, as §9 says (`gauge_test.go` "keeps holding")?
   Answered: no (code) — `gauge_test.go` holds only `TestAppJS_LoadGaugeUsesCPUThresholds`; the radius logic is in
   `gauge.js` untested, so AC8 needs its own test.
