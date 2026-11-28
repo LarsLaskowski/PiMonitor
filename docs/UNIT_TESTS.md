@@ -46,6 +46,9 @@ not be merged; see the checklist in [`.github/pull_request_template.md`](../.git
    only their key set. A JS test framework is
    deliberately not part of this repository (see below), and these scans are the only way to
    guard client-side behavior that unit tests can't reach.
+   `internal/web/palette_test.go` pins the dashboard's colour tokens and the contrast ratio of each text and
+   background pair, and `internal/web/icons_test.go` scans the assets for emoji, so no symbol stands in for an
+   inline SVG icon.
 
 4. **Integration / hardware tests**
 
