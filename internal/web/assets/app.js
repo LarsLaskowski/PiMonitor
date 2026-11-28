@@ -29,7 +29,9 @@
   let latestSnapshot = null;
   let latestHistory = null;
 
+  // THEME_KEY stores the mode (light/dark); STYLE_KEY stores the theme (registered style id).
   const THEME_KEY = 'pimonitor-theme';
+  const STYLE_KEY = 'pimonitor-style';
   const API_KEY_STORAGE = 'pimonitor-api-key';
 
   function storedAPIKey() {
@@ -98,6 +100,21 @@
     if (latestSnapshot) renderMetrics(latestSnapshot);
     if (latestHistory) renderHistory(latestHistory);
   }
+
+  // activeStyle returns the id of the theme in effect.
+  function activeStyle() {}
+
+  // repaintCanvases redraws the canvas widgets that cached the previous palette.
+  function repaintCanvases() {}
+
+  // applyStyle shows the theme with the given id.
+  function applyStyle(id) {}
+
+  // selectStyle stores and applies the theme with the given id.
+  function selectStyle(id) {}
+
+  // buildStylePicker fills the theme picker of the layout dialog.
+  function buildStylePicker() {}
 
   function toggleTheme() {
     const next = effectiveTheme() === 'dark' ? 'light' : 'dark';
