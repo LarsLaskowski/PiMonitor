@@ -1,6 +1,6 @@
 # 0032: download-latest.sh checks the archive against the release's checksums.txt before extracting it
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-28
 - **Area:** Deployment
 - **Source:** Issue #204

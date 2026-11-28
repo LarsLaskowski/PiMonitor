@@ -29,7 +29,7 @@ Security areas touched: Privilege separation (`packaging/pimonitor-apt-update.ti
 | 12 | `systemd-analyze verify` checks the two units in the session | `systemd-analyze verify ./pimonitor-apt-update.timer ./pimonitor-apt-update.service` in `packaging/` printed nothing (systemd 255) | confirmed |
 | 13 | No document besides `README.md` and `docs/areas/deployment.md` describes the script or `Persistent=` | `grep -rn "download-latest\|checksums\|Persistent"` outside `.git`, `specs/` | confirmed |
 | 14 | `sha256sum` comes from `coreutils`, an Essential package, on Debian-family systems | `dpkg-query -W -f '${Essential}' coreutils` printed `yes`, `dpkg -S /usr/bin/sha256sum` printed `coreutils` (Ubuntu 24.04, coreutils 9.4) | confirmed |
-| 15 | Raspberry Pi OS (Debian Bookworm based) ships `sha256sum` the same way | to verify: the orchestrator asks the Product Manager to run `dpkg -S /usr/bin/sha256sum` and `dpkg-query -W -f '${Essential}' coreutils` on a Pi before step 9 (deb.debian.org and archive.raspberrypi.com refused by the proxy); on a "no", the Lead decides | unverified |
+| 15 | Raspberry Pi OS (Debian Bookworm based) ships `sha256sum` the same way | source: Product Manager on a Raspberry Pi — `dpkg -S /usr/bin/sha256sum` printed `coreutils: /usr/bin/sha256sum`, `dpkg-query -W -f '${Essential}' coreutils` printed `yes` | confirmed |
 
 ## Acceptance criteria
 

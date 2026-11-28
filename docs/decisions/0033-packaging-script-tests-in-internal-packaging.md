@@ -1,6 +1,6 @@
 # 0033: Tests of the packaging scripts live in a test-only package internal/packaging
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-28
 - **Area:** —
 - **Source:** Issue #204
