@@ -224,3 +224,60 @@ schedule (fact 1: the removed line had no effect), and `download-latest.sh` stil
 - Signing releases (cosign/GPG) and verifying the signature — no follow-up planned unless the Product Manager asks.
 - An existing `/var/lib/systemd/timers/stamp-pimonitor-apt-update.timer` on upgraded Pis, if systemd wrote one, stays
   as a harmless leftover; no cleanup step is added to `install.sh`.
+
+## Challenge notes
+
+Devil's Advocate, plan mode, specs/issue-204 (/home/user/PiMonitor/specs/issue-204/plan.md)
+
+I checked the plan's claims myself and they hold:
+- `Persistent=true` is at /home/user/PiMonitor/packaging/pimonitor-apt-update.timer:7, next to `OnBootSec`/`OnUnitActiveSec` (lines 5-6), and there is no `OnCalendar=`.
+- /home/user/PiMonitor/packaging/download-latest.sh:75-79 downloads and runs `tar xzf` with no check.
+- The required-command loop is at line 46. It runs before the release API request (line 53), so the `sha256sum`-missing case ("nothing is requested") is reachable.
+- /home/user/PiMonitor/.goreleaser.yaml:12-17 and 37-38 build two archives and publish `checksums.txt`. Lines 31-33 ship everything under `packaging/`, which is why the test-only `internal/packaging` location (decision 0033) is justified.
+- shellcheck is part of the *Analyzer gate* (/home/user/PiMonitor/.squad/tools/analyzer_common.py:106), so AC4's shellcheck row is enforced.
+- CI's `go test` jobs run on `ubuntu-latest` (/home/user/PiMonitor/.github/workflows/ci.yml:18, 45).
+- `.golangci.yml` enables no gosec, so `exec.CommandContext` with a looked-up bash path raises no G204 finding.
+- The test names fit *Criterion ids* (/home/user/PiMonitor/docs/UNIT_TESTS.md:154-160).
+- The mismatch test uses a real `checksums.txt` sample (v1.3.0), so the *Sample* rule is met.
+- Need: the issue records the decision, and no accepted record covers it.
+- Scope: no sibling download path is missed. The only other download is the README manual snippet (/home/user/PiMonitor/README.md:155-158), which the plan deliberately documents as unchecked, with the reason.
+- The lookup design fails closed in every form. Duplicate lines join with a newline and fail the `^…{64}$` match. CRLF lines fail the `$2 == name` comparison. Every accepted entry still has to equal the computed `sha256sum`.
+
+Objections:
+
+1. minor: Add a *Verified facts* row for the target host. Why it matters: the plan makes `sha256sum` a hard requirement on the Pi but never shows that Raspberry Pi OS has it, which *Operator environments and documented procedures* (/home/user/PiMonitor/.squad/routing.md:166-173) asks for. Instruction to the Dev: record that `sha256sum` comes from `coreutils` (Essential: yes on Raspberry Pi OS Lite, Bookworm and later), with the source you checked. Update `docs/areas/deployment.md`'s "Requires `curl`, `tar` and `sha256sum`" line only to match what that check shows.
+
+The plan holds up apart from this one minor addition.
+
+## Security notes
+
+Security review, mode `plan`: specs/issue-204/plan.md, with decisions 0032 and 0033 (/home/user/PiMonitor/docs/decisions/0032-download-checked-against-release-checksums.md, /home/user/PiMonitor/docs/decisions/0033-packaging-script-tests-in-internal-packaging.md)
+
+**Tier and areas.** The plan has tier `security`, which is correct. It changes how far an operator can trust the archive whose `install.sh` then runs as root. It lists both areas it touches: Privilege separation (the root apt timer) and the new Release download area, which the plan adds to `.squad/project.md`. I found no other area it touches. It changes no CI workflow, Docker or build configuration and adds no dependency (the tests use only the standard library). The plan states correctly that the check proves integrity against the release, not authenticity, and both the README (AC5) and the area document will say so.
+
+**Timer.** Deleting `Persistent=true` (packaging/pimonitor-apt-update.timer:7) leaves the same unit running as root on the same `OnBootSec`/`OnUnitActiveSec` schedule. The privilege split holds whether or not that line ever had an effect, so it does not depend on fact 1. I tried to check fact 1 myself: `gh api -H "Accept: application/vnd.github.raw" "repos/systemd/systemd/contents/man/systemd.timer.xml?ref=v255"` returned `GitHub access to this repository is not enabled for this session ... (HTTP 403)`, and the local man pages are minimized away. So my own check was not run; it needs read access to systemd/systemd. This is not blocking, because no security property rests on it.
+
+**Bypass forms of the checksum lookup.** I ran the planned lookup myself: the awk command from *Approach* step 3 plus `[[ "$expected" =~ ^[0-9a-f]{64}$ ]]`, with the archive name `pimonitor_1.3.0_linux_arm64.tar.gz`. The script is /tmp/claude-0/-home-user-PiMonitor/0cf353e4-7165-5ab5-94a5-7943a45a2166/scratchpad/t.sh. It ran under `mawk`, which is `/usr/bin/awk` here (via /etc/alternatives), the same default as on Debian and Raspberry Pi OS; `gawk` is not installed. Results:
+
+- **Accepted:** the GoReleaser form `<hash>  <name>`, and an indented, tab-separated line with a trailing field.
+- **Rejected:** CRLF; the `*<name>` binary form; the same entry twice (the result has an embedded newline, and the match is anchored to the whole string); an upper-case hash; the BSD form `SHA256 (<name>) = <hash>`; an empty file; a backslash-escaped line; a BOM before the line; `./<name>`; separators `\v` and `\f`.
+
+This matches the plan's list of accepted and rejected forms, and every rejection fails closed. A crafted `tag_name` containing a backslash would also fail closed in two ways:
+- `awk -v` would rewrite the name, so no line matches.
+- GNU `sha256sum` prefixes its output with `\` for such a name (`sha256sum 'a\b'` printed `\2d7116…4881  a\\b`), so the comparison fails.
+
+Every accepted form still ends in an equality test against the hash of the downloaded file, so no form lets a different archive pass. The test table in the plan covers these classes.
+
+**Resource bound.** The plan claims no resource bound. `checksums.txt` is read into memory without a cap, the same as the API answer today and from the same HTTPS-only origin.
+
+**Command injection.** The plan adds no command interpolation: the archive name is passed as an `awk -v` value and as quoted arguments, and the removal uses `rm -f --`.
+
+**Findings**
+
+[NON-BLOCKING] A failed archive download leaves an unverified partial archive behind. This contradicts decision 0032 ("no unverified archive is left behind for a manual `tar xzf`") and the design of AC2.
+- **Where:** *Approach* step 4 keeps `"${CURL[@]}" -o "$archive" "$url"` (packaging/download-latest.sh:76) unchanged.
+- **What happens:** under `set -e`, a transfer that breaks off after the retries ends the script with the partial file curl wrote still in the directory. The README and the script's output then tell the operator to extract it and run `install.sh` as root. The script does nothing new to that file; only the claim in the decision goes beyond the plan.
+- **Smallest fix:** in step 4, run `if ! "${CURL[@]}" -o "$archive" "$url"; then rm -f -- "$archive"; printf 'Could not download %s of PiMonitor %s.\n' "$archive" "$version" >&2; exit 1; fi`, add that line to AC2's list, and add a stub case (`curl` writes a partial file, then exits 18) to `TestDownloadLatest_*_AC2`.
+- **Alternative:** narrow decision 0032 to the mismatch case.
+
+Recommendation: fix now
