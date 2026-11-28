@@ -220,7 +220,7 @@ client of the [HTTP API](http-api.md) like any third-party integration and has n
 - Icons are inline SVG drawn in `currentColor`, hidden from assistive technology; the page uses no emoji. The mode
   button shows the moon in light mode and the sun in dark mode, chosen by CSS. The network card names its rates
   Download and Upload for screen readers next to the arrow icons.
-- Interactive controls are 44 px high or wide at least. The text and status colors reach a contrast of 4.5:1 on
+- The header buttons, the heading buttons of clickable cards, the updates button and the dialog buttons (close, range, move, reset, unlock) are at least 44 px high, and 44 px wide where icon-only. The text and status colors reach a contrast of 4.5:1 on
   their backgrounds in both modes, guarded by a test (`palette_test.go`).
 
 ### Card layout
