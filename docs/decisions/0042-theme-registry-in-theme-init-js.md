@@ -1,6 +1,6 @@
 # 0042: The theme registry and the canvas token readers live once in `theme-init.js`
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-28
 - **Area:** Dashboard
 - **Source:** Issue #218

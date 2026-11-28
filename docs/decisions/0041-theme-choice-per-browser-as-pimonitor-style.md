@@ -1,6 +1,6 @@
 # 0041: The theme choice is a per-browser preference, stored as `pimonitor-style` and applied as `data-style`
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-28
 - **Area:** Dashboard
 - **Source:** Issue #218
