@@ -51,8 +51,11 @@ The registry (ids `clear`, `console`, `berry`, display names Clear, Console, Ber
 - E4: With JavaScript disabled or `theme-init.js` failing, the page shows Clear.
 - E5: Selecting the theme that is already active changes nothing visible.
 - E6: Only one theme registered and a stored id of another theme (E1 applies): Clear, and no Theme section (S7).
-- E7: A canvas drawing property that a theme does not declare, or declares with a value the renderer cannot use,
-  draws as in Clear.
+- E7: A canvas drawing property whose computed value is unusable — empty, not parseable, or out of its range (a fill
+  opacity outside 0–1, a colour the canvas does not accept) — draws with Clear's light value of that property. A
+  valid value is always honoured, `0` included (today `chart.js` turns a fill opacity of `0` into `0.28`, and
+  `gauge.js` has no fallback for the arc's level colour). Every property the renderers read is a palette token
+  (N5), so a registered theme cannot leave one undeclared.
 
 ## Non-functional requirements
 
@@ -69,7 +72,10 @@ The registry (ids `clear`, `console`, `berry`, display names Clear, Console, Ber
   the selector and for validating a stored id; adding a theme is a registry entry plus its style rules, with no
   change to the selection logic; one DOM for all themes (no per-theme markup in `index.html`, no per-theme HTML
   rendering branches in `app.js`); canvas widgets take theme differences only from declared custom properties
-  (E7). Each theme defines the same token set in its light block and in both dark blocks.
+  (E7). Every canvas drawing property is a palette token: there is no drawing property outside the palette blocks.
+  All blocks of all registered themes — Clear's three unscoped blocks (light, explicit dark, OS dark) included —
+  declare one identical token key set; Clear declares the defaults. This feature adds no drawing property: the line
+  widths stay as they are, and #219/#220 add the tokens they need to every block, Clear's included.
 - N6: Every theme's stylesheet rules are loaded statically with the page, never on demand; any new asset file is
   served like the others (`Cache-Control: no-cache`, per-file `ETag`) and covered by the asset tests.
 - N7: Dialog behavior (modal, focus in and back, Escape, outside click, close button) is unchanged.
@@ -94,8 +100,9 @@ The registry (ids `clear`, `console`, `berry`, display names Clear, Console, Ber
   and nothing throws (E2, E3).
 - AC9: The id list `theme-init.js` validates against and the registry the selector is built from hold the same ids
   in the same order (N5).
-- AC10: Every registered theme defines the same set of palette tokens in its light block and in both of its dark
-  blocks, and a canvas property it leaves undeclared draws as in Clear (N5, E7).
+- AC10: The token key set of every palette block of every registered theme — Clear's three unscoped blocks
+  included — is identical, and every custom property `chart.js`, `gauge.js` and `app.js` read for drawing is in
+  that set (N5).
 - AC11: The selector is a `<fieldset>` with a `<legend>` "Theme" and native radio inputs sharing one name, reachable
   and operable by keyboard alone, and the dialog's modal, focus, Escape, outside-click and close behavior is
   unchanged (S8, N7).
@@ -107,9 +114,20 @@ The registry (ids `clear`, `console`, `berry`, display names Clear, Console, Ber
   `<head>`, `app.js` still assigns no non-empty `innerHTML`, and the page loads nothing from another origin and reads
   no API field or configuration option for the theme (N1, N2).
 - AC15: The mode button's accessible name is "Switch to dark mode" in light mode and "Switch to light mode" in dark
-  mode, in every theme (S9).
+  mode, in every theme; its static label in `index.html` (today "Toggle theme") reads "Toggle mode" until the
+  script sets it; no accessible name of the page says "theme" for the mode (S9).
 - AC16: Every theme's style rules are loaded by the page's static `<link>` elements before the first paint, never on
   demand, and every asset file the feature adds is served with `Cache-Control: no-cache` and its own `ETag` (N6).
+- AC17: Each custom property a renderer reads draws with Clear's light value of that property when its computed
+  value is empty, unparseable or out of range, and with its own value otherwise, `0` included (E7).
+
+Verification: AC2, AC4, AC5, AC9 and AC11 are verified against a registry of at least two themes — a second,
+test-only entry that never ships — not against the shipped one-entry registry; AC6 against exactly one. The
+repository has no JavaScript runtime in its tests (the `internal/web` tests check the embedded asset sources), and
+adding one is a dependency this spec does not ask for. A criterion whose behavior the asset sources settle is
+verified by such a Go test; one that only a running page shows (before the first paint in AC2, the redraw in AC5,
+the live OS following in AC7, blocked storage in AC8) gets, in the plan, a named hand check in a browser on the
+built binary with a local two-theme registry, recorded in the verification matrix.
 
 ## Out of scope
 
@@ -139,7 +157,11 @@ Corrections to the issue, checked against the code at `d05bb19`: the dashboard a
 this feature (AC12). The detail chart and the layout dialog are both modal, so no detail chart can be open while a
 theme is chosen; AC5 requires the next one opened to be in the new theme, and adds the openHAB memory chart, which
 the mode switch also redraws. The mode button's accessible name still says "theme" (`app.js`,
-`updateThemeToggle`), which S9 and AC15 change.
+`updateThemeToggle`) and its static label in `index.html` says "Toggle theme"; S9 and AC15 change both. No line
+width is a canvas property after #217: the widths are fixed in `chart.js` (lines 85, 135, 147) and `gauge.js`
+(line 28). The renderers read `--accent`, `--spark-fill-alpha`, `--card-bg`, `--track`, `--ok`, `--warn`, `--crit`
+and, for the openHAB memory chart, `--accent`, `--muted` and `--warn` (`app.js` 1412–1421); this feature declares
+no new one (N5).
 
 ## Area documents
 
@@ -148,7 +170,32 @@ the mode switch also redraws. The mode button's accessible name still says "them
   as the absence of `data-style`, storage under `pimonitor-style`, the fallback for an unknown or unreadable value
   (kept, not removed), application before the first paint, independence from the mode, immediate application with
   redrawn canvases, and that a theme is token overrides plus declared canvas properties over one DOM. *Look* names
-  the canvas custom properties after #217 and the Clear fallback. *Card layout* says the dialog also holds the Theme
+  the custom properties the canvas widgets read (exactly those listed under *Corrections*) and the Clear fallback
+  for an unusable value, and states one identical token key set for every block of every theme. *Card layout* says the dialog also holds the Theme
   section (shown only with more than one theme) and that "Reset to default" leaves the theme. *Browser storage*
   lists five entries.
 - `README.md`: the feature list mentions selectable themes.
+
+## Challenge
+
+1. (major) AC10/N5 weaker than the issue; E7 contradicts AC10. Accepted. N5 and AC10 now require one identical
+   token key set across every block of every registered theme, Clear's three unscoped blocks included (today all
+   three hold the same 37 tokens). Every canvas drawing property is a palette token, none exists outside the
+   blocks, and Clear declares the defaults; so E7 no longer speaks of an undeclared property, only of an unusable
+   value.
+2. (major) Criteria verified against the shipped one-entry registry; script behavior without a JS runtime.
+   Accepted. A *Verification* paragraph under the criteria requires a test-only second registry entry for AC2,
+   AC4, AC5, AC9 and AC11 (AC6 with one entry). It also states that the asset-source Go tests verify what the
+   sources settle, and that the plan names a browser hand check on the built binary, with a local two-theme
+   registry, for what only a running page shows (AC2, AC5, AC7, AC8).
+3. AC15 misses the static label and the test assertion. Accepted. AC15 now covers the static `aria-label` "Toggle
+   theme" in `index.html` (it becomes "Toggle mode"), and no accessible name may say "theme" for the mode. The
+   assertion at `internal/web/icons_test.go:356` is adapted to the new names (the Tester's, named in the plan's
+   *Test files*), not left failing.
+4. E7 "unusable" undefined; a valid 0 overridden. Accepted. E7 defines unusable as empty, unparseable or out of
+   range and requires a valid value, `0` included, to be honoured, with Clear's light value as the fallback for
+   every property a renderer reads. The new AC17 tests it; it also covers the missing fallback of the gauge's level
+   colour.
+5. Line width is no canvas property after #217. Accepted. *Corrections to the issue* names the fixed widths in
+   `chart.js` and `gauge.js` and lists the properties the renderers really read. N5 says this feature declares
+   none and leaves new ones to #219/#220, and the *Look* outline documents only the real ones.
