@@ -433,6 +433,24 @@ var validLogLevels = map[string]bool{
 	"error": true,
 }
 
+// maxAlertWindowSeconds is the largest accepted alert debounce window (7 days).
+// A larger value makes the float-to-Duration conversion in AlertFor and
+// OpenHABAlertFor overflow to a platform-dependent, possibly negative duration,
+// which would confirm every alert on its first sample (decision 0034).
+const maxAlertWindowSeconds = 604800
+
+// validateAlertWindow checks one alert debounce window, in seconds, for key.
+// The value is already known to be finite.
+func validateAlertWindow(key string, seconds float64) error {
+	if seconds < 0 {
+		return fmt.Errorf("%s must be >= 0 (got %v)", key, seconds)
+	}
+	if seconds > maxAlertWindowSeconds {
+		return fmt.Errorf("%s must be <= %d (got %v)", key, maxAlertWindowSeconds, seconds)
+	}
+	return nil
+}
+
 // Validate checks the resolved configuration for values that would crash the
 // service (e.g. a zero poll interval panics time.NewTicker) or silently make
 // it misbehave. It returns a descriptive error for the first violation so a
@@ -450,11 +468,11 @@ func (c Config) Validate() error {
 	if err := c.Thresholds.validate(); err != nil {
 		return err
 	}
-	if c.Alerts.ForSeconds < 0 {
-		return fmt.Errorf("alerts.for_seconds must be >= 0 (got %v)", c.Alerts.ForSeconds)
+	if err := validateAlertWindow("alerts.for_seconds", c.Alerts.ForSeconds); err != nil {
+		return err
 	}
-	if c.Alerts.OpenHABForSeconds < 0 {
-		return fmt.Errorf("alerts.openhab_for_seconds must be >= 0 (got %v)", c.Alerts.OpenHABForSeconds)
+	if err := validateAlertWindow("alerts.openhab_for_seconds", c.Alerts.OpenHABForSeconds); err != nil {
+		return err
 	}
 	if err := c.Alerts.validate(); err != nil {
 		return err
