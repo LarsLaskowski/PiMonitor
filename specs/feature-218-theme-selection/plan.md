@@ -41,7 +41,7 @@ it never ships.
 | AC3 | `TestThemeInit_UnknownValueIsKept_AC3` (exact `=== ` match, no `toLowerCase`/`trim` on the value, no `removeItem` of `STYLE_KEY` anywhere); manual M3 | `internal/web/theme_test.go` |
 | AC4 | `TestAppJS_StylePickerFromRegistry_AC4` (`buildStylePicker` iterates `PIMONITOR_THEMES`, checks the option whose id is `activeStyle()`, is called from `openLayoutModal`; `#style-picker` precedes `.layout-hint`); manual M4 | `internal/web/theme_test.go` |
 | AC5 | `TestAppJS_SelectStyleAppliesAndStores_AC5` (`selectStyle` stores via `setItem(STYLE_KEY,` then `applyStyle`; `applyStyle` calls `repaintCanvases()`; no `.close()` in the picker code); adapted `checkApplyThemeRedraws`; manual M5 | `internal/web/theme_test.go`, `internal/web/icons_test.go` |
-| AC6 | `TestStylePicker_HiddenWithOneTheme_AC6` (static `hidden` on `#style-picker`; `buildStylePicker` sets `hidden` from `PIMONITOR_THEMES.length < 2`); manual M6 | `internal/web/theme_test.go` |
+| AC6 | `TestStylePicker_HiddenWithOneTheme_AC6` (static `class="style-picker hidden"` on `#style-picker`; `buildStylePicker` toggles the `hidden` class from `PIMONITOR_THEMES.length < 2`); manual M6 | `internal/web/theme_test.go` |
 | AC7 | `TestAppJS_ModeAndThemeIndependent_AC7` (`applyStyle` never writes `dataset.theme`, `applyTheme`/`toggleTheme` never `dataset.style`); AC10's block test for the OS-dark selector of every theme; manual M7 | `internal/web/theme_test.go` |
 | AC8 | `TestAppJS_StyleStorageFailureIsCaught_AC8` (both storage calls in `try`; `activeStyle` reads the attribute, not storage); manual M8 | `internal/web/theme_test.go` |
 | AC9 | `TestThemeRegistry_SingleSource_AC9` (ids parsed from `theme-init.js` unique, default `clear` first; `app.js` holds no `{ id: '…', name:` entry and no registered id as a literal; parser on a two-entry fixture) | `internal/web/theme_test.go` |
@@ -68,7 +68,7 @@ scratchpad, fresh profile per case, against `go build ./cmd/pimonitor` run with 
 - M4 dialog open: legend Theme, options Clear, Probe in order, the active one checked; again after a reload.
 - M5 click Probe: `data-style="probe"`, dialog still `open`, storage `probe`, a sparkline pixel now `#ff00ff`; click
   Clear: attribute gone, storage `clear`.
-- M6 unpatched build: `#style-picker` not rendered (`hidden`, no box).
+- M6 unpatched build: `#style-picker` not rendered (class `hidden`, no box).
 - M7 mode toggle keeps `data-style`; Probe keeps `data-theme`; no stored mode with `Emulation.setEmulatedMedia`
   dark/light flips `--bg` in Probe.
 - M8 `localStorage` getter throwing (`addScriptToEvaluateOnNewDocument`): Probe applies, no exception.
@@ -102,7 +102,7 @@ set: the dark selectors (0,3,0) beat the theme's light block and Clear's dark bl
 feature adds no such block. New rules for the picker use existing tokens only.
 
 **Markup (`index.html`).** First child of the layout dialog's `.modal-body`, before the hint:
-`<fieldset class="style-picker" id="style-picker" hidden><legend>Theme</legend><div class="style-options"
+`<fieldset class="style-picker hidden" id="style-picker"><legend>Theme</legend><div class="style-options"
 id="style-options"></div></fieldset>`. The mode button's static label becomes `aria-label="Toggle mode"`.
 
 **`app.js`.** `const STYLE_KEY = 'pimonitor-style';` beside `THEME_KEY`; comments mark "theme" names as the mode.
@@ -111,7 +111,7 @@ id="style-options"></div></fieldset>`. The mode button's static label becomes `a
 - `applyStyle(id)`: remove `dataset.style` for the default id, set it otherwise; `repaintCanvases()`.
 - `selectStyle(id)`: ignore an unregistered id; `try { localStorage.setItem(STYLE_KEY, id) } catch (e) {
   console.warn('failed to persist theme style', e) }`; `applyStyle(id)`.
-- `buildStylePicker()`: `#style-picker.hidden = PIMONITOR_THEMES.length < 2`; empty `#style-options` with
+- `buildStylePicker()`: `#style-picker.classList.toggle('hidden', PIMONITOR_THEMES.length < 2)`; empty `#style-options` with
   `innerHTML = ''`, then per entry a `label.style-option` holding `input` (`type = 'radio'`,
   `name = 'style-choice'`, `value = id`, `checked = id === activeStyle()`, `change` → `selectStyle(id)`) and a
   `span` with `textContent = name`. Called at the start of `openLayoutModal`.
@@ -163,6 +163,8 @@ real.
   `paletteBlocks`).
 - `internal/web/icons_test.go`: `checkUpdateThemeToggle` (new labels, AC15) and `checkApplyThemeRedraws` (assert
   `repaintCanvases()` in `applyTheme` and the two repaint calls in `repaintCanvases`) — Tester.
+- `internal/web/openhab_test.go`: expect `themeColor(` instead of `getComputedStyle` in the openHAB chart drawing code (keep `--accent`, `--muted`, `--warn`) — Tester.
+- AC10/AC17 extractor of read properties also collects the `return '--…'` values of `gaugeColorVar` and the values of the openHAB `colors` map — Tester.
 
 Existing call sites of a changed signature: none (no Go API changes).
 
@@ -206,3 +208,21 @@ script, no inline code); `innerHTML` only cleared.
 ## Out of scope / follow-ups
 
 Console (#219), Berry (#220) and their contrast tests; swatches; a "follow the OS" mode control.
+
+## Challenge notes
+
+I challenged the plan for issue #218 in plan mode, at base d05bb19. Work folder: /home/user/PiMonitor/specs/feature-218-theme-selection/. I read the issue through the work folder's spec and log rather than through GitHub, because I had no GitHub issue tool in this run.
+
+The plan holds up. I checked its verified facts in the code and they are accurate:
+- **Fallback literals:** the drawing properties carry the fallbacks the plan lists (`chart.js:6,43,44`, `gauge.js:43-44`, `app.js:1412-1421`). The planned `DRAWING_FALLBACKS` values match Clear's light block (`style.css:4-31`).
+- **Mode change repaint:** the live OS-mode listener already goes through `applyTheme` (`app.js:117-120`), so it will also go through `repaintCanvases`.
+- **Dialog focus:** `openModal` focuses `.modal-close` (`app.js:544-547`), so putting the picker first in the dialog leaves the initial focus where it is (N7).
+- **Storage keys and ids:** there are no other `pimonitor-` literals and no `'clear'` literal in the JS assets, so the AC9 and AC12 source tests can work as planned.
+
+I have no major objections. These three minor ones are for the Dev and Tester:
+
+1. (minor) **An existing test the plan does not list breaks.** `internal/web/openhab_test.go:195` requires the string `getComputedStyle` in the openHAB memory chart's drawing code. The plan replaces those reads with `themeColor(...)` and wants no `getPropertyValue` left, so the now-unused `const css = getComputedStyle(...)` (`app.js:1412`) goes too and this test fails. Instruction: the Tester changes that expectation from `"getComputedStyle"` to `"themeColor("` and keeps `--accent`, `--muted`, `--warn`. Add the file to *Test files*. Why minor: it is a one-string change the Tester can make without changing the plan. The other asserted strings stay true after the change (`gauge_test.go:115` `'--track'`; `chart_test.go:47` `--spark-fill-alpha`, `--card-bg`).
+
+2. (minor) **The AC10/AC17 tests must handle reader arguments that are not literal.** `gauge.js:44` passes `gaugeColorVar(colorClass)`, which returns `--crit`, `--warn` or `--ok` (`gauge.js:10-14`). `drawOpenHABChart` passes `colors[line.key]` from the map `{ ..._rss_bytes: '--accent', ..._heap_used_bytes: '--muted' }` (`app.js:1413`). Instruction: when building "the set of properties read", also collect the `return '--…'` values of `gaugeColorVar` and the values of that `colors` map. Otherwise `--ok`, `--crit` and `--muted` are never checked against the palette key set. Why minor: a literals-only extractor finds 5 of the 8 properties, so the planned equality with `DRAWING_FALLBACKS` fails and shows the gap.
+
+3. (minor) **The `hidden` attribute can be overridden by the picker's own CSS.** The plan hides `#style-picker` with the `hidden` attribute and adds picker rules. Any `display` on `.style-picker` would beat the browser's default `[hidden]{display:none}` and the picker would show with one theme; the similar fieldset `.range-picker` sets `display: flex` (`style.css:704-705`). The project's convention is the `.hidden` class with `display: none !important` (`style.css:942-944`). Instruction: hide the picker with `classList.toggle('hidden', PIMONITOR_THEMES.length < 2)` and a static `class="style-picker hidden"`, and have the AC6 test assert that. If the attribute stays, no rule for `.style-picker` may set `display`. Why minor: manual check M6 ("no box") would catch it, and the fix stays local.
