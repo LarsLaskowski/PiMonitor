@@ -52,7 +52,7 @@ automation systems like openHAB). Runs as a systemd service.
   transition, so alerts reach Slack, Discord, Home Assistant, ntfy, etc.
   Delivery is fully off the collection path, so a slow webhook never blocks
   metric sampling
-- **Light/dark theme toggle** - follows the OS setting by default, with a
+- **Light/dark mode toggle** - follows the OS setting by default, with a
   manual override remembered in the browser
 - **Configurable dashboard layout** - show/hide and reorder metric cards
   from a settings modal, remembered in the browser

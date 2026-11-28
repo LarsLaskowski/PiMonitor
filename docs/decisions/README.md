@@ -99,4 +99,7 @@ once in the [area document](../areas/README.md) of the record's area, and the re
 | [0035](0035-float-duration-options-capped-at-seven-or-365-days.md) | The other float seconds and minutes options are capped at seven or 365 days | Accepted | 2026-11-28 |
 | [0036](0036-poll-and-updates-intervals-at-least-one-unit.md) | The fast and slow collection intervals are at least one second and one minute | Accepted | 2026-11-28 |
 | [0037](0037-apt-state-change-repeats-check-once.md) | install.sh refreshes apt before it starts the service, and a changed apt state repeats the check once | Accepted | 2026-11-28 |
+| [0038](0038-dashboard-mode-and-theme-as-token-overrides.md) | Dashboard "mode" is light or dark, a "theme" is a set of custom-property overrides | Accepted | 2026-11-28 |
+| [0039](0039-card-colour-only-on-icon-chip.md) | The per-card colour appears only on the icon chip; status colours have a fill and an ink variant | Accepted | 2026-11-28 |
+| [0040](0040-dashboard-icons-inline-svg.md) | Dashboard icons are inline stroke SVG in the page, not emoji | Accepted | 2026-11-28 |
 <!-- project:end index -->

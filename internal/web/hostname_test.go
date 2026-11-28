@@ -11,7 +11,7 @@ import (
 // guards scan the committed assets for the markup, script and styles the
 // plan fixes literally.
 
-const hostnameHeaderH1 = `<h1>🖥️ PiMonitor<span class="header-hostname hidden" id="header-hostname">` +
+const hostnameHeaderH1 = `<h1>PiMonitor<span class="header-hostname hidden" id="header-hostname">` +
 	`(<span class="header-hostname-name" id="header-hostname-name"></span>)</span></h1>`
 
 const hostnameSystemRow = `<div class="kv-row hidden" id="sys-hostname-row"><span class="kv-key">Hostname</span>` +
@@ -110,9 +110,10 @@ func requireContains(t *testing.T, where, src string, snippets ...string) {
 func TestIndexHTML_HostnameInHeader(t *testing.T) {
 	t.Run("AC4 hidden host name element directly after the brand", func(t *testing.T) {
 		html := readAsset(t, "index.html")
-		want := regexp.MustCompile(`<header>\s*<div class="header-brand">\s*` + regexp.QuoteMeta(hostnameHeaderH1))
+		want := regexp.MustCompile(`(?s)<header>\s*<div class="header-brand">\s*<span class="logo-tile"[^>]*>.*?</span>\s*` +
+			`<div class="header-title">\s*` + regexp.QuoteMeta(hostnameHeaderH1))
 		if !want.MatchString(html) {
-			t.Errorf("index.html: expected the header's first div (class header-brand) to start with %s", hostnameHeaderH1)
+			t.Errorf("index.html: expected the header's first div (class header-brand) to start with the logo tile and the header-title div holding %s", hostnameHeaderH1)
 		}
 	})
 }

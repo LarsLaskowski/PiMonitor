@@ -1,39 +1,127 @@
 :root {
   color-scheme: light dark;
-  --bg: #f4f5f7;
+  --bg: #f3f4f7;
   --card-bg: #ffffff;
-  --text: #1a1d21;
-  --muted: #6b7280;
-  --border: #e2e4e8;
+  --text: #171a1f;
+  --muted: #5f6876;
+  --border: #e4e7ec;
+  --track: #e8eaef;
   --accent: #2563eb;
+  --on-accent: #ffffff;
   --ok: #16a34a;
+  --ok-ink: #15803d;
   --warn: #d97706;
+  --warn-ink: #92400e;
   --crit: #dc2626;
-  --gauge-track: rgba(0, 0, 0, 0.14);
+  --crit-ink: #b91c1c;
+  --shadow: 0 1px 2px rgba(16, 24, 40, 0.05), 0 4px 14px rgba(16, 24, 40, 0.05);
+  --accent-system: #2563eb;
+  --accent-updates: #b45309;
+  --accent-uptime: #0f766e;
+  --accent-cpu: #7c3aed;
+  --accent-load: #15803d;
+  --accent-temperature: #c2410c;
+  --accent-memory: #4338ca;
+  --accent-disks: #0e7490;
+  --accent-network: #be185d;
+  --accent-openhab: #0369a1;
+  --chip-tint: 12%;
+  --btn-tint: 8%;
+  --btn-border-tint: 30%;
+  --spark-fill-alpha: 0.28;
+  --dialog-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+  --backdrop: rgba(0, 0, 0, 0.5);
+  --radius-card: 14px;
+  --radius-control: 12px;
+  --radius-button: 10px;
+  --radius-chip: 8px;
+  --card-padding: 8px 18px 18px;
+  --gap: 16px;
 }
 
 /* Dark palette. Applied either by an explicit user choice
    (`data-theme="dark"`) or, when the user has never toggled and therefore
-   set no `data-theme` attribute, by the OS `prefers-color-scheme` setting. */
+   set no `data-theme` attribute, by the OS `prefers-color-scheme` setting.
+   Both blocks hold the same tokens. */
 :root[data-theme="dark"] {
-  --bg: #14161a;
-  --card-bg: #1e2126;
-  --text: #e7e9ec;
-  --muted: #9aa1ab;
-  --border: #2c3037;
+  --bg: #121418;
+  --card-bg: #1b1e24;
+  --text: #e8eaee;
+  --muted: #a0a7b3;
+  --border: #2b2f37;
+  --track: #2c3039;
   --accent: #60a5fa;
-  --gauge-track: rgba(255, 255, 255, 0.16);
+  --on-accent: #0b1220;
+  --ok: #22c55e;
+  --ok-ink: #4ade80;
+  --warn: #f59e0b;
+  --warn-ink: #fbbf24;
+  --crit: #ef4444;
+  --crit-ink: #f87171;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --accent-system: #60a5fa;
+  --accent-updates: #fbbf24;
+  --accent-uptime: #2dd4bf;
+  --accent-cpu: #a78bfa;
+  --accent-load: #4ade80;
+  --accent-temperature: #fb923c;
+  --accent-memory: #818cf8;
+  --accent-disks: #22d3ee;
+  --accent-network: #f472b6;
+  --accent-openhab: #38bdf8;
+  --chip-tint: 16%;
+  --btn-tint: 14%;
+  --btn-border-tint: 35%;
+  --spark-fill-alpha: 0.30;
+  --dialog-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+  --backdrop: rgba(0, 0, 0, 0.5);
+  --radius-card: 14px;
+  --radius-control: 12px;
+  --radius-button: 10px;
+  --radius-chip: 8px;
+  --card-padding: 8px 18px 18px;
+  --gap: 16px;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme]) {
-    --bg: #14161a;
-    --card-bg: #1e2126;
-    --text: #e7e9ec;
-    --muted: #9aa1ab;
-    --border: #2c3037;
+    --bg: #121418;
+    --card-bg: #1b1e24;
+    --text: #e8eaee;
+    --muted: #a0a7b3;
+    --border: #2b2f37;
+    --track: #2c3039;
     --accent: #60a5fa;
-    --gauge-track: rgba(255, 255, 255, 0.16);
+    --on-accent: #0b1220;
+    --ok: #22c55e;
+    --ok-ink: #4ade80;
+    --warn: #f59e0b;
+    --warn-ink: #fbbf24;
+    --crit: #ef4444;
+    --crit-ink: #f87171;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+    --accent-system: #60a5fa;
+    --accent-updates: #fbbf24;
+    --accent-uptime: #2dd4bf;
+    --accent-cpu: #a78bfa;
+    --accent-load: #4ade80;
+    --accent-temperature: #fb923c;
+    --accent-memory: #818cf8;
+    --accent-disks: #22d3ee;
+    --accent-network: #f472b6;
+    --accent-openhab: #38bdf8;
+    --chip-tint: 16%;
+    --btn-tint: 14%;
+    --btn-border-tint: 35%;
+    --spark-fill-alpha: 0.30;
+    --dialog-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+    --backdrop: rgba(0, 0, 0, 0.5);
+    --radius-card: 14px;
+    --radius-control: 12px;
+    --radius-button: 10px;
+    --radius-chip: 8px;
+    --card-padding: 8px 18px 18px;
+    --gap: 16px;
   }
 }
 
@@ -46,11 +134,13 @@ body {
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   background: var(--bg);
   color: var(--text);
+  font-variant-numeric: tabular-nums;
 }
 
 header {
   display: flex;
-  align-items: flex-start;
+  flex-wrap: wrap;
+  align-items: center;
   justify-content: space-between;
   gap: 1rem;
   padding: 1.25rem 1.5rem 0.5rem;
@@ -58,6 +148,9 @@ header {
 
 .header-brand {
   min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
 }
 
 header h1 {
@@ -66,7 +159,9 @@ header h1 {
   min-width: 0;
   white-space: nowrap;
   margin: 0;
-  font-size: 1.375rem;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
 }
 
 .header-hostname {
@@ -97,25 +192,33 @@ header h1 {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 2.25rem;
-  height: 2.25rem;
+  width: 44px;
+  height: 44px;
   font-size: 1.125rem;
   line-height: 1;
   background: var(--card-bg);
   color: var(--text);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
+  box-shadow: var(--shadow);
+  transition: box-shadow 0.15s ease;
   cursor: pointer;
 }
 
 .theme-toggle:hover,
 .layout-toggle:hover {
-  border-color: var(--accent);
+  box-shadow: var(--shadow), 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+.theme-toggle:focus-visible,
+.layout-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 header .subtitle {
   color: var(--muted);
-  font-size: 0.875rem;
+  font-size: 13px;
   margin-top: 0.25rem;
 }
 
@@ -127,26 +230,27 @@ header .subtitle {
   gap: 0.5rem;
   margin: 0 1.5rem 1rem;
   padding: 0.5rem 0.875rem;
-  border-radius: 10px;
+  border-radius: var(--radius-control);
   font-size: 0.875rem;
-  font-weight: 500;
+  font-weight: 600;
   border: 1px solid transparent;
 }
 
 .alert-banner.metric-warn {
-  background: color-mix(in srgb, var(--warn) 16%, transparent);
-  color: var(--warn);
-  border-color: color-mix(in srgb, var(--warn) 40%, transparent);
+  background: color-mix(in srgb, var(--warn) 14%, transparent);
+  color: var(--warn-ink);
+  border-color: color-mix(in srgb, var(--warn) 35%, transparent);
 }
 
 .alert-banner.metric-crit {
-  background: color-mix(in srgb, var(--crit) 16%, transparent);
-  color: var(--crit);
-  border-color: color-mix(in srgb, var(--crit) 40%, transparent);
+  background: color-mix(in srgb, var(--crit) 14%, transparent);
+  color: var(--crit-ink);
+  border-color: color-mix(in srgb, var(--crit) 35%, transparent);
 }
 
 .alert-banner-icon {
   flex-shrink: 0;
+  display: inline-flex;
 }
 
 /* A flat, CSS-multi-column layout rather than three explicit column <div>s:
@@ -156,7 +260,7 @@ header .subtitle {
    explicit columns. */
 main {
   column-count: 3;
-  column-gap: 1rem;
+  column-gap: var(--gap);
   padding: 1rem 1.5rem 2rem;
 }
 
@@ -176,25 +280,26 @@ main {
   --card-accent: var(--accent);
   background: var(--card-bg);
   border: 1px solid var(--border);
-  border-top: 3px solid var(--card-accent);
-  border-radius: 12px;
-  padding: 0.875rem 1.125rem 1rem;
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow);
+  padding: var(--card-padding);
   min-width: 0;
-  margin-bottom: 1rem;
+  margin-bottom: var(--gap);
   break-inside: avoid;
 }
 
 .card h2 {
   margin: 0 0 0.75rem;
-  font-size: 0.9375rem;
-  color: var(--text);
+  font-size: 12px;
+  color: var(--muted);
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.03em;
+  letter-spacing: 0.06em;
 }
 
 .card h2,
 .card-header-btn {
+  min-height: 44px;
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -208,6 +313,8 @@ main {
   margin: 0;
   font: inherit;
   color: inherit;
+  text-transform: inherit;
+  letter-spacing: inherit;
   text-align: left;
   background: none;
   border: none;
@@ -218,29 +325,30 @@ main {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 1.75rem;
-  height: 1.75rem;
-  border-radius: 8px;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-chip);
   font-size: 1rem;
-  background: color-mix(in srgb, var(--card-accent) 16%, transparent);
+  color: var(--card-accent);
+  background: color-mix(in srgb, var(--card-accent) var(--chip-tint), transparent);
   flex-shrink: 0;
 }
 
-/* Per-card accent colors, used for the top border and icon chip. */
-.accent-system { --card-accent: #2563eb; }
-.accent-updates { --card-accent: #d97706; }
-.accent-uptime { --card-accent: #0d9488; }
-.accent-cpu { --card-accent: #7c3aed; }
-.accent-load { --card-accent: #16a34a; }
-.accent-temperature { --card-accent: #ea580c; }
-.accent-memory { --card-accent: #4f46e5; }
-.accent-disks { --card-accent: #0891b2; }
-.accent-network { --card-accent: #db2777; }
-.accent-openhab { --card-accent: #0ea5e9; }
+/* Per-card accent colors (palette tokens), used for the icon chip and the
+   hover/focus highlight. */
+.accent-system { --card-accent: var(--accent-system); }
+.accent-updates { --card-accent: var(--accent-updates); }
+.accent-uptime { --card-accent: var(--accent-uptime); }
+.accent-cpu { --card-accent: var(--accent-cpu); }
+.accent-load { --card-accent: var(--accent-load); }
+.accent-temperature { --card-accent: var(--accent-temperature); }
+.accent-memory { --card-accent: var(--accent-memory); }
+.accent-disks { --card-accent: var(--accent-disks); }
+.accent-network { --card-accent: var(--accent-network); }
+.accent-openhab { --card-accent: var(--accent-openhab); }
 
 .card-warn {
   border-color: var(--warn);
-  border-top-color: var(--warn);
 }
 
 .openhab-thing {
@@ -288,6 +396,9 @@ main {
   color: var(--muted);
 }
 
+.openhab-things summary.metric-warn { color: var(--warn-ink); }
+.openhab-things summary.metric-crit { color: var(--crit-ink); }
+
 /* Cards that open a metric detail view on click/Enter. */
 .card-clickable {
   cursor: pointer;
@@ -314,7 +425,7 @@ main {
   display: flex;
   justify-content: space-between;
   gap: 0.75rem;
-  padding: 0.3rem 0;
+  padding: 7px 0;
   font-size: 0.875rem;
   border-bottom: 1px solid var(--border);
 }
@@ -336,8 +447,10 @@ main {
 }
 
 .metric-value {
-  font-size: 1.75rem;
-  font-weight: 600;
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
 }
 
 .metric-sub {
@@ -347,20 +460,24 @@ main {
 }
 
 .metric-ok {
-  color: var(--ok);
+  color: var(--ok-ink);
 }
 
 .metric-warn {
-  color: var(--warn);
+  color: var(--warn-ink);
 }
 
 .metric-crit {
-  color: var(--crit);
+  color: var(--crit-ink);
 }
+
+.kv-val.metric-ok { color: var(--ok-ink); }
+.kv-val.metric-warn { color: var(--warn-ink); }
+.kv-val.metric-crit { color: var(--crit-ink); }
 
 .sparkline {
   width: 100%;
-  height: 48px;
+  height: 52px;
   margin-top: 0.5rem;
   display: block;
 }
@@ -373,7 +490,13 @@ main {
 
 .gauge {
   flex: 1;
+  min-width: 0;
   text-align: center;
+  container-type: inline-size;
+}
+
+.gauge-dial {
+  position: relative;
 }
 
 .gauge canvas {
@@ -389,11 +512,18 @@ main {
 }
 
 .gauge .gauge-value {
-  font-weight: 600;
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 6px;
+  text-align: center;
+  line-height: 1;
+  font-size: clamp(12px, 19cqi, 18px);
+  font-weight: 700;
 }
 
 .bar-row {
-  margin-bottom: 0.6rem;
+  margin-bottom: 14px;
 }
 
 .bar-row:last-child {
@@ -409,19 +539,24 @@ main {
 
 .bar-label .bar-name {
   color: var(--text);
+  font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .bar-label .bar-pct {
-  color: var(--muted);
+  color: var(--text);
   flex-shrink: 0;
-  margin-left: 0.5rem;
+  margin-left: auto;
+  font-weight: 600;
 }
 
+.bar-label .bar-pct.metric-warn { color: var(--warn-ink); }
+.bar-label .bar-pct.metric-crit { color: var(--crit-ink); }
+
 .bar-track {
-  background: var(--border);
+  background: var(--track);
   border-radius: 999px;
   height: 8px;
   overflow: hidden;
@@ -449,20 +584,21 @@ main {
 }
 
 .updates-button {
+  min-height: 44px;
   margin-top: 0.625rem;
   padding: 0.4rem 0.75rem;
   font: inherit;
   font-size: 0.8125rem;
-  font-weight: 500;
-  color: #fff;
-  background: var(--card-accent);
-  border: none;
-  border-radius: 8px;
+  font-weight: 600;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) var(--btn-tint), transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) var(--btn-border-tint), transparent);
+  border-radius: var(--radius-button);
   cursor: pointer;
 }
 
 .updates-button:hover {
-  filter: brightness(1.08);
+  border-color: var(--accent);
 }
 
 /* Native <dialog> elements (updates list, API key prompt, metric detail,
@@ -477,17 +613,17 @@ dialog.modal[open] {
   background: var(--card-bg);
   color: var(--text);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: var(--radius-card);
   width: min(640px, 100%);
   max-height: 85vh;
   max-width: calc(100% - 2rem);
   display: flex;
   flex-direction: column;
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+  box-shadow: var(--dialog-shadow);
 }
 
 dialog.modal::backdrop {
-  background: rgba(0, 0, 0, 0.5);
+  background: var(--backdrop);
 }
 
 .modal-header {
@@ -504,6 +640,8 @@ dialog.modal::backdrop {
 }
 
 .modal-close {
+  width: 44px;
+  height: 44px;
   background: none;
   border: none;
   color: var(--muted);
@@ -554,7 +692,7 @@ dialog.modal::backdrop {
 }
 
 .updates-table td.pkg-new {
-  color: var(--ok);
+  color: var(--ok-ink);
   font-weight: 600;
   overflow-wrap: anywhere;
 }
@@ -585,6 +723,7 @@ dialog.modal::backdrop {
 }
 
 .range-button {
+  min-height: 44px;
   padding: 0.3rem 0.75rem;
   font: inherit;
   font-size: 0.8125rem;
@@ -592,7 +731,7 @@ dialog.modal::backdrop {
   color: var(--muted);
   background: var(--card-bg);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-button);
   cursor: pointer;
 }
 
@@ -602,7 +741,7 @@ dialog.modal::backdrop {
 }
 
 .range-button.active {
-  color: #fff;
+  color: var(--on-accent);
   background: var(--accent);
   border-color: var(--accent);
 }
@@ -651,14 +790,15 @@ dialog.modal::backdrop {
 }
 
 .apikey-submit {
+  min-height: 44px;
   padding: 0.4rem 0.875rem;
   font: inherit;
   font-size: 0.875rem;
   font-weight: 500;
-  color: #fff;
+  color: var(--on-accent);
   background: var(--accent);
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius-button);
   cursor: pointer;
 }
 
@@ -668,7 +808,7 @@ dialog.modal::backdrop {
 
 .apikey-error {
   margin-top: 0.5rem;
-  color: var(--crit);
+  color: var(--crit-ink);
   font-size: 0.8125rem;
 }
 
@@ -714,14 +854,14 @@ dialog.modal::backdrop {
 }
 
 .layout-move {
-  width: 1.75rem;
-  height: 1.75rem;
+  width: 44px;
+  height: 44px;
   padding: 0;
   font: inherit;
   color: var(--text);
   background: var(--card-bg);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-button);
   cursor: pointer;
 }
 
@@ -736,6 +876,7 @@ dialog.modal::backdrop {
 }
 
 .layout-reset {
+  min-height: 44px;
   padding: 0.4rem 0.75rem;
   font: inherit;
   font-size: 0.8125rem;
@@ -743,7 +884,7 @@ dialog.modal::backdrop {
   color: var(--text);
   background: var(--card-bg);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-button);
   cursor: pointer;
 }
 
@@ -770,7 +911,7 @@ dialog.modal::backdrop {
   padding: 0.125rem 0.5rem;
   border-radius: 999px;
   background: color-mix(in srgb, var(--warn) 20%, transparent);
-  color: var(--warn);
+  color: var(--warn-ink);
 }
 
 /* Per-card badge reflecting that metric's debounced GET /api/v1/alerts
@@ -790,16 +931,32 @@ dialog.modal::backdrop {
 
 .alert-badge.metric-warn {
   background: color-mix(in srgb, var(--warn) 20%, transparent);
-  color: var(--warn);
+  color: var(--warn-ink);
 }
 
 .alert-badge.metric-crit {
   background: color-mix(in srgb, var(--crit) 20%, transparent);
-  color: var(--crit);
+  color: var(--crit-ink);
 }
 
 .hidden {
   display: none !important;
+}
+
+.logo-tile {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  color: var(--on-accent);
+  background: var(--accent);
+  border-radius: var(--radius-control);
+}
+
+footer a {
+  color: var(--accent);
 }
 
 footer {
@@ -811,4 +968,100 @@ footer {
 
 .app-version {
   font-variant-numeric: tabular-nums;
+}
+
+/* Clear look: header, icons, mode icon, chevrons, bar and network rows. */
+.icon {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+.card-icon .icon {
+  width: 16px;
+  height: 16px;
+}
+
+.logo-tile .icon {
+  width: 22px;
+  height: 22px;
+}
+
+.card-header-btn .chevron {
+  margin-left: auto;
+  width: 16px;
+  height: 16px;
+  color: var(--muted);
+}
+
+.mode-icon-sun {
+  display: none;
+}
+
+:root[data-theme="dark"] .mode-icon-moon {
+  display: none;
+}
+
+:root[data-theme="dark"] .mode-icon-sun {
+  display: inline-block;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) .mode-icon-moon {
+    display: none;
+  }
+
+  :root:not([data-theme]) .mode-icon-sun {
+    display: inline-block;
+  }
+}
+
+.header-title {
+  min-width: 0;
+}
+
+.bar-label .bar-bytes {
+  color: var(--muted);
+  flex-shrink: 0;
+  margin-left: 0.375rem;
+}
+
+.net-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.4rem 0;
+  font-size: 0.8125rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.net-row:last-child {
+  border-bottom: none;
+}
+
+.net-name {
+  font-weight: 600;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.net-rates {
+  display: flex;
+  gap: 0.75rem;
+  flex-shrink: 0;
+  color: var(--muted);
+}
+
+.net-rate {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.net-rate .net-icon {
+  width: 14px;
+  height: 14px;
 }

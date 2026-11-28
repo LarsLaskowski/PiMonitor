@@ -54,6 +54,11 @@ after the PR is open. `gocognit` also counts the bare `if err != nil` check, whi
 existing function over the limit, add a named exclusion in `.golangci.yml` and note it in `.squad/project.md`.
 Other SonarQube Cloud findings (and hotspots, duplication) have no local Go equivalent: the *Sonar gate* below reports their issues and hotspots and the quality gate, duplication
 included, on the draft pull request.
+Sonar rules not reported locally, with how to avoid them while writing code:
+- `go:S8193` (unnecessary variable declaration): a variable declared in an `if` init statement that is used only in the
+  condition. Write the expression directly in the condition, e.g. `if normCSS(v) != "inherit" {`.
+- `go:S978` (identifier shadows a predeclared identifier): do not name a parameter or variable `min`, `max`, `len`,
+  `cap`, `new`, `copy`, `string`, `error` and the like; use a qualified name such as `minCount`.
 
 Changed shell scripts (`*.sh`), GitHub workflows (`.github/workflows/*.yml`) and Dockerfiles are checked with
 `shellcheck`, `actionlint` and `hadolint`; the SessionStart hook installs the three as pinned, checksum-verified
