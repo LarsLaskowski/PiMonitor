@@ -56,8 +56,8 @@ none (small feature: each criterion is its own scenario).
 
 - Q1: Which upper bound, and one for both keys? Proposed: 604800 s (7 days) for both — far below the overflow,
   above `openhab.poll_interval_seconds`' maximum of 86400 so `alerts.openhab_for_seconds` can still span several
-  polls, and equal to the `openhab.history_window_hours` maximum (168 h). Not answered: escalated to the Product
-  Manager, since it decides which of today's accepted configurations stop starting.
+  polls, and equal to the `openhab.history_window_hours` maximum (168 h). Answered by the Product Manager: "(a)
+  604800 s (7 days) for both keys."
 - Q2: Keep the existing `>= 0` message and add a separate `<=` message, or one `must be between 0 and <bound>` text
   for both? Answered: keep the existing documented negative message unchanged (`docs/areas/configuration.md`) and add
   the `<=` message, so no documented text changes.
