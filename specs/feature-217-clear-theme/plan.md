@@ -181,3 +181,38 @@ No build step, no external resource, no API change; guarantees of `.squad/projec
 ## Out of scope / follow-ups
 
 Spec *Out of scope*. Follow-up issue: "Replace the README screenshot with the Clear look, light and dark".
+
+## Challenge notes
+
+Devil's Advocate, plan challenge: feature-217-clear-theme (issue #217)
+
+I found nothing major. I checked the plan's facts 4, 5, 6, 8, 9, 10 and 12 against the code and they hold: style.css 286/417 against 353–359; gauge.js 30–38; chart.js 57; app.js 964. I also checked the 72 px narrowest gauge, and the light and dark ink contrast on the tinted banner and badges, which comes out between 4.72 and 8.73. Five details need an instruction to the Dev or Tester; none needs a plan change.
+
+**Minor 1: the newest-point dot is clipped at the edge of the sparkline (AC7).**
+- Evidence: in `drawSparkline`, `pad = 3` and the newest point sits at `x = cssWidth - 3` (/home/user/PiMonitor/internal/web/assets/chart.js 30–33, 38–42). The plan's dot has radius 4 plus a 3 px ring, so it reaches 7 px. That cuts 4 px off on the right in every sparkline, including the detail chart. The CPU sparkline has a fixed 0–100 scale (app.js 1230), so a value of 100 % puts the dot at y = 3 and clips it at the top too (0 % clips it at the bottom).
+- Instruction for the Dev: inset the plot so the whole dot and ring stay inside the canvas, at least radius + ring (7 px) from the right, top and bottom edges. Keep the flat-series range padding and the "fewer than two points" rule unchanged.
+- Instruction for the Tester: assert that the dot's centre is never closer to an edge than its radius plus its ring.
+- Why minor: the Dev can fix this inside the planned function without changing the plan.
+
+**Minor 2: the gauge fit test checks the wrong width (AC8).**
+- Evidence: fact 7 and the AC8 test compare the value's width with the inner width at the baseline (46 px). The tighter limit is higher up, at the top edge of the value box.
+- At 72 px the numbers are: canvas 70 px, `cy = 61.5`, inner radius 23. With `bottom: 6px`, `line-height: 1` and a 13.68 px font, the box top is at y ≈ 50.3. The inner chord there is 2·√(23² − 11.2²) ≈ 40.2 px. `88.88` measures about 39.5 px (2.89 em), so it fits by roughly 0.6 px, not by the 6 px the plan's figure suggests.
+- Instruction for the Tester: compute in the test the inner chord at `cy − (70 − bottom − font·lineHeight)` and assert the value width is at most that. Do not compare against the baseline width.
+- Instruction for the Dev: if this check fails, lower the `clamp` minimum or `cqi` factor, or the `bottom` offset. Do not loosen the test.
+- Why minor: only a test detail and possibly a CSS value change.
+
+**Minor 3: an existing test the plan does not list breaks if a card heading spans several lines (AC13).**
+- Evidence: /home/user/PiMonitor/internal/web/hostname_test.go 123 uses the regex `id="card-system">\s*<h2>[^\n]*</h2>`. It requires the System card's `<h2>` on one line. Inline SVG markup is often wrapped onto several lines. The plan lists only the `<h1>` adaptation of hostname_test.go.
+- Instruction for the Dev: keep every card `<h2>`, with its chip SVG, on a single line in index.html. Otherwise the Tester adapts this regex as well. Either way, AC13 lets a test change only for markup this change deliberately alters.
+- Why minor: a one-line formatting rule, or one more adapted test.
+
+**Minor 4: the "no colour literal" scan can hit things that are not colours (AC2).**
+- Evidence: style.css contains `white-space: nowrap` (lines 67, 85, 414, 583) and `color-scheme: light dark` (line 2).
+- Instruction for the Tester: in `TestStyleCSS_NoColourLiteralOutsidePalette_AC2`, match named colours only as whole tokens in declaration values, never in property names. Add a positive case (for example `color: white` is caught) and a negative one (`white-space: nowrap` passes).
+- Why minor: a test detail; the plan stands.
+
+**Minor 5: long interface names may lose their ellipsis in the new network row (spec E5).**
+- Evidence: today the ellipsis comes from `.bar-label .bar-name` (style.css 410–415: overflow hidden, ellipsis, nowrap), and the rates sit in `.bar-pct` with `flex-shrink: 0` (style.css 417–421). The plan's new `networkRow` builds `.net-row` and says only "name left". It does not say whether these rules carry over.
+- Instruction for the Dev: in `.net-row`, give the name `min-width: 0`, `overflow: hidden`, `text-overflow: ellipsis` and `white-space: nowrap`, and give the rates group `flex-shrink: 0`. Then a long name is cut and both rates stay visible.
+- Instruction for the Tester: check this at 320 px during the manual check in task 10.
+- Why minor: a CSS detail inside the planned change.
