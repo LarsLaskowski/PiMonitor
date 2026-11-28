@@ -1,6 +1,6 @@
 # 0034: Both alert debounce windows are capped at seven days
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-28
 - **Area:** Configuration
 - **Source:** Issue #272

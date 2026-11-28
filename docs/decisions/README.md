@@ -95,5 +95,5 @@ once in the [area document](../areas/README.md) of the record's area, and the re
 | [0031](0031-dashboard-loaded-hidden-defers-initial-load.md) | A dashboard loaded hidden defers its whole initial load until it is first shown | Accepted | 2026-11-27 |
 | [0032](0032-download-checked-against-release-checksums.md) | download-latest.sh checks the archive against the release's checksums.txt before extracting it | Accepted | 2026-11-28 |
 | [0033](0033-packaging-script-tests-in-internal-packaging.md) | Tests of the packaging scripts live in a test-only package internal/packaging | Accepted | 2026-11-28 |
-| [0034](0034-alert-debounce-windows-capped-at-seven-days.md) | Both alert debounce windows are capped at seven days | Proposed | 2026-11-28 |
+| [0034](0034-alert-debounce-windows-capped-at-seven-days.md) | Both alert debounce windows are capped at seven days | Accepted | 2026-11-28 |
 <!-- project:end index -->
