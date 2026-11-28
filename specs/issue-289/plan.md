@@ -136,7 +136,25 @@ collector keeps never crashing on a non-positive interval. No flow changes; no `
 ## Decision records
 
 - `docs/decisions/0036-poll-and-updates-intervals-at-least-one-unit.md` (Proposed), indexed.
+- `docs/decisions/0035-float-duration-options-capped-at-seven-or-365-days.md` (unreleased, edited in place by the Dev): its lower-bound sentence and its "tiny poll interval" consequence point to 0036.
 
 ## Out of scope / follow-ups
 
 - The dashboard's `Math.max(1, …)` floors in `app.js` become redundant; harmless, left as they are.
+
+## Challenge notes
+
+I found no major problem with the plan for issue #289 (specs/issue-289/plan.md) or with decision 0036. One minor fix is needed: two sentences in the unreleased record 0035 become false once 0036 lands.
+
+**What I checked and found correct**
+- **Root cause:** in /home/user/PiMonitor/internal/config/config.go, `validateTiming` only rejects values `<= 0` (lines 590-595). `FastInterval`/`SlowInterval` (lines 346-353) truncate toward zero. `Validate` runs finiteness, then upper bounds, then timing (lines 509-518). `atMost` (lines 468-473) is the model for the planned `atLeast`.
+- **No other input path:** the only command-line flags are `-config`, `-listen`, `-log-level`, `-api-key` and `-version` (config.go:835-840). Nothing else can set either option without passing `Validate`.
+- **Exact error texts:** I ran Go's `%v` on the plan's values. It prints `0.999`, `1e-10`, `1e-12`, `-1`, and `3.1536e+07` for 525600×60/1, so the texts in AC1, AC2 and AC4 are right.
+- **Existing tests:** the cases the plan lists to adapt (config_test.go:483-495 and 1547-1553) are the complete set. The setters in `TestValidate_RejectsNonFiniteNumbers` and `numberOptionYAML` only use NaN/Inf, and the other tests use 5, 7, 10, 30 or 60. Nothing in other packages builds a sub-1 config through `Validate`.
+- **Deleting the `1e-300` overflow case is safe:** with a 1 s minimum and a 525600-minute window cap, the ratio is at most 3.15e7, so it can no longer overflow.
+- **Other dependent rules still hold:** the `healthz_max_staleness_seconds >= poll_interval_seconds` rule (config.go:625) is unaffected. docs/ARCHITECTURE.md:503, docs/areas/metrics.md:31 and docs/UNIT_TESTS.md:220 all still read correctly. README.md states no range for these keys, and the repo has no CHANGELOG.
+- **Need, alternatives and tier:** the five options are compared fairly. Tier standard is appropriate.
+
+**Objections**
+
+1. `minor` — Record 0035 (/home/user/PiMonitor/docs/decisions/0035-float-duration-options-capped-at-seven-or-365-days.md) is unreleased (`git tag --contains a536905` prints nothing) and would contradict 0036. Line 42 says "the lower-bound texts are unchanged", and the Consequences say "a tiny poll interval still makes the ratio huge". Once 0036 sets a 1 s minimum, there is no tiny poll interval and the `> 0` texts change. The project rule is to edit an unreleased record in place rather than contradict it. Instruction for the Dev: edit 0035 in place. Make the lower-bound sentence say the lower bounds of `poll_interval_seconds` and `updates_check_minutes` are set by [0036](0036-poll-and-updates-intervals-at-least-one-unit.md). Replace the "tiny poll interval" consequence with "the ratio check stays: at the minimum `poll_interval_seconds` of 1 ([0036](0036-poll-and-updates-intervals-at-least-one-unit.md)), 525600 minutes still make 31,536,000 points". Add 0036 to the plan's *Decision records* list as touching 0035.
