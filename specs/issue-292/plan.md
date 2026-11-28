@@ -93,7 +93,7 @@ not pasted lines.
 - `packaging/install.sh` (Dev): after `systemctl daemon-reload`, enable `pimonitor-apt-update.timer` (restart it
   when it was active), then run the blocking refresh with its warning as today, then enable and start
   `pimonitor.service` (restart it when it was active). The `*_WAS_ACTIVE` checks stay before `daemon-reload`. The
-  echo lines may be reworded; one says the refresh runs before the service starts.
+  echo lines may be reworded; the one before the refresh says that `pimonitor.service` (re)starts only after it and that an interrupted run is completed with `sudo systemctl restart pimonitor.service`.
 - New user-visible output: the installer's echo lines only, layout free for the Dev, approved in step 9.
 
 Early draft PR: no
@@ -200,3 +200,59 @@ changes.
 
 - Option 6 of 0037 (repeating a failed attempt whose state changed): a follow-up only if a journal shows an
   `apt-cache` failure coinciding with the refresh.
+
+## Challenge notes
+
+Devil's Advocate, plan challenge for specs/issue-292 (plan: /home/user/PiMonitor/specs/issue-292/plan.md, decision: /home/user/PiMonitor/docs/decisions/0037-apt-state-change-repeats-check-once.md). There is one major objection and two minor ones.
+
+I checked the plan's factual claims against the code and they hold:
+- **Facts 1, 5, 6 and 7:** `updates.go:108-144` and `updates.go:159-198`; `slowTick` at `collector.go:877-889`; the order in `Run` at `collector.go:365-386`.
+- **Fact 2:** `packaging/install.sh:100-115`.
+- **Facts 9 and 10:** `updates_test.go:986-1021` and line 31. The "# changed" line is rejected as `malformed line` by `controlParser.line` (`updates.go:388-398`).
+- **No other caller:** `slowTick` (`collector.go:878`) is the only caller of `UpdatesCollector.Collect`.
+
+On fact 2: `pimonitor-apt-update.timer` has `OnUnitActiveSec=6h`. So restarting the timer can also fire the refresh at once if the last run was more than 6 h ago. The plan is right that line 113 is enough on its own.
+
+### Major
+
+**1. The fix for the reported scenario depends on a timing nobody has checked, and a fix that does not depend on timing was not considered.**
+
+The case the issue reports, an upgrade with `install.sh`, is fixed only if `apt-get update` finishes within the 2 s pause. The plan itself marks this as unverified (fact 8), and AC5 can only check it after the release.
+
+- **Why this is likely to fail on some hosts:** the refresh runs with `Nice=19` and `IOSchedulingClass=idle` (`packaging/pimonitor-apt-update.service`). On a slow SD card, a busy board, a slow mirror or a host with many sources it can easily take longer than 2 s.
+- **The margin is thin even on the reporter's host.** The failure is logged at 11:23:19 and `Finished` at 11:23:20, at 1 s resolution. So the refresh may end up to about 2 s after the failure, and the repeat starts exactly 2 s after it.
+- **The alternative not considered:** reorder `packaging/install.sh` so the refresh runs before the service's first check. The order would be: restart the timer, then the blocking `systemctl start pimonitor-apt-update.service`, then `restart`/`enable --now` of `pimonitor.service`. It is a `Type=oneshot` unit, so `systemctl start` waits until the refresh ends. It also joins a run the timer restart already started. The overlap is then gone on every install and upgrade, whatever the refresh takes. Today, lines 100 and 105 start the service before line 113.
+- **Neither document considers it.** 0037's six options and the plan's *Options considered* leave this out. Yet it fixes the reported case without lengthening the slow tick at all.
+- **What to change:**
+  - Add the reorder as an option in 0037.
+  - Either adopt it, alone or together with the retry (the retry still covers the 6-hourly timer overlap), or record why it loses.
+  - If adopted, the plan grows by: the `install.sh` change, `internal/packaging` tests for the order, the `docs/areas/deployment.md` *install.sh* step list (lines 37-60), and the target-host list that *Operator environments* in `.squad/routing.md` requires.
+
+### Minor
+
+**1. AC4's test covers only a cancelled context, not an expired deadline.** AC4 promises that "a cancellation or expired deadline during the pause" ends `Collect` with the state-change error and no second run. The only test listed is `AC4 cancel during the pause`. The Tester should add a subtest, e.g. `AC4 deadline expires during the pause`. It sets the existing `timeout` field small, and `retryAfter` returns a channel that never fires. It asserts the state-change error and exactly one `apt-cache` run, without waiting on the real clock beyond that small timeout. The plan's error text in the AC2 assertions stays as it is.
+
+**2. 0037's *Consequences* should say plainly that the retry does not make the install-path fix certain.** The current text says a refresh longer than the pause "still leaves `failed` until the next slow tick". It should also name the `install.sh` upgrade as the case where this applies when the host is slow, so the Product Manager's AC5 check is not read as a guarantee for all hosts. If major 1 adopts the reorder, this point goes away.
+
+## Security notes
+
+Security plan review, round 2 (delta confirmation): specs/issue-292/plan.md and docs/decisions/0037-apt-state-change-repeats-check-once.md at 62d6f9b, branch claude/intelligent-mayer-7yggb1
+
+I approve the revision; it has one non-blocking finding. The repeat-once in `internal/collector/updates.go` is unchanged since my round-1 approval, so I reviewed only the `install.sh` reorder and the new *Privilege separation* area.
+
+**Tier.** `standard` still holds, and *Security areas touched* is now complete. The `systemctl` commands and the `*_WAS_ACTIVE` checks stay the same. `packaging/pimonitor-apt-update.service` (root, its hardening and capability set), `pimonitor-apt-update.timer` and `pimonitor.service` (unprivileged) are untouched, and no user, permission or config handling changes (plan *Approach* and *Architecture check*). Moving lines only changes timing, and no control decides anything differently. The binary is still installed early (`install.sh:56`), as it is today.
+
+**The four delta points:**
+- **Refresh failure handling:** a failed refresh still only warns, because the `if ! systemctl start pimonitor-apt-update.service; then … warning` stays (`install.sh:113-115`, pinned by AC6). The service is still enabled or restarted after a failed refresh, so the new binary still takes effect. A held apt lists lock makes `apt-get update` fail rather than wait, which takes this same warn path.
+- **Timer order:** enabling the timer before the blocking start is correct for the order guarantee. If `enable --now` fires the oneshot at once (its `OnBootSec=10min` has long passed), `systemctl start` merges with that running start job and waits for it to finish. Either way the service starts after the refresh. I did not run this: no systemd here. I took it from systemd's documented job semantics; it bears on the fix working, not on a security property.
+- **Hanging refresh and interrupted installer:** the plan and 0037 *Consequences* accept both. For `Type=oneshot`, systemd disables the start timeout by default (documented in systemd.service; man page not installed here, so not checked), so a slow or stuck refresh can block the installer for as long as `apt-get`'s own network timeouts allow. Re-running `install.sh` recovers: `SERVICE_WAS_ACTIVE=1` leads to a restart. See the finding.
+- **New `set -e` abort point:** a failing `systemctl enable --now pimonitor-apt-update.timer` now aborts before `pimonitor.service` is enabled or restarted; today it aborts after. This is the same "old process, new binary" outcome as an interrupt, and it is visible because "Done." never prints. Nothing to change beyond the finding.
+
+**AC6 test:** it reads `packaging/install.sh` as text only and runs nothing as root. There is no security concern.
+
+**Finding:**
+
+1. [NON-BLOCKING] Plan *Approach*, `packaging/install.sh` bullet ("The echo lines may be reworded; one says the refresh runs before the service starts").
+   - **Defect:** with the reorder, an upgrade only takes effect after a refresh that has no time bound (oneshot). A release that ships a security fix stays inactive while the refresh runs. An operator who interrupts the installer with Ctrl-C leaves the old, possibly vulnerable process running. Interrupting `systemctl start` does not cancel the systemd job, so the refresh finishes in the background, but the service is never restarted. Nothing on screen tells them so.
+   - **Smallest fix:** make the echo before the refresh also say that the new version only starts after it, and how to apply it if the run is interrupted. Plan wording to replace that sentence of the bullet: "The echo lines may be reworded; the one before the refresh says that `pimonitor.service` (re)starts only after it and that an interrupted run is completed with `sudo systemctl restart pimonitor.service`."
+   - Recommendation: fix now
