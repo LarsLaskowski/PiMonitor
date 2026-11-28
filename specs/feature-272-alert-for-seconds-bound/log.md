@@ -6,3 +6,4 @@ are quoted in full.
 | Date | Step | Member | Result |
 | ---- | ---- | ------ | ------ |
 | 2026-11-28 08:53 | 1 Intake | Orchestrator | Issue 272 (enhancement, open): upper bound for alerts.for_seconds and alerts.openhab_for_seconds; feature, branch claude/practical-dijkstra-dzd4ua off main. |
+| 2026-11-28 08:55 | 2a Spec | Lead | RESULT: ESCALATE — Which upper bound for alerts.for_seconds and alerts.openhab_for_seconds? (a) 604800 s both (recommended), (b) 86400 s, (c) overflow limit only (~9.2e9 s). (opus/medium · 45,930 tokens · 12 tool uses · 90 s · 24 in · 7,729 out · 384,919 cache read · 44,324 cache write · 226,640 weighted) |
