@@ -3,7 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-11-28
 - **Area:** Dashboard
-- **Source:** Issue #217
+- **Source:** Issue #217, issue #218
 - **Supersedes:** —
 
 ## Context
@@ -24,6 +24,10 @@ names, and each design has to be swappable without touching the markup or the sc
    key and the attribute keep a name that no longer matches the user-facing concept of the milestone's issues.
 3. **One stylesheet per design** — each design free in its rules. Cost: three copies of every layout rule to keep in
    step, more embedded bytes on a Pi Zero, and a design switch that reloads a stylesheet.
+4. **Each further theme's override blocks in a file of its own, linked statically after `style.css`** (issue #218)
+   — a theme is reviewed in one file. Cost: one more request revalidated on every load per theme, a link and asset
+   tests per file, and the token key set test reads several files; the blocks are short, so `style.css` keeps them
+   after Clear's palette.
 
 ## Decision
 
@@ -34,5 +38,11 @@ colour.
 
 ## Consequences
 
-- A later theme only adds override blocks; `style.css` holds no colour literal outside the palette blocks.
+- A later theme only adds override blocks — light, explicit dark and OS dark under its `data-style` value
+  ([0041](0041-theme-choice-per-browser-as-pimonitor-style.md)) — to `style.css`, after Clear's palette; `style.css`
+  holds no colour literal outside the palette blocks. The page has one DOM for every theme: no per-theme markup and
+  no per-theme HTML rendering in `app.js`.
+- Canvas widgets take a theme's differences only from custom properties; every one they read is a palette token in
+  every block of every theme, so all blocks share one token key set (issue #218,
+  [0042](0042-theme-registry-in-theme-init-js.md)).
 - The stored key keeps the old word: code and documentation say "mode" and name the key as it is.

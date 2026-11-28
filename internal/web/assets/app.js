@@ -29,7 +29,9 @@
   let latestSnapshot = null;
   let latestHistory = null;
 
+  // THEME_KEY stores the mode (light/dark); STYLE_KEY stores the theme (registered style id).
   const THEME_KEY = 'pimonitor-theme';
+  const STYLE_KEY = 'pimonitor-style';
   const API_KEY_STORAGE = 'pimonitor-api-key';
 
   function storedAPIKey() {
@@ -83,7 +85,7 @@
     if (!btn) return;
     const dark = effectiveTheme() === 'dark';
     // The icon of the mode the button switches to is shown by CSS.
-    btn.setAttribute('aria-label', dark ? 'Switch to light theme' : 'Switch to dark theme');
+    btn.setAttribute('aria-label', dark ? 'Switch to light mode' : 'Switch to dark mode');
     btn.setAttribute('aria-pressed', String(dark));
   }
 
@@ -94,9 +96,67 @@
       delete document.documentElement.dataset.theme;
     }
     updateThemeToggle();
-    // Repaint canvas widgets that cached the previous palette's colors.
+    repaintCanvases();
+  }
+
+  // activeStyle returns the id of the theme in effect: the registered
+  // data-style value, else the default (first) theme.
+  function activeStyle() {
+    const id = document.documentElement.dataset.style;
+    return PIMONITOR_THEMES.some(t => t.id === id) ? id : PIMONITOR_THEMES[0]?.id;
+  }
+
+  // repaintCanvases redraws the canvas widgets that cached the previous
+  // palette's colors (canvases read the custom properties at draw time).
+  function repaintCanvases() {
     if (latestSnapshot) renderMetrics(latestSnapshot);
     if (latestHistory) renderHistory(latestHistory);
+  }
+
+  // applyStyle shows the theme with the given id; the default theme is the
+  // absence of data-style.
+  function applyStyle(id) {
+    if (id === PIMONITOR_THEMES[0]?.id) {
+      delete document.documentElement.dataset.style;
+    } else {
+      document.documentElement.dataset.style = id;
+    }
+    repaintCanvases();
+  }
+
+  // selectStyle stores and applies the theme with the given id.
+  function selectStyle(id) {
+    if (!PIMONITOR_THEMES.some(t => t.id === id)) return;
+    try {
+      localStorage.setItem(STYLE_KEY, id);
+    } catch (e) {
+      console.warn('failed to persist theme style', e);
+    }
+    applyStyle(id);
+  }
+
+  // buildStylePicker fills the theme picker of the layout dialog from the
+  // registry; it stays hidden while fewer than two themes exist.
+  function buildStylePicker() {
+    const picker = document.getElementById('style-picker');
+    const options = document.getElementById('style-options');
+    if (!picker || !options) return;
+    picker.classList.toggle('hidden', PIMONITOR_THEMES.length < 2);
+    options.innerHTML = '';
+    for (const theme of PIMONITOR_THEMES) {
+      const label = document.createElement('label');
+      label.className = 'style-option';
+      const input = document.createElement('input');
+      input.type = 'radio';
+      input.name = 'style-choice';
+      input.value = theme.id;
+      input.checked = theme.id === activeStyle();
+      input.addEventListener('change', () => selectStyle(theme.id));
+      const text = document.createElement('span');
+      text.textContent = theme.name;
+      label.append(input, text);
+      options.appendChild(label);
+    }
   }
 
   function toggleTheme() {
@@ -844,6 +904,7 @@
   }
 
   function openLayoutModal() {
+    buildStylePicker();
     buildLayoutList();
     openModal(document.getElementById('layout-modal'));
   }
@@ -1409,16 +1470,15 @@
     const to = Math.max(...times);
     const intervalSeconds = Math.max(1, latestOpenHAB?.poll_interval_seconds || 60);
     const markers = (hist?.openhab_restarts || []).map(pointTime).filter(t => t >= from && t <= to);
-    const css = getComputedStyle(document.documentElement);
     const colors = { 'openhab_rss_bytes': '--accent', 'openhab_heap_used_bytes': '--muted' };
     drawTimeChart(canvas, lines.map(line => ({
       points: line.points,
-      color: css.getPropertyValue(colors[line.key]).trim() || '#2563eb',
+      color: themeColor(colors[line.key]),
     })), {
       from, to,
       gapMs: 1.5 * intervalSeconds * 1000,
       markers,
-      markerColor: css.getPropertyValue('--warn').trim() || '#d97706',
+      markerColor: themeColor('--warn'),
     });
   }
 

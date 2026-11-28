@@ -40,8 +40,8 @@ function drawGauge(canvas, value, max, colorClass) {
   const startAngle = Math.PI; // left (9 o'clock)
   const endAngle = 2 * Math.PI; // right (3 o'clock), via the top
 
-  const trackColor = getComputedStyle(document.documentElement).getPropertyValue('--track').trim() || '#e8eaef';
-  const fillColor = getComputedStyle(document.documentElement).getPropertyValue(gaugeColorVar(colorClass)).trim();
+  const trackColor = themeColor('--track');
+  const fillColor = themeColor(gaugeColorVar(colorClass));
 
   // Background track (full top semicircle).
   ctx.beginPath();
