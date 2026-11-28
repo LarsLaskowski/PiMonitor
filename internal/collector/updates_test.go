@@ -983,38 +983,204 @@ func TestUpdatesCollector_Collect_Failures(t *testing.T) {
 	}
 }
 
-func TestUpdatesCollector_Collect_StateChangeFails(t *testing.T) {
+// retryRecorder is the injected retryAfter of a test: it records each pause
+// the collector asks for and answers with the channel make returns (a closed
+// channel when make is nil), so no test waits on the real clock.
+type retryRecorder struct {
+	delays []time.Duration
+	make   func() <-chan time.Time
+}
+
+func (r *retryRecorder) after(d time.Duration) <-chan time.Time {
+	r.delays = append(r.delays, d)
+	if r.make != nil {
+		return r.make()
+	}
+	ch := make(chan time.Time)
+	close(ch)
+	return ch
+}
+
+// countingStub returns the path of a stub apt-cache that appends a line to
+// the runs file of the environment on every run before running script, and
+// that file's path.
+func (e *aptTestEnv) countingStub(t *testing.T, script string) (stub, runs string) {
+	t.Helper()
+	runs = filepath.Join(e.dir, "runs")
+	return e.stub(t, fmt.Sprintf("echo x >> %q; %s", runs, script)), runs
+}
+
+// countRuns returns the number of runs the stub recorded in runs.
+func countRuns(t *testing.T, runs string) int {
+	t.Helper()
+	data, err := os.ReadFile(runs)
+	if os.IsNotExist(err) {
+		return 0
+	}
+	if err != nil {
+		t.Fatalf("read run log %s: %v", runs, err)
+	}
+	return strings.Count(string(data), "\n")
+}
+
+// addListOnRun is a stub script line that adds a list file named after the
+// run's number, so every run changes the state the parsers still read. The
+// number comes from the runs file the counting stub appended to.
+func (e *aptTestEnv) addListOnRun(runs string) string {
+	return fmt.Sprintf("n=$(wc -l < %q); echo x > %q/c_$((n))_Packages", runs, e.listsDir)
+}
+
+func TestUpdatesCollector_Collect_StateChangeRepeated(t *testing.T) {
+	t.Run("AC1 change during the first run only", func(t *testing.T) {
+		e := newAptTestEnv(t)
+		runsPath := filepath.Join(e.dir, "runs")
+		script := fmt.Sprintf("n=$(wc -l < %q); if [ $((n)) -eq 1 ]; then echo x > %q/c_Packages; fi; %s",
+			runsPath, e.listsDir, e.printFixture())
+		stub, runs := e.countingStub(t, script)
+		c := e.collector(stub)
+		pauses := &retryRecorder{}
+		c.retryAfter = pauses.after
+
+		updates, err := c.Collect(context.Background())
+
+		if err != nil {
+			t.Fatalf("Collect: %v", err)
+		}
+		if got := countRuns(t, runs); got != 2 {
+			t.Errorf("apt-cache runs = %d, want 2", got)
+		}
+		if len(pauses.delays) != 1 || pauses.delays[0] != updatesRetryDelay {
+			t.Errorf("recorded pauses = %v, want exactly [%v]", pauses.delays, updatesRetryDelay)
+		}
+		if updates.Count != aptSampleUpgradeCount || len(updates.Packages) != aptSampleUpgradeCount {
+			t.Errorf("Count = %d, Packages = %d, want %d of the repeat", updates.Count, len(updates.Packages), aptSampleUpgradeCount)
+		}
+		if updates.CheckedAt.IsZero() {
+			t.Error("CheckedAt is zero, want it set by the repeat")
+		}
+	})
+
+	t.Run("AC4 cancel during the pause", func(t *testing.T) {
+		e := newAptTestEnv(t)
+		runs := filepath.Join(e.dir, "runs")
+		stub, _ := e.countingStub(t, e.addListOnRun(runs)+"; "+e.printFixture())
+		c := e.collector(stub)
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		pauses := &retryRecorder{make: func() <-chan time.Time {
+			cancel()
+			return nil
+		}}
+		c.retryAfter = pauses.after
+
+		updates, err := c.Collect(ctx)
+
+		checkErrorText(t, err, errStateChanged)
+		if got := countRuns(t, runs); got != 1 {
+			t.Errorf("apt-cache runs = %d, want 1 (no repeat after a cancellation)", got)
+		}
+		if updates.Count != 0 || updates.Packages != nil {
+			t.Errorf("Updates = %+v on a failed check, want the zero value", updates)
+		}
+	})
+
+	t.Run("AC4 deadline expires during the pause", func(t *testing.T) {
+		e := newAptTestEnv(t)
+		runs := filepath.Join(e.dir, "runs")
+		stub, _ := e.countingStub(t, e.addListOnRun(runs)+"; "+e.printFixture())
+		c := e.collector(stub)
+		c.timeout = 200 * time.Millisecond
+		pauses := &retryRecorder{make: func() <-chan time.Time { return make(chan time.Time) }}
+		c.retryAfter = pauses.after
+
+		updates, err := c.Collect(context.Background())
+
+		checkErrorText(t, err, errStateChanged)
+		if got := countRuns(t, runs); got != 1 {
+			t.Errorf("apt-cache runs = %d, want 1 (no repeat after the deadline)", got)
+		}
+		if len(pauses.delays) != 1 {
+			t.Errorf("recorded pauses = %v, want exactly one", pauses.delays)
+		}
+		if updates.Count != 0 || updates.Packages != nil {
+			t.Errorf("Updates = %+v on a failed check, want the zero value", updates)
+		}
+	})
+}
+
+func TestUpdatesCollector_Collect_OtherFailureNotRepeated(t *testing.T) {
 	cases := []struct {
 		name   string
-		script func(t *testing.T, e *aptTestEnv) string
+		script func(e *aptTestEnv) string
+		want   string
 	}{
-		{"AC5 status file rewritten", func(t *testing.T, e *aptTestEnv) string {
-			return fmt.Sprintf("echo '# changed' >> %q; %s", e.statusPath, e.printFixture())
-		}},
-		{"AC5 list file replaced by one with an older mtime", func(t *testing.T, e *aptTestEnv) string {
-			// Same size as the list it replaces, and older than both lists, so
-			// only the directory's modification time can show the change.
-			replacement := writeTempFile(t, e.dir, "replacement", strings.Repeat("r", 32))
-			old := time.Now().Add(-3 * time.Hour)
-			if err := os.Chtimes(replacement, old, old); err != nil {
-				t.Fatalf("Chtimes: %v", err)
+		{"AC3 apt-cache exits 1", func(e *aptTestEnv) string { return e.printFixture() + "; exit 1" }, errRunPrefix + " exit status 1"},
+		{"AC3 empty dumpavail output", func(e *aptTestEnv) string { return "true" }, errNoDpkgDumpavail},
+	}
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			e := newAptTestEnv(t)
+			stub, runs := e.countingStub(t, tt.script(e))
+			c := e.collector(stub)
+			pauses := &retryRecorder{}
+			c.retryAfter = pauses.after
+
+			updates, err := c.Collect(context.Background())
+
+			checkErrorContains(t, err, tt.want)
+			if got := countRuns(t, runs); got != 1 {
+				t.Errorf("apt-cache runs = %d, want 1", got)
 			}
-			return fmt.Sprintf("mv %q %q; %s", replacement, e.olderList, e.printFixture())
+			if len(pauses.delays) != 0 {
+				t.Errorf("recorded pauses = %v, want none", pauses.delays)
+			}
+			if updates.Count != 0 || updates.Packages != nil {
+				t.Errorf("Updates = %+v on a failed check, want the zero value", updates)
+			}
+		})
+	}
+}
+
+func TestUpdatesCollector_Collect_StateChangeFails(t *testing.T) {
+	// Every case changes the state on every run, in a way the parsers still
+	// read, so the one repeat fails the same way as the first attempt.
+	cases := []struct {
+		name   string
+		script func(t *testing.T, e *aptTestEnv, runs string) string
+	}{
+		{"AC2 status file rewritten on every run", func(t *testing.T, e *aptTestEnv, runs string) string {
+			// A blank line is accepted by the parser and changes size.
+			return fmt.Sprintf("echo >> %q; %s", e.statusPath, e.printFixture())
 		}},
-		{"AC5 list file added", func(t *testing.T, e *aptTestEnv) string {
-			return fmt.Sprintf("echo x > %q; %s", filepath.Join(e.listsDir, "c_Packages"), e.printFixture())
+		{"AC2 list file replaced by one with an older mtime on every run", func(t *testing.T, e *aptTestEnv, runs string) string {
+			// Same size as the list it replaces, and older than both lists, so
+			// only the directory's modification time can show the change. The
+			// replacement is recreated on every run.
+			old := time.Now().Add(-3 * time.Hour).Format("200601021504.05")
+			replacement := filepath.Join(e.dir, "replacement")
+			return fmt.Sprintf("printf %%s %q > %q; touch -t %s %q; mv %q %q; %s",
+				strings.Repeat("r", 32), replacement, old, replacement, replacement, e.olderList, e.printFixture())
+		}},
+		{"AC2 list file added on every run", func(t *testing.T, e *aptTestEnv, runs string) string {
+			return e.addListOnRun(runs) + "; " + e.printFixture()
 		}},
 	}
 	for _, tt := range cases {
 		t.Run(tt.name, func(t *testing.T) {
 			e := newAptTestEnv(t)
-			c := e.collector(e.stub(t, tt.script(t, e)))
+			runs := filepath.Join(e.dir, "runs")
+			c := e.collector(e.stub(t, fmt.Sprintf("echo x >> %q; %s", runs, tt.script(t, e, runs))))
+			pauses := &retryRecorder{}
+			c.retryAfter = pauses.after
 
 			updates, err := c.Collect(context.Background())
 
-			checkErrorContains(t, err, errStateChanged)
+			checkErrorText(t, err, errStateChanged)
 			if updates.Count != 0 || updates.Packages != nil {
 				t.Fatalf("Updates = %+v on a failed check, want the zero value", updates)
+			}
+			if got := countRuns(t, runs); got != 2 {
+				t.Errorf("apt-cache runs = %d, want 2 (one repeat, never a third run)", got)
 			}
 		})
 	}
