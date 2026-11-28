@@ -32,7 +32,7 @@ against that release, not who built it.
 ## Decision
 
 Option 1: the script fails closed — no valid entry, no download of `checksums.txt` or a different hash ends it with
-status 1 before anything is extracted, and a mismatched archive is removed. The rules and messages are in
+status 1 before anything is extracted, and an archive whose download failed or whose hash differs is removed. The rules and messages are in
 [Deployment](../areas/deployment.md#download-latestsh).
 
 ## Consequences

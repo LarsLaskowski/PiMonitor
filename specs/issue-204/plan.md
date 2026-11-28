@@ -28,6 +28,8 @@ Security areas touched: Privilege separation (`packaging/pimonitor-apt-update.ti
 | 11 | CI's `ubuntu-latest` runner has `bash`, `tar`, `gzip`, `awk`, `sha256sum` | to verify: the green `go test` job of the draft PR (step 11); the test fails, not skips, on Linux when a tool is missing | unverified |
 | 12 | `systemd-analyze verify` checks the two units in the session | `systemd-analyze verify ./pimonitor-apt-update.timer ./pimonitor-apt-update.service` in `packaging/` printed nothing (systemd 255) | confirmed |
 | 13 | No document besides `README.md` and `docs/areas/deployment.md` describes the script or `Persistent=` | `grep -rn "download-latest\|checksums\|Persistent"` outside `.git`, `specs/` | confirmed |
+| 14 | `sha256sum` comes from `coreutils`, an Essential package, on Debian-family systems | `dpkg-query -W -f '${Essential}' coreutils` printed `yes`, `dpkg -S /usr/bin/sha256sum` printed `coreutils` (Ubuntu 24.04, coreutils 9.4) | confirmed |
+| 15 | Raspberry Pi OS (Debian Bookworm based) ships `sha256sum` the same way | to verify: the orchestrator asks the Product Manager to run `dpkg -S /usr/bin/sha256sum` and `dpkg-query -W -f '${Essential}' coreutils` on a Pi before step 9 (deb.debian.org and archive.raspberrypi.com refused by the proxy); on a "no", the Lead decides | unverified |
 
 ## Acceptance criteria
 
@@ -43,6 +45,8 @@ Security areas touched: Privilege separation (`packaging/pimonitor-apt-update.ti
     — the archive is not requested;
   - the computed hash differs: `Checksum mismatch for <archive>: expected <expected>, got <actual>.` then
     `Removed <archive>; nothing was extracted.`;
+  - the archive download fails (curl exits non-zero, a partial file possibly written):
+    `Could not download <archive> of PiMonitor <version>.` — the partial file is removed;
   - `sha256sum` is not on the `PATH`: the existing `Required command not found: sha256sum` — nothing is requested.
 - AC3: For `ARCH=arm64` and `ARCH=armv6`, with a matching entry, the script exits 0, extracts the directory and
   prints `Checksum of <archive> verified.` between the `Downloading …` and the `Extracting …` line.
@@ -58,7 +62,7 @@ Security areas touched: Privilege separation (`packaging/pimonitor-apt-update.ti
 | AC | Test(s) | Test file |
 | -- | ------- | --------- |
 | AC1 | `TestAptUpdateTimer_Schedule_AC1`; check: Dev runs `systemd-analyze verify` on both units in `packaging/` | `internal/packaging/pimonitor_apt_update_timer_test.go` |
-| AC2 | `TestDownloadLatest_ChecksumsUnavailable_AC2`, `TestDownloadLatest_NoUsableEntry_AC2` (table), `TestDownloadLatest_ChecksumMismatch_AC2`, `TestDownloadLatest_MissingSha256sum_AC2` | `internal/packaging/download_latest_test.go` |
+| AC2 | `TestDownloadLatest_ChecksumsUnavailable_AC2`, `TestDownloadLatest_NoUsableEntry_AC2` (table), `TestDownloadLatest_ChecksumMismatch_AC2`, `TestDownloadLatest_ArchiveDownloadFails_AC2`, `TestDownloadLatest_MissingSha256sum_AC2` | `internal/packaging/download_latest_test.go` |
 | AC3 | `TestDownloadLatest_VerifiedArchive_AC3` (cases `arm64`, `armv6`); check: Dev runs the changed script against the live latest release with `ARCH=arm64` and `ARCH=armv6`, each in a new empty scratch directory | `internal/packaging/download_latest_test.go` |
 | AC4 | `TestDownloadLatest_Syntax_AC4` (`bash -n`; deferred to step 6, it cannot fail on today's script); CI: the `go test` job runs the AC2/AC3 tests; check: `shellcheck` in the *Analyzer gate* stamp | `internal/packaging/download_latest_test.go` |
 | AC5 | check: Reviewer reads the README paragraph against AC5 | — |
@@ -76,6 +80,8 @@ Test cases:
   public release data, nothing to anonymize) with a generated archive whose hash differs; asserts the two lines with
   `expected bf6b0498…d29a` (full hash) and the generated archive's hash, exit 1, no directory, no archive file.
 - `TestDownloadLatest_ChecksumsUnavailable_AC2`: the stub has no `checksums.txt` (exit 22 like `curl -f`).
+- `TestDownloadLatest_ArchiveDownloadFails_AC2`: a valid entry, and the stub writes the first half of the archive to
+  the `-o` file, then exits 18 (curl's partial-file code); asserts AC2's line, exit 1, no archive file, no directory.
 - `TestDownloadLatest_MissingSha256sum_AC2`: the tool directory lacks `sha256sum`; the stub log is empty.
 - `TestDownloadLatest_VerifiedArchive_AC3`: a generated `checksums.txt` in the real format with both archives; asserts
   exit 0, `<dir>/pimonitor` extracted, the archive kept, the stdout line order of AC3, and the stub log order
@@ -100,7 +106,8 @@ Early draft PR: no
    and `exit 1`. Held in a variable like `release_json`, no file is written.
 3. `expected=$(awk -v name="$archive" '$2 == name { print $1 }' <<<"$checksums")` — a here-string, not a pipe, so
    no `SIGPIPE` under `pipefail`. Then `[[ "$expected" =~ ^[0-9a-f]{64}$ ]]` or AC2's second line and `exit 1`.
-4. Download the archive as today.
+4. Download the archive inside `if ! "${CURL[@]}" -o "$archive" "$url"; then`: `rm -f -- "$archive"`, AC2's
+   download line, `exit 1` — so no partial, unverified file stays behind (decision 0032).
 5. `actual=$(sha256sum "$archive")`, `actual=${actual%% *}`; on `"$actual" != "$expected"`: the mismatch line,
    `rm -f -- "$archive"`, the `Removed …` line, `exit 1`. Otherwise `printf 'Checksum of %s verified.\n'` to stdout.
 6. Extract as today. All new error lines go to standard error.
@@ -124,7 +131,8 @@ make a different archive pass: acceptance always ends in an equality test agains
   context timeout.
 - `writeStubCurl`: a bash script named `curl` in the tool directory that ignores the flags, takes the last argument as
   the URL, appends it to `$STUB_LOG`, exits 1 for a non-`https://` URL, serves `$STUB_ROOT/<URL without https://>` to
-  the `-o` file or stdout, and exits 22 silently when the file is missing.
+  the `-o` file or stdout, and exits 22 silently when the file is missing. A served file with a sibling
+  `<file>.partial` is cut to half its length and the stub then exits 18.
 - `writeReleaseArchive`: builds `pimonitor_<v>_linux_<arch>.tar.gz` with `archive/tar` and `compress/gzip`, holding
   `<dir>/pimonitor`, and returns its SHA-256 (`crypto/sha256`). The API answer is a minimal JSON with a `"tag_name":
   "v1.3.0",` line.
@@ -173,7 +181,7 @@ Files of the change no unit test can cover: none — the shell script is exercis
   what it does not prove, removal on mismatch, "Requires `curl`, `tar` and `sha256sum`"; *`.timer`* bullet — the timer
   sets no `Persistent=` (it would apply only to `OnCalendar=`), so a run missed while the Pi was off is not caught up
   beyond the boot run; *Limits and errors* — status 1 also for a missing `sha256sum`, an unavailable `checksums.txt`,
-  no usable entry and a mismatch (the archive removed), the "does not verify" sentence dropped; *Related decisions* —
+  no usable entry, a failed archive download and a mismatch (the archive removed in both), the "does not verify" sentence dropped; *Related decisions* —
   0032; *Open questions* — both removed, section left as "None."
 
 ## Documentation updates
@@ -224,6 +232,19 @@ schedule (fact 1: the removed line had no effect), and `download-latest.sh` stil
 - Signing releases (cosign/GPG) and verifying the signature — no follow-up planned unless the Product Manager asks.
 - An existing `/var/lib/systemd/timers/stamp-pimonitor-apt-update.timer` on upgraded Pis, if systemd wrote one, stays
   as a harmless leftover; no cleanup step is added to `install.sh`.
+
+## Challenge
+
+- DA minor 1 (target host has `sha256sum`): accepted — *Verified facts* rows 14 and 15; row 15 is unverified,
+  owned by the Product Manager's check on a Pi before step 9. The area document's "Requires `curl`, `tar` and
+  `sha256sum`" stays, since it states the script's requirement, whatever the check shows.
+
+## Security review
+
+- NON-BLOCKING, partial archive after a failed download (`fix now`): taken as Security's smallest fix, not the
+  narrowing of decision 0032 — the record's promise "no unverified archive is left behind" is the point of the check,
+  and the fix is three lines. Changed: *Approach* step 4, AC2's new download-failure line,
+  `TestDownloadLatest_ArchiveDownloadFails_AC2` and the stub's `.partial` mode, decision 0032's decision sentence.
 
 ## Challenge notes
 
