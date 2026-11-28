@@ -192,7 +192,7 @@ func TestAppJS_OpenHABChart_AC7(t *testing.T) {
 		{"renderHistory", history, []string{"renderOpenHAB(latestOpenHAB)", "'pending'", "'not_installed'"}},
 		{"drawTimeChart caller", drawer, []string{
 			"openhab_rss_bytes", "openhab_heap_used_bytes", "openhab_restarts", "poll_interval_seconds", "1.5",
-			"getComputedStyle", "--accent", "--muted", "--warn",
+			"themeColor(", "--accent", "--muted", "--warn",
 		}},
 	})
 	checkAssetPartsAbsent(t, []assetCheck{

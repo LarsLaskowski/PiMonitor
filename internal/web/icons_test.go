@@ -353,7 +353,7 @@ func checkUpdateThemeToggle(t *testing.T, js string) {
 		t.Fatal("app.js: expected a function updateThemeToggle()")
 	}
 	requireContains(t, "updateThemeToggle", body,
-		"btn.setAttribute('aria-label', dark ? 'Switch to light theme' : 'Switch to dark theme');",
+		"btn.setAttribute('aria-label', dark ? 'Switch to light mode' : 'Switch to dark mode');",
 		"btn.setAttribute('aria-pressed', String(dark));",
 	)
 	if strings.Contains(body, "textContent") {
@@ -361,11 +361,13 @@ func checkUpdateThemeToggle(t *testing.T, js string) {
 	}
 }
 
-// checkApplyThemeRedraws checks that applyTheme redraws the charts and gauges.
+// checkApplyThemeRedraws checks that applyTheme redraws the charts and gauges through repaintCanvases.
 func checkApplyThemeRedraws(t *testing.T, js string) {
 	t.Helper()
 	requireContains(t, "applyTheme", jsFunctionBody(js, "function applyTheme(theme)"),
-		"updateThemeToggle();", "renderMetrics(latestSnapshot)", "renderHistory(latestHistory)")
+		"updateThemeToggle();", "repaintCanvases();")
+	requireContains(t, "repaintCanvases", jsFunctionBody(js, "function repaintCanvases()"),
+		"renderMetrics(latestSnapshot)", "renderHistory(latestHistory)")
 }
 
 func TestAppJS_NetworkRateNames_AC13(t *testing.T) {
