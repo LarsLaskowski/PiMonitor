@@ -93,4 +93,6 @@ once in the [area document](../areas/README.md) of the record's area, and the re
 | [0029](0029-apt-check-status-key-and-prometheus-gap.md) | The apt check's state is a v1 key, and `/metrics` leaves the count out until a check succeeds | Accepted | 2026-11-27 |
 | [0030](0030-wrong-method-answers-405-in-v1.md) | A wrong method on a registered route answers 405 in v1 | Accepted | 2026-11-27 |
 | [0031](0031-dashboard-loaded-hidden-defers-initial-load.md) | A dashboard loaded hidden defers its whole initial load until it is first shown | Accepted | 2026-11-27 |
+| [0032](0032-download-checked-against-release-checksums.md) | download-latest.sh checks the archive against the release's checksums.txt before extracting it | Proposed | 2026-11-28 |
+| [0033](0033-packaging-script-tests-in-internal-packaging.md) | Tests of the packaging scripts live in a test-only package internal/packaging | Proposed | 2026-11-28 |
 <!-- project:end index -->
