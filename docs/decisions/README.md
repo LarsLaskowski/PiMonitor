@@ -96,5 +96,5 @@ once in the [area document](../areas/README.md) of the record's area, and the re
 | [0032](0032-download-checked-against-release-checksums.md) | download-latest.sh checks the archive against the release's checksums.txt before extracting it | Accepted | 2026-11-28 |
 | [0033](0033-packaging-script-tests-in-internal-packaging.md) | Tests of the packaging scripts live in a test-only package internal/packaging | Accepted | 2026-11-28 |
 | [0034](0034-alert-debounce-windows-capped-at-seven-days.md) | Both alert debounce windows are capped at seven days | Accepted | 2026-11-28 |
-| [0035](0035-float-duration-options-capped-at-seven-or-365-days.md) | The other float seconds and minutes options are capped at seven or 365 days | Proposed | 2026-11-28 |
+| [0035](0035-float-duration-options-capped-at-seven-or-365-days.md) | The other float seconds and minutes options are capped at seven or 365 days | Accepted | 2026-11-28 |
 <!-- project:end index -->

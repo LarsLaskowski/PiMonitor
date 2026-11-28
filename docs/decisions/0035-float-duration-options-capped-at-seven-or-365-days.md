@@ -1,6 +1,6 @@
 # 0035: The other float seconds and minutes options are capped at seven or 365 days
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-28
 - **Area:** Configuration
 - **Source:** Issue #287
