@@ -189,3 +189,21 @@ wrong duration now stops startup with a text naming the key. No guarantee of `.s
 - Proposed issue — title: "Lower bound for poll_interval_seconds and updates_check_minutes"; body: a positive value
   below 1 ns truncates to a zero `time.Duration`, which `clampInterval` silently replaces by 1 s, and values such as
   `0.001` run the fast ticker every millisecond; decide a minimum interval with an error text naming the key.
+
+## Challenge notes
+
+Devil's Advocate, plan mode, specs/issue-287 (/home/user/PiMonitor/specs/issue-287/plan.md)
+
+The plan holds up. I checked each claim against the code:
+- **Conversions:** the eight float-to-Duration conversions are where the plan says: config.go:347/352/358/386/395 and notify.go:121/150/151. The only others are the two debounce windows (config.go:335/341) and the int-based openHAB durations (config.go:215, collector.go:497, persist.go:486). The openHAB ones are already range-checked in `OpenHAB.validate` (config.go:238-243), so no sibling path is missed.
+- **Check order and texts:** `Validate` (config.go:458-484) runs `validateFinite` before `validateTiming`. Putting `validateUpperBounds` between them does make the key-naming bound win over the ratio check (config.go:552) for AC5/AC9. No value can fail both a lower and an upper bound, so the existing texts and their order stay unchanged.
+- **NewNotifier (fact 4):** it only ever gets a validated config, and `Alerts.validate` runs whatever `enabled` says (config.go:594-616). So AC6-AC8 "also while alerts.enabled is false" holds with no change to notify.go.
+- **History window (fact 5):** `fastInterval * HistoryCapacity` (collector.go:815) stays at most max(window, poll interval), so it does not overflow at the new bounds.
+- **Backoff (fact 6):** the `backoff *= 2` claim (notify.go:332) is right; wrapping is unreachable.
+- **Existing tests (fact 10):** the two tests to adapt are right (config_test.go:487-495 and 609-622). The row "history capacity exceeds sanity cap" (config_test.go:483-486, window 525600 at poll 0.05) sits exactly at the new bound, so it still reaches the ratio check. My grep of the other test files found no value above the bounds.
+- **gocognit:** one more `if` in `Validate` keeps it well under the limit of 15 (.golangci.yml:10).
+- **AC9:** `%v` of 1e12 is `1e+12`, as AC9 expects (checked by running it).
+
+Objections:
+
+1. minor — AC4's over-bound row prints in exponent form, so a literal error text written from the test name would fail. Instruction for the Tester: for the row "AC4 healthz_max_staleness_seconds 31536000.5", the expected text is `healthz_max_staleness_seconds must be <= 31536000 (got 3.15360005e+07)`, not `(got 31536000.5)`. `%v` switches to exponent form once a value's exponent is 6 or more; I checked by running `fmt.Printf("%v", 31536000.5)` (Go 1.x), which prints `3.15360005e+07`. The over-bound rows for the other keys (604800.5, 10080.5, 525600.5) print as written. Build the expected text with `fmt.Sprintf("%v", value)` or write the exponent form.
