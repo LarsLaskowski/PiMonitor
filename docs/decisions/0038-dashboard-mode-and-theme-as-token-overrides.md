@@ -1,6 +1,6 @@
 # 0038: Dashboard "mode" is light or dark, a "theme" is a set of custom-property overrides
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-28
 - **Area:** Dashboard
 - **Source:** Issue #217

@@ -1,6 +1,6 @@
 # 0039: The per-card colour appears only on the icon chip; status colours have a fill and an ink variant
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-28
 - **Area:** Dashboard
 - **Source:** Issue #217

@@ -1,6 +1,6 @@
 # 0040: Dashboard icons are inline stroke SVG in the page, not emoji
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-28
 - **Area:** Dashboard
 - **Source:** Issue #217
