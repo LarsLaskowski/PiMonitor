@@ -168,7 +168,7 @@ such as openHAB that poll single values.
 - `updates` compares two sources ([decision 0028](../decisions/0028-apt-updates-from-dumpavail-and-dpkg-status.md)):
   the dpkg status file `/var/lib/dpkg/status` (installed packages) and the output of `apt-cache dumpavail` (the
   policy candidate per package and architecture). The child runs with the single argument `dumpavail`, a **10 s**
-  timeout and only the environment `LC_ALL=C`, `LANG=C`, `LANGUAGE=`, `DEBIAN_FRONTEND=noninteractive` and the
+  timeout for the whole check, its repeat included, and only the environment `LC_ALL=C`, `LANG=C`, `LANGUAGE=`, `DEBIAN_FRONTEND=noninteractive` and the
   service's `PATH`. It only reads the existing apt cache; PiMonitor never refreshes it ([Deployment](deployment.md)).
 - A package is an update when it is installed (any status state but `not-installed` and `config-files`) and its
   candidate version compares newer by dpkg's rules; held and kept-back packages are included, as in
@@ -183,7 +183,9 @@ such as openHAB that poll single values.
   architecture in the `dumpavail` output. A line over **1 MiB**, more than **256 MiB** of child output, a failing or
   timed-out child, or a change of the status file or the apt lists while the check ran (compared by the lists
   directory's modification time, the count, total size and newest modification time of its files, and the status
-  file's modification time and size) fails it too.
+  file's modification time and size) fails it too. That change fails the check only when it shows again in the one
+  repeat that follows a **2 s** pause under the same 10 s deadline, or when the deadline or a shutdown ends the pause ([decision 0037](../decisions/0037-apt-state-change-repeats-check-once.md));
+  any other failure is not repeated.
 - `cache_age_seconds` is the age of the newest file in `/var/lib/apt/lists`. `stale` is true when
   `updates_stale_threshold_minutes` is above 0 and the age exceeds it. When the age cannot be determined (directory
   unreadable or without files), `cache_age_seconds` is 0 and `stale` is false.

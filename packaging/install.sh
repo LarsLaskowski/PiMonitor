@@ -96,22 +96,24 @@ fi
 
 systemctl daemon-reload
 
-echo "Enabling and starting services..."
-systemctl enable --now pimonitor.service
+echo "Enabling the apt cache refresh timer..."
 systemctl enable --now pimonitor-apt-update.timer
-
-if [[ "$SERVICE_WAS_ACTIVE" -eq 1 ]]; then
-  echo "pimonitor.service was already running; restarting to pick up the new binary/unit..."
-  systemctl restart pimonitor.service
-fi
 if [[ "$TIMER_WAS_ACTIVE" -eq 1 ]]; then
   echo "pimonitor-apt-update.timer was already active; restarting to pick up any schedule change..."
   systemctl restart pimonitor-apt-update.timer
 fi
 
 echo "Running an initial apt cache refresh so the update count isn't empty on first view..."
+echo "pimonitor.service (re)starts only after it; if this is interrupted, run 'sudo systemctl restart pimonitor.service' to complete the install."
 if ! systemctl start pimonitor-apt-update.service; then
   echo "warning: initial apt cache refresh failed; check 'systemctl status pimonitor-apt-update.service'" >&2
+fi
+
+echo "Enabling and starting pimonitor.service..."
+systemctl enable --now pimonitor.service
+if [[ "$SERVICE_WAS_ACTIVE" -eq 1 ]]; then
+  echo "pimonitor.service was already running; restarting to pick up the new binary/unit..."
+  systemctl restart pimonitor.service
 fi
 
 echo
