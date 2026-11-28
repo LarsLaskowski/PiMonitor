@@ -385,17 +385,22 @@ func headerToggleFocusFindings(rules []cssRule, sel string) []string {
 	return append(out, headerToggleHoverFindings(rules, sel)...)
 }
 
-// headerToggleHoverFindings requires the hover rule to change the border
-// colour only, so nothing stacks with the focus ring.
+// headerToggleHoverFindings requires the soft-halo hover: the border keeps
+// its resting colour, the box-shadow adds a 3px accent halo to the resting
+// shadow, and no outline competes with the focus ring.
 func headerToggleHoverFindings(rules []cssRule, sel string) []string {
 	var out []string
 	hover := declsFor(rules, sel+":hover")
-	if _, ok := hover["border-color"]; !ok {
-		out = append(out, sel+":hover does not set border-color")
+	if _, ok := hover["border-color"]; ok {
+		out = append(out, sel+":hover sets border-color, want the resting border")
 	}
-	for prop := range hover {
-		if prop != "border-color" {
-			out = append(out, fmt.Sprintf("%s:hover sets %q, want border-color only", sel, prop))
+	if _, ok := hover["outline"]; ok {
+		out = append(out, sel+":hover sets outline, want a box-shadow halo")
+	}
+	shadow := normCSS(hover["box-shadow"])
+	for _, part := range []string{"var(--shadow)", "0003px", "color-mix(insrgb,var(--accent)", "transparent"} {
+		if !strings.Contains(shadow, part) {
+			out = append(out, fmt.Sprintf("%s:hover box-shadow = %q, want it to contain %q", sel, hover["box-shadow"], part))
 		}
 	}
 	return out
@@ -412,17 +417,21 @@ func TestStyleCSS_HeaderButtonFocusRing_AC5(t *testing.T) {
 	})
 
 	t.Run("AC5 the check accepts a conforming rule and rejects a missing ring", func(t *testing.T) {
-		const hover = ".theme-toggle:hover { border-color: var(--accent); }\n"
-		good := hover + ".theme-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }\n"
-		bad := hover + ".theme-toggle:focus-visible { outline: 2px solid #fff; outline-offset: -2px; }\n"
-		if f := headerToggleFocusFindings(parseCSSRules(good), ".theme-toggle"); len(f) != 0 {
+		const halo = ".theme-toggle:hover { box-shadow: var(--shadow), 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent); }\n"
+		const ring = ".theme-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }\n"
+		badRing := ".theme-toggle:focus-visible { outline: 2px solid #fff; outline-offset: -2px; }\n"
+		oldHover := ".theme-toggle:hover { border-color: var(--accent); }\n"
+		if f := headerToggleFocusFindings(parseCSSRules(halo+ring), ".theme-toggle"); len(f) != 0 {
 			t.Errorf("conforming CSS: got findings %v, want none", f)
 		}
-		if f := headerToggleFocusFindings(parseCSSRules(bad), ".theme-toggle"); len(f) != 2 {
+		if f := headerToggleFocusFindings(parseCSSRules(halo+badRing), ".theme-toggle"); len(f) != 2 {
 			t.Errorf("literal colour and negative offset: got %d findings %v, want 2", len(f), f)
 		}
-		if f := headerToggleFocusFindings(parseCSSRules(hover), ".theme-toggle"); len(f) != 1 {
+		if f := headerToggleFocusFindings(parseCSSRules(halo), ".theme-toggle"); len(f) != 1 {
 			t.Errorf("no focus rule: got %d findings %v, want 1", len(f), f)
+		}
+		if f := headerToggleHoverFindings(parseCSSRules(oldHover), ".theme-toggle"); len(f) != 5 {
+			t.Errorf("border-colour hover without halo: got %d findings %v, want 5", len(f), f)
 		}
 	})
 }
