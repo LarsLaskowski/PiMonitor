@@ -1,6 +1,6 @@
 # 0036: The fast and slow collection intervals are at least one second and one minute
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-28
 - **Area:** Configuration
 - **Source:** Issue #289
