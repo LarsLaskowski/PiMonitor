@@ -47,6 +47,35 @@ func onlyIndex(t *testing.T, lines []string, want string) int {
 	return idx[0]
 }
 
+// namedLine is a line of the install script with a label for failure messages.
+type namedLine struct {
+	name string
+	idx  int
+}
+
+// checkOrder reports every line of group that is not strictly before (wantBefore) or after the refresh line.
+func checkOrder(t *testing.T, group []namedLine, refreshIf int, wantBefore bool) {
+	t.Helper()
+	for _, l := range group {
+		if wantBefore && l.idx >= refreshIf {
+			t.Errorf("%s at line %d, want it before the refresh at line %d", l.name, l.idx, refreshIf)
+		}
+		if !wantBefore && l.idx <= refreshIf {
+			t.Errorf("%s at line %d, want it after the refresh at line %d", l.name, l.idx, refreshIf)
+		}
+	}
+}
+
+// hasRecoveryEcho reports whether one of lines is an echo that contains recovery.
+func hasRecoveryEcho(lines []string, recovery string) bool {
+	for _, line := range lines {
+		if strings.HasPrefix(line, "echo ") && strings.Contains(line, recovery) {
+			return true
+		}
+	}
+	return false
+}
+
 func TestInstallScript_RefreshBeforeServiceStart_AC6(t *testing.T) {
 	lines := installScriptLines(t)
 
@@ -57,22 +86,8 @@ func TestInstallScript_RefreshBeforeServiceStart_AC6(t *testing.T) {
 	restartService := onlyIndex(t, lines, "systemctl restart pimonitor.service")
 
 	t.Run("AC6 refresh runs after the timer and before the service", func(t *testing.T) {
-		for _, before := range []struct {
-			name string
-			idx  int
-		}{{"enable of the timer", enableTimer}, {"restart of the timer", restartTimer}} {
-			if before.idx >= refreshIf {
-				t.Errorf("%s at line %d, want it before the refresh at line %d", before.name, before.idx, refreshIf)
-			}
-		}
-		for _, after := range []struct {
-			name string
-			idx  int
-		}{{"enable of the service", enableService}, {"restart of the service", restartService}} {
-			if after.idx <= refreshIf {
-				t.Errorf("%s at line %d, want it after the refresh at line %d", after.name, after.idx, refreshIf)
-			}
-		}
+		checkOrder(t, []namedLine{{"enable of the timer", enableTimer}, {"restart of the timer", restartTimer}}, refreshIf, true)
+		checkOrder(t, []namedLine{{"enable of the service", enableService}, {"restart of the service", restartService}}, refreshIf, false)
 	})
 
 	t.Run("AC6 a failed refresh only warns", func(t *testing.T) {
@@ -90,13 +105,7 @@ func TestInstallScript_RefreshBeforeServiceStart_AC6(t *testing.T) {
 	t.Run("AC6 an echo before the refresh names the recovery command", func(t *testing.T) {
 		const recovery = "sudo systemctl restart pimonitor.service"
 		last := max(enableTimer, restartTimer)
-		found := false
-		for _, line := range lines[last+1 : refreshIf] {
-			if strings.HasPrefix(line, "echo ") && strings.Contains(line, recovery) {
-				found = true
-			}
-		}
-		if !found {
+		if !hasRecoveryEcho(lines[last+1:refreshIf], recovery) {
 			t.Errorf("no echo line between the timer lines and the refresh contains %q", recovery)
 		}
 	})

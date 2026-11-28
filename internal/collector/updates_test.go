@@ -1031,107 +1031,114 @@ func (e *aptTestEnv) addListOnRun(runs string) string {
 }
 
 func TestUpdatesCollector_Collect_StateChangeRepeated(t *testing.T) {
-	t.Run("AC1 change during the first run only", func(t *testing.T) {
-		e := newAptTestEnv(t)
-		runsPath := filepath.Join(e.dir, "runs")
-		script := fmt.Sprintf("n=$(wc -l < %q); if [ $((n)) -eq 1 ]; then echo x > %q/c_Packages; fi; %s",
-			runsPath, e.listsDir, e.printFixture())
-		stub, runs := e.countingStub(t, script)
-		c := e.collector(stub)
-		pauses := &retryRecorder{}
-		c.retryAfter = pauses.after
+	t.Run("AC1 change during the first run only", checkStateChangeFirstRunOnly)
+	t.Run("AC4 cancel during the pause", checkStateChangeCancelDuringPause)
+	t.Run("AC4 deadline expires during the pause", checkStateChangeDeadlineDuringPause)
+	t.Run("AC4 default pause ends at the deadline", checkStateChangeDefaultPauseEndsAtDeadline)
+}
 
-		updates, err := c.Collect(context.Background())
+// checkFailedCheckZero fails the test when updates is not the zero value of a failed check.
+func checkFailedCheckZero(t *testing.T, updates Updates) {
+	t.Helper()
+	if updates.Count != 0 || updates.Packages != nil {
+		t.Errorf("Updates = %+v on a failed check, want the zero value", updates)
+	}
+}
 
-		if err != nil {
-			t.Fatalf("Collect: %v", err)
-		}
-		if got := countRuns(t, runs); got != 2 {
-			t.Errorf("apt-cache runs = %d, want 2", got)
-		}
-		if len(pauses.delays) != 1 || pauses.delays[0] != updatesRetryDelay {
-			t.Errorf("recorded pauses = %v, want exactly [%v]", pauses.delays, updatesRetryDelay)
-		}
-		if updates.Count != aptSampleUpgradeCount || len(updates.Packages) != aptSampleUpgradeCount {
-			t.Errorf("Count = %d, Packages = %d, want %d of the repeat", updates.Count, len(updates.Packages), aptSampleUpgradeCount)
-		}
-		if updates.CheckedAt.IsZero() {
-			t.Error("CheckedAt is zero, want it set by the repeat")
-		}
-	})
+// checkRunCount fails the test when the stub recorded a number of runs other than want.
+func checkRunCount(t *testing.T, runs string, want int, why string) {
+	t.Helper()
+	if got := countRuns(t, runs); got != want {
+		t.Errorf("apt-cache runs = %d, want %d%s", got, want, why)
+	}
+}
 
-	t.Run("AC4 cancel during the pause", func(t *testing.T) {
-		e := newAptTestEnv(t)
-		runs := filepath.Join(e.dir, "runs")
-		stub, _ := e.countingStub(t, e.addListOnRun(runs)+"; "+e.printFixture())
-		c := e.collector(stub)
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
-		pauses := &retryRecorder{make: func() <-chan time.Time {
-			cancel()
-			return nil
-		}}
-		c.retryAfter = pauses.after
+func checkStateChangeFirstRunOnly(t *testing.T) {
+	e := newAptTestEnv(t)
+	runsPath := filepath.Join(e.dir, "runs")
+	script := fmt.Sprintf("n=$(wc -l < %q); if [ $((n)) -eq 1 ]; then echo x > %q/c_Packages; fi; %s",
+		runsPath, e.listsDir, e.printFixture())
+	stub, runs := e.countingStub(t, script)
+	c := e.collector(stub)
+	pauses := &retryRecorder{}
+	c.retryAfter = pauses.after
 
-		updates, err := c.Collect(ctx)
+	updates, err := c.Collect(context.Background())
 
-		checkErrorText(t, err, errStateChanged)
-		if got := countRuns(t, runs); got != 1 {
-			t.Errorf("apt-cache runs = %d, want 1 (no repeat after a cancellation)", got)
-		}
-		if updates.Count != 0 || updates.Packages != nil {
-			t.Errorf("Updates = %+v on a failed check, want the zero value", updates)
-		}
-	})
+	if err != nil {
+		t.Fatalf("Collect: %v", err)
+	}
+	checkRunCount(t, runs, 2, "")
+	if len(pauses.delays) != 1 || pauses.delays[0] != updatesRetryDelay {
+		t.Errorf("recorded pauses = %v, want exactly [%v]", pauses.delays, updatesRetryDelay)
+	}
+	if updates.Count != aptSampleUpgradeCount || len(updates.Packages) != aptSampleUpgradeCount {
+		t.Errorf("Count = %d, Packages = %d, want %d of the repeat", updates.Count, len(updates.Packages), aptSampleUpgradeCount)
+	}
+	if updates.CheckedAt.IsZero() {
+		t.Error("CheckedAt is zero, want it set by the repeat")
+	}
+}
 
-	t.Run("AC4 deadline expires during the pause", func(t *testing.T) {
-		e := newAptTestEnv(t)
-		runs := filepath.Join(e.dir, "runs")
-		stub, _ := e.countingStub(t, e.addListOnRun(runs)+"; "+e.printFixture())
-		c := e.collector(stub)
-		c.timeout = 200 * time.Millisecond
-		pauses := &retryRecorder{make: func() <-chan time.Time { return make(chan time.Time) }}
-		c.retryAfter = pauses.after
+func checkStateChangeCancelDuringPause(t *testing.T) {
+	e := newAptTestEnv(t)
+	runs := filepath.Join(e.dir, "runs")
+	stub, _ := e.countingStub(t, e.addListOnRun(runs)+"; "+e.printFixture())
+	c := e.collector(stub)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	pauses := &retryRecorder{make: func() <-chan time.Time {
+		cancel()
+		return nil
+	}}
+	c.retryAfter = pauses.after
 
-		updates, err := c.Collect(context.Background())
+	updates, err := c.Collect(ctx)
 
-		checkErrorText(t, err, errStateChanged)
-		if got := countRuns(t, runs); got != 1 {
-			t.Errorf("apt-cache runs = %d, want 1 (no repeat after the deadline)", got)
-		}
-		if len(pauses.delays) != 1 {
-			t.Errorf("recorded pauses = %v, want exactly one", pauses.delays)
-		}
-		if updates.Count != 0 || updates.Packages != nil {
-			t.Errorf("Updates = %+v on a failed check, want the zero value", updates)
-		}
-	})
+	checkErrorText(t, err, errStateChanged)
+	checkRunCount(t, runs, 1, " (no repeat after a cancellation)")
+	checkFailedCheckZero(t, updates)
+}
 
-	t.Run("AC4 default pause ends at the deadline", func(t *testing.T) {
-		// retryAfter stays nil, so the pause is time.After(updatesRetryDelay)
-		// (2 s); the 200 ms deadline ends it first and the test never waits
-		// for the pause itself.
-		e := newAptTestEnv(t)
-		runs := filepath.Join(e.dir, "runs")
-		stub, _ := e.countingStub(t, e.addListOnRun(runs)+"; "+e.printFixture())
-		c := e.collector(stub)
-		c.timeout = 200 * time.Millisecond
+func checkStateChangeDeadlineDuringPause(t *testing.T) {
+	e := newAptTestEnv(t)
+	runs := filepath.Join(e.dir, "runs")
+	stub, _ := e.countingStub(t, e.addListOnRun(runs)+"; "+e.printFixture())
+	c := e.collector(stub)
+	c.timeout = 200 * time.Millisecond
+	pauses := &retryRecorder{make: func() <-chan time.Time { return make(chan time.Time) }}
+	c.retryAfter = pauses.after
 
-		start := time.Now()
-		updates, err := c.Collect(context.Background())
-		elapsed := time.Since(start)
+	updates, err := c.Collect(context.Background())
 
-		checkErrorText(t, err, errStateChanged)
-		if got := countRuns(t, runs); got != 1 {
-			t.Errorf("apt-cache runs = %d, want 1 (no repeat after the deadline)", got)
-		}
-		if elapsed >= updatesRetryDelay {
-			t.Errorf("Collect took %v, want it to end at the deadline before the %v pause", elapsed, updatesRetryDelay)
-		}
-		if updates.Count != 0 || updates.Packages != nil {
-			t.Errorf("Updates = %+v on a failed check, want the zero value", updates)
-		}
-	})
+	checkErrorText(t, err, errStateChanged)
+	checkRunCount(t, runs, 1, " (no repeat after the deadline)")
+	if len(pauses.delays) != 1 {
+		t.Errorf("recorded pauses = %v, want exactly one", pauses.delays)
+	}
+	checkFailedCheckZero(t, updates)
+}
+
+func checkStateChangeDefaultPauseEndsAtDeadline(t *testing.T) {
+	// retryAfter stays nil, so the pause is time.After(updatesRetryDelay)
+	// (2 s); the 200 ms deadline ends it first and the test never waits
+	// for the pause itself.
+	e := newAptTestEnv(t)
+	runs := filepath.Join(e.dir, "runs")
+	stub, _ := e.countingStub(t, e.addListOnRun(runs)+"; "+e.printFixture())
+	c := e.collector(stub)
+	c.timeout = 200 * time.Millisecond
+
+	start := time.Now()
+	updates, err := c.Collect(context.Background())
+	elapsed := time.Since(start)
+
+	checkErrorText(t, err, errStateChanged)
+	checkRunCount(t, runs, 1, " (no repeat after the deadline)")
+	if elapsed >= updatesRetryDelay {
+		t.Errorf("Collect took %v, want it to end at the deadline before the %v pause", elapsed, updatesRetryDelay)
+	}
+	checkFailedCheckZero(t, updates)
 }
 
 func TestUpdatesCollector_Collect_OtherFailureNotRepeated(t *testing.T) {
