@@ -14,7 +14,13 @@ the operator asked for silently becomes none: every spike fires.
 
 ## Scenarios
 
-none (small feature: each criterion is its own scenario).
+- S1: Given a config file with `alerts.for_seconds` above 604800, when `pimonitor` starts, then it writes
+  `pimonitor: load config: alerts.for_seconds must be <= 604800 (got <value>)` to standard error and exits with
+  status 1 before any port opens.
+- S2: Given `alerts.openhab_for_seconds` above 604800, when `pimonitor` starts, then it fails the same way with
+  `alerts.openhab_for_seconds must be <= 604800 (got <value>)`, also while `alerts.enabled` is `false`.
+- S3: Given either key at most 604800, when `pimonitor` starts, then it starts and debounces with exactly that
+  window, 7 days at 604800.
 
 ## Errors and edge cases
 
@@ -36,13 +42,14 @@ none (small feature: each criterion is its own scenario).
 ## Acceptance criteria
 
 - AC1: `alerts.for_seconds` above 604800 fails `Config.Validate()` with
-  `alerts.for_seconds must be <= 604800 (got <value>)`; `604800` passes and `AlertFor()` returns 168 h (E1, E3, E4,
+  `alerts.for_seconds must be <= 604800 (got <value>)`; `604800` passes and `AlertFor()` returns 168 h (S3, E1, E3, E4,
   N1).
 - AC2: `alerts.openhab_for_seconds` above 604800 fails `Config.Validate()` with
   `alerts.openhab_for_seconds must be <= 604800 (got <value>)`, also with `alerts.enabled: false`; `604800` passes and
-  `OpenHABAlertFor()` returns 168 h (E2, E3, E4, N1).
+  `OpenHABAlertFor()` returns 168 h (S2, S3, E2, E3,
+  E4, N1).
 - AC3: `pimonitor` started with a config file holding `alerts.for_seconds: 1e12` writes the one line of E1 to
-  standard error and exits with status 1 (E1, N2).
+  standard error and exits with status 1 (S1, E1, N2).
 
 ## Out of scope
 
@@ -54,10 +61,10 @@ none (small feature: each criterion is its own scenario).
 
 ## Open questions
 
-- Q1: Which upper bound, and one for both keys? Proposed: 604800 s (7 days) for both — far below the overflow,
-  above `openhab.poll_interval_seconds`' maximum of 86400 so `alerts.openhab_for_seconds` can still span several
-  polls, and equal to the `openhab.history_window_hours` maximum (168 h). Answered by the Product Manager: "(a)
-  604800 s (7 days) for both keys."
+- Q1: Which upper bound, and one for both keys? Answered: the Product Manager chose "(a) 604800 s (7 days) for both
+  keys." — far below the overflow, above `openhab.poll_interval_seconds`' maximum of 86400 so
+  `alerts.openhab_for_seconds` can still span several polls, and equal to the `openhab.history_window_hours`
+  maximum (168 h).
 - Q2: Keep the existing `>= 0` message and add a separate `<=` message, or one `must be between 0 and <bound>` text
   for both? Answered: keep the existing documented negative message unchanged (`docs/areas/configuration.md`) and add
   the `<=` message, so no documented text changes.
