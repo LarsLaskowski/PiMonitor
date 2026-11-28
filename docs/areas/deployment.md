@@ -20,14 +20,19 @@ installing, upgrading or hardening PiMonitor rely on it.
 
 ### `download-latest.sh`
 
-- Asks the GitHub API for the latest release of `larslaskowski/pimonitor`, downloads the archive for the Pi's
-  architecture into the current directory, extracts it there, lists the extracted files and prints the
+- Asks the GitHub API for the latest release of `larslaskowski/pimonitor`, downloads that release's `checksums.txt`,
+  then the archive for the Pi's architecture into the current directory, checks the archive, extracts it there, lists the extracted files and prints the
   `sudo ./install.sh` command to run next. It does not install anything and does not need root.
 - The architecture comes from `uname -m`: `aarch64`/`arm64` selects `arm64`; `armv6l`, `armv7l` and `armv8l` select
   `armv6`. The environment variable `ARCH` (`arm64` or `armv6`) overrides the detection.
 - Every request is HTTPS only, redirects included, and is retried up to 3 times, 2 s apart, on any transfer error.
 - The downloaded archive is left in the current directory next to the extracted directory.
-- Requires `curl` and `tar`.
+- The check takes the one `checksums.txt` line whose second field is the archive's name and whose first field is 64
+  lower-case hex digits, and compares it with the `sha256sum` of the downloaded archive. No such line, or more than one,
+  stops the script before the archive is requested. A mismatch removes the archive and stops before extraction.
+  This detects a corrupted or incomplete download; it does not prove who built the release, since releases are
+  unsigned ([decision 0032](../decisions/0032-download-checked-against-release-checksums.md)).
+- Requires `curl`, `tar` and `sha256sum`.
 
 ### `install.sh`
 
@@ -95,7 +100,8 @@ is running: it does not wait to see whether `pimonitor.service` stays up (check 
   `ProtectControlGroups=true`, and the capabilities limited to `CAP_CHOWN CAP_DAC_OVERRIDE CAP_FOWNER CAP_SETGID
   CAP_SETUID`. It runs at `Nice=19` with idle I/O priority.
 - The service has no `[Install]` section; the timer starts it 10 minutes after boot and then 6 hours after each
-  activation. The timer is wanted by `timers.target`.
+  activation. The timer is wanted by `timers.target`. It sets no `Persistent=`, which systemd applies only to
+  `OnCalendar=` timers, so a run missed while the Pi was off is not caught up beyond the boot run.
 
 ### Data directory
 
@@ -132,13 +138,16 @@ is running: it does not wait to see whether `pimonitor.service` stays up (check 
   process exits with status 1 and systemd restarts it every 5 s; the reason is in the journal.
 - A `SIGHUP` ends the process; it does not reload the configuration, and the unit defines no reload.
 - `download-latest.sh` exits with status 2 for an architecture it cannot map or an unsupported `ARCH`, and with
-  status 1 when `curl` or `tar` is missing, the latest version cannot be determined, the target directory already
-  exists, or the archive does not extract to the expected directory. It does not verify the release checksum.
+  status 1 when `curl`, `tar` or `sha256sum` is missing, the latest version cannot be determined, the target
+  directory already exists, `checksums.txt` cannot be downloaded or has no usable entry for the archive, the archive
+  download fails (the partial file is removed), the checksum does not match (the archive is removed), or the archive
+  does not extract to the expected directory.
 - There is no uninstall script.
 
 ## Related decisions
 
-None yet.
+- [0032](../decisions/0032-download-checked-against-release-checksums.md): the download is checked against the
+  release's `checksums.txt`.
 
 ## Not here
 
@@ -152,7 +161,4 @@ None yet.
 
 ## Open questions
 
-- `pimonitor-apt-update.timer` sets `Persistent=true`, which systemd applies only to `OnCalendar=` timers; with the
-  timer's `OnBootSec=`/`OnUnitActiveSec=` it has no effect. Should it be removed or the schedule changed to a
-  calendar one?
-- `download-latest.sh` does not check the archive against the release's `checksums.txt`. Should it?
+None.

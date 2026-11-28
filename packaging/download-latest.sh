@@ -43,7 +43,7 @@ case "${ARCH:-}" in
     ;;
 esac
 
-for command in curl tar; do
+for command in curl tar sha256sum; do
   if ! command -v "$command" >/dev/null 2>&1; then
     printf 'Required command not found: %s\n' "$command" >&2
     exit 1
@@ -64,7 +64,8 @@ fi
 
 archive="pimonitor_${version#v}_linux_${ARCH}.tar.gz"
 directory="${archive%.tar.gz}"
-url="https://github.com/${REPOSITORY}/releases/download/${version}/${archive}"
+release_base="https://github.com/${REPOSITORY}/releases/download/${version}"
+url="${release_base}/${archive}"
 
 if [[ -e "$directory" ]]; then
   printf 'Target directory already exists: %s\n' "$directory" >&2
@@ -72,8 +73,36 @@ if [[ -e "$directory" ]]; then
   exit 1
 fi
 
+# Fetch the release's checksums.txt first and keep it in memory, so a missing
+# or unusable entry stops the script before the archive is requested.
+if ! checksums=$("${CURL[@]}" "${release_base}/checksums.txt"); then
+  printf 'Could not download checksums.txt of PiMonitor %s.\n' "$version" >&2
+  exit 1
+fi
+# A here-string, not a pipe, so awk closing its input early can't raise SIGPIPE
+# under pipefail. Two matching lines join into a value the pattern rejects.
+expected=$(awk -v name="$archive" '$2 == name { print $1 }' <<<"$checksums")
+if [[ ! "$expected" =~ ^[0-9a-f]{64}$ ]]; then
+  printf 'No checksum for %s in checksums.txt of PiMonitor %s.\n' "$archive" "$version" >&2
+  exit 1
+fi
+
 printf 'Downloading PiMonitor %s for %s ...\n' "$version" "$ARCH"
-"${CURL[@]}" -o "$archive" "$url"
+if ! "${CURL[@]}" -o "$archive" "$url"; then
+  rm -f -- "$archive"
+  printf 'Could not download %s of PiMonitor %s.\n' "$archive" "$version" >&2
+  exit 1
+fi
+
+actual=$(sha256sum -- "$archive")
+actual=${actual%% *}
+if [[ "$actual" != "$expected" ]]; then
+  printf 'Checksum mismatch for %s: expected %s, got %s.\n' "$archive" "$expected" "$actual" >&2
+  rm -f -- "$archive"
+  printf 'Removed %s; nothing was extracted.\n' "$archive" >&2
+  exit 1
+fi
+printf 'Checksum of %s verified.\n' "$archive"
 
 printf 'Extracting %s ...\n' "$archive"
 tar xzf "$archive"

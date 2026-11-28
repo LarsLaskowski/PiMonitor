@@ -23,6 +23,8 @@ limits, patterns or sequences.
   `pimonitor-apt-update.service`/`.timer` runs as root; `packaging/` units and `install.sh` —
   [Deployment](../docs/areas/deployment.md),
   [Threat model](../SECURITY.md#threat-model--design-notes)
+- Release download: `packaging/download-latest.sh` fetches the archive whose `install.sh` the operator runs as root — HTTPS
+  only, checked against the release's `checksums.txt` — [Deployment](../docs/areas/deployment.md)
 - API key: read in `internal/config/config.go` (`api_key`, `PIMONITOR_API_KEY`, unset after reading, `-api-key`
   flag), compared in constant time by `withAPIKey` (`internal/httpapi/middleware.go`), kept by the dashboard in
   `localStorage`; config file mode set by `install.sh` — [Authentication](../docs/areas/http-api.md#authentication),

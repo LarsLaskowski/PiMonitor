@@ -150,6 +150,11 @@ The script detects the architecture automatically (`aarch64` becomes `arm64`;
 release, then lists its contents. To override the detection, run it with
 `ARCH=arm64 ./download-latest.sh` or `ARCH=armv6 ./download-latest.sh`.
 
+The script checks the archive against the release's `checksums.txt` with
+`sha256sum` and stops without extracting on a mismatch or a missing entry. This
+detects a corrupted or incomplete download but does not prove who built the
+release; the manual commands below do not check the archive at all.
+
 ```sh
 ARCH=arm64   # or armv6, see above
 

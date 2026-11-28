@@ -22,7 +22,8 @@ profile and owned by this repository: keep it true when the build changes.
 - `Makefile`: `make build` (native, `bin/pimonitor`), `make build-arm64`, `make build-arm` (`GOARM=6`), `make run`
   (against `packaging/pimonitor.example.yaml`), `make test`, `make lint`.
 - Tests: colocated `_test.go` files next to the code they cover, one per source file under test
-  (`foo.go` → `foo_test.go`).
+  (`foo.go` → `foo_test.go`); the exception is the files under `packaging/`, which ship in the release archive:
+  their tests live in the test-only package `internal/packaging/` (decision 0033).
 
 ## Commands
 
