@@ -300,3 +300,66 @@ func TestAssets_NoOtherOrigin_AC11(t *testing.T) {
 		}
 	})
 }
+
+// headingBtnInheriting lists the properties a <button> does not inherit by
+// default, so .card-header-btn has to set them explicitly to look like the
+// plain .card h2 headings (issue #217, heading 12 px, weight 600, uppercase,
+// letter-spacing 0.06em, --muted).
+var headingBtnInheriting = []string{"text-transform", "letter-spacing"}
+
+// headingBtnMatches reports whether the button's value for prop is
+// "inherit" or the same value the heading has.
+func headingBtnMatches(btn, h2 map[string]string, prop string) bool {
+	v, ok := btn[prop]
+	if !ok {
+		return false
+	}
+	v = normCSS(v)
+	return v == "inherit" || v == normCSS(h2[prop])
+}
+
+// headingBtnFindings returns the ways .card-header-btn departs from the
+// typography of .card h2 in css.
+func headingBtnFindings(css string) []string {
+	rules := parseCSSRules(css)
+	h2 := declsFor(rules, ".card h2")
+	btn := declsFor(rules, ".card-header-btn")
+	var out []string
+	for _, prop := range headingBtnInheriting {
+		if !headingBtnMatches(btn, h2, prop) {
+			out = append(out, fmt.Sprintf(".card-header-btn %s = %q, want inherit or %q (a <button> does not inherit it)", prop, btn[prop], h2[prop]))
+		}
+	}
+	if c := normCSS(btn["color"]); c != "inherit" && c != "var(--muted)" {
+		out = append(out, fmt.Sprintf(".card-header-btn color = %q, want inherit or var(--muted)", btn["color"]))
+	}
+	if f := normCSS(btn["font"]); f != "inherit" {
+		out = append(out, fmt.Sprintf(".card-header-btn font = %q, want inherit", btn["font"]))
+	}
+	for _, prop := range []string{"font-size", "font-weight"} {
+		if v, ok := btn[prop]; ok && normCSS(v) != "inherit" && normCSS(v) != normCSS(h2[prop]) {
+			out = append(out, fmt.Sprintf(".card-header-btn %s = %q, want the heading's %q", prop, v, h2[prop]))
+		}
+	}
+	return out
+}
+
+func TestStyleCSS_HeadingButtonTypography_AC5(t *testing.T) {
+	t.Run("AC5 clickable card heading buttons look like the plain headings", func(t *testing.T) {
+		for _, f := range headingBtnFindings(readAsset(t, "style.css")) {
+			t.Error(f)
+		}
+	})
+
+	t.Run("AC5 the check accepts inherit and rejects a missing reset", func(t *testing.T) {
+		const h2 = ".card h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); font-weight: 600; }\n"
+		good := h2 + ".card-header-btn { font: inherit; color: inherit; text-transform: inherit; letter-spacing: inherit; }\n"
+		bad := h2 + ".card-header-btn { font: inherit; color: inherit; }\n"
+		if got := headingBtnFindings(good); len(got) != 0 {
+			t.Errorf("conforming CSS: got findings %v, want none", got)
+		}
+		if got := headingBtnFindings(bad); len(got) != 2 {
+			t.Errorf("CSS without text-transform and letter-spacing: got %d findings %v, want 2", len(got), got)
+		}
+	})
+}

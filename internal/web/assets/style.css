@@ -306,6 +306,8 @@ main {
   margin: 0;
   font: inherit;
   color: inherit;
+  text-transform: inherit;
+  letter-spacing: inherit;
   text-align: left;
   background: none;
   border: none;
