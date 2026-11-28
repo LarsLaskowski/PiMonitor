@@ -20,3 +20,4 @@ are quoted in full.
 | 2026-11-28 08:31 | 8 Review | Reviewer | VERDICT: BLOCKING 0 \| NON-BLOCKING 1 on e9d7e6b31897b05593a55c4c4cf5d3a8295d7804. Non-blocking: decision 0033 line 36 lists wrong tools and OS skip scope (verbatim fix). Unopened: fact 15 (sha256sum on Pi OS). (opus/medium · 58,399 tokens · 7 tool uses · 50 s · 12 in · 4,678 out · 190,261 cache read · 51,701 cache write · 195,083 weighted) |
 | 2026-11-28 08:31 | 8 Security diff | Security | VERDICT: APPROVED. No findings. (opus/medium · 48,146 tokens · 8 tool uses · 46 s · 14 in · 3,783 out · 194,485 cache read · 41,326 cache write · 160,622 weighted) |
 | 2026-11-28 08:31 | 8 Verbatim fix | Orchestrator | verbatim: [NON-BLOCKING, verbatim] docs/decisions/0033-packaging-script-tests-in-internal-packaging.md:36 |
+| 2026-11-28 08:31 | 7 Gate stamp | Orchestrator | PASS on 5469db1fc86069d14e55243b066fd112fa6eb704 (tier security, verbatim): Format check pass; decision-check.py pass; scope-check.py pass |
