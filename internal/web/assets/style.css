@@ -820,6 +820,38 @@ dialog.modal::backdrop {
   line-height: 1.5;
 }
 
+/* Theme picker of the layout dialog; hidden by the .hidden class. */
+.style-picker {
+  margin: 0 0 0.75rem;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.style-picker legend {
+  padding: 0;
+  margin-bottom: 0.25rem;
+  color: var(--muted);
+  font-size: 0.8125rem;
+}
+
+.style-options {
+  display: flex;
+  flex-direction: column;
+}
+
+.style-option {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  min-height: 44px;
+  cursor: pointer;
+}
+
+.style-option input {
+  margin: 0;
+}
+
 .layout-list {
   list-style: none;
   margin: 0 0 0.75rem;

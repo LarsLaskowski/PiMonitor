@@ -16,14 +16,25 @@ const DRAWING_FALLBACKS = Object.freeze({
   '--spark-fill-alpha': '0.28',
 });
 
-// themeColor returns the usable color of the custom property `name`.
-function themeColor(name) {
-  throw new Error('not implemented: themeColor(' + name + ')');
+// themeValue returns the trimmed computed value of the custom property `name`.
+function themeValue(name) {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 }
 
-// themeNumber returns the number of the custom property `name` within [min, max].
+// themeColor returns the usable color of the custom property `name`: its
+// computed value when that is a color, else Clear's value.
+function themeColor(name) {
+  const v = themeValue(name);
+  const supported = window.CSS?.supports ? CSS.supports('color', v) : true;
+  return v !== '' && supported ? v : DRAWING_FALLBACKS[name];
+}
+
+// themeNumber returns the number of the custom property `name` when it is
+// finite and within [min, max], else Clear's value.
 function themeNumber(name, min, max) {
-  throw new Error('not implemented: themeNumber(' + name + ', ' + min + ', ' + max + ')');
+  const v = themeValue(name);
+  const n = Number(v);
+  return v !== '' && Number.isFinite(n) && n >= min && n <= max ? n : Number(DRAWING_FALLBACKS[name]);
 }
 
 // Apply a previously chosen theme before the first paint to avoid a flash
@@ -43,5 +54,16 @@ function themeNumber(name, min, max) {
     // Private browsing or blocked storage: leave data-theme unset, same as
     // when nothing was ever stored; the CSS prefers-color-scheme default
     // still applies.
+  }
+  // The stored theme is applied only when it is a registered id other than
+  // the default (Clear, which is the absence of data-style); any other value
+  // is ignored and left in storage untouched.
+  try {
+    const style = localStorage.getItem('pimonitor-style');
+    if (style !== PIMONITOR_THEMES[0].id && PIMONITOR_THEMES.some(t => t.id === style)) {
+      document.documentElement.dataset.style = style;
+    }
+  } catch (e) {
+    // Blocked storage: leave data-style unset, which is Clear.
   }
 })();

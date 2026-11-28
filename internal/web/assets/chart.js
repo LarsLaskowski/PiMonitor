@@ -3,7 +3,7 @@
 // small trend lines, not zoom/pan/tooltip interactivity.
 function drawSparkline(canvas, points, opts) {
   opts = opts || {};
-  const color = opts.color || getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#2563eb';
+  const color = opts.color || themeColor('--accent');
   const dpr = window.devicePixelRatio || 1;
   const cssWidth = canvas.clientWidth || 260;
   const cssHeight = canvas.clientHeight || 48;
@@ -39,9 +39,8 @@ function drawSparkline(canvas, points, opts) {
     return cssHeight - pad - t * (cssHeight - pad * 2);
   };
 
-  const rootStyle = getComputedStyle(document.documentElement);
-  const fillAlpha = Number.parseFloat(rootStyle.getPropertyValue('--spark-fill-alpha')) || 0.28;
-  const cardBg = rootStyle.getPropertyValue('--card-bg').trim() || '#ffffff';
+  const fillAlpha = themeNumber('--spark-fill-alpha', 0, 1);
+  const cardBg = themeColor('--card-bg');
   const lastX = pad + (points.length - 1) * stepX;
   const lastY = yFor(points[points.length - 1].v);
 
