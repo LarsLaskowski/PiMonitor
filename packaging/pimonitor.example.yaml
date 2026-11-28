@@ -16,21 +16,24 @@ log_level: "info"
 access_log_enabled: true
 
 # How often live metrics (CPU, load average, temperature, hwmon sensors,
-# memory/swap, disk, disk I/O, network, wireless) are sampled.
+# memory/swap, disk, disk I/O, network, wireless) are sampled. At most 604800
+# (7 days).
 poll_interval_seconds: 5
 
 # How often available apt updates are checked. This only reads the
 # existing apt cache (`apt-cache dumpavail`) - it never refreshes it.
 # The cache itself is refreshed by the separate pimonitor-apt-update.timer
-# systemd unit, which runs with root privileges.
+# systemd unit, which runs with root privileges. At most 10080 (7 days).
 updates_check_minutes: 15
 
 # How old the apt cache may be (in minutes) before the dashboard flags the
 # update count as possibly stale. Should be a small multiple of the
-# apt-update timer's interval (default: every 6 hours).
+# apt-update timer's interval (default: every 6 hours). At most 525600
+# (365 days).
 updates_stale_threshold_minutes: 720
 
-# How much history to retain for sparklines, in minutes.
+# How much history to retain for sparklines, in minutes. At most 525600
+# (365 days).
 history_window_minutes: 60
 
 # Whether to periodically snapshot metric history to disk so sparklines
@@ -165,6 +168,7 @@ tls_key: ""
 # legitimately take (e.g. a hung vcgencmd call), so a slow-but-healthy
 # tick isn't mistaken for a stalled collector. If set explicitly, it must
 # be >= poll_interval_seconds, or /healthz would report unhealthy always.
+# At most 31536000 (365 days).
 healthz_max_staleness_seconds: 0
 
 # Color-coding thresholds for the dashboard (and the load-average gauge
@@ -237,17 +241,17 @@ alerts:
   #    # Content-Type header (default "application/json"). Override it if a
   #    # custom template renders a non-JSON body, e.g. "text/plain".
   #    content_type: "application/json"
-  #    # Per-attempt timeout in seconds (0 uses the built-in 10s default).
+  #    # Per-attempt timeout in seconds (0 uses the built-in 10s default). At most 604800 (7 days).
   #    timeout_seconds: 10
 
   # How many times a failed webhook delivery is retried, with exponential
   # backoff, before it is given up on. 0 means a single attempt.
   notify_max_retries: 3
-  # Base delay (seconds) before the first retry; it doubles each attempt.
+  # Base delay (seconds) before the first retry; it doubles each attempt. At most 604800 (7 days).
   notify_retry_backoff_seconds: 1
   # Rate limit, per metric and resource, per webhook: a "fired" event less
   # than this many seconds after the last delivered "fired" event of the
   # same metric and resource to the same webhook is dropped. "cleared"
   # (recovery) events are never rate-limited and end the window, so the
-  # next "fired" event is always sent. 0 disables it.
+  # next "fired" event is always sent. 0 disables it. At most 604800 (7 days).
   notify_min_interval_seconds: 5

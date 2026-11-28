@@ -83,10 +83,10 @@ checked at startup; a value outside it fails startup as described under *Validat
 | `listen_addr` | string | `":8080"` | non-empty `host:port`; the format is checked only when the server starts listening | Address of the dashboard and API. See [HTTP API](http-api.md). |
 | `log_level` | string | `"info"` | `debug`, `info`, `warn`, `error` (lower case, exact) | Minimum level of log lines written. |
 | `access_log_enabled` | bool | `true` | — | Whether each HTTP request is logged as a debug line ([HTTP API](http-api.md)). |
-| `poll_interval_seconds` | number | `5` | > 0 | Fast collection interval ([Metrics](metrics.md)). |
-| `updates_check_minutes` | number | `15` | > 0 | Slow collection interval ([Metrics](metrics.md)). |
-| `updates_stale_threshold_minutes` | number | `720` | ≥ 0; `0` turns the stale flag off | Age of the apt cache above which the update count is flagged stale ([Metrics](metrics.md)). |
-| `history_window_minutes` | number | `60` | > 0, and `history_window_minutes × 60 / poll_interval_seconds` ≤ 1,000,000 | History retention window ([History](history.md)). |
+| `poll_interval_seconds` | number | `5` | > 0 and ≤ 604800 | Fast collection interval ([Metrics](metrics.md)). |
+| `updates_check_minutes` | number | `15` | > 0 and ≤ 10080 | Slow collection interval ([Metrics](metrics.md)). |
+| `updates_stale_threshold_minutes` | number | `720` | 0 to 525600; `0` turns the stale flag off | Age of the apt cache above which the update count is flagged stale ([Metrics](metrics.md)). |
+| `history_window_minutes` | number | `60` | > 0 and ≤ 525600, and `history_window_minutes × 60 / poll_interval_seconds` ≤ 1,000,000 | History retention window ([History](history.md)). |
 | `history_persist_enabled` | bool | `true` | — | Whether history is saved to and restored from disk ([History](history.md)). |
 | `data_dir` | string | `"/var/lib/pimonitor"` | non-empty while `history_persist_enabled` is `true` | Directory of the history file `history.bin` ([History](history.md)). |
 | `network_enabled` | bool | `true` | — | Whether network throughput is collected ([Metrics](metrics.md)). |
@@ -100,7 +100,7 @@ checked at startup; a value outside it fails startup as described under *Validat
 | `api_key` | string | `""` | any; empty means no authentication | Key required by the API ([HTTP API](http-api.md)). |
 | `tls_cert` | string | `""` | set together with `tls_key`, or both empty | Certificate file path; both set means HTTPS ([HTTP API](http-api.md)). |
 | `tls_key` | string | `""` | set together with `tls_cert`, or both empty | Private key file path. |
-| `healthz_max_staleness_seconds` | number | `0` | `0`, or ≥ `poll_interval_seconds` | Maximum snapshot age before `/healthz` reports unhealthy ([HTTP API](http-api.md)). `0` derives the bound: 3 × `poll_interval_seconds` + 34 s. |
+| `healthz_max_staleness_seconds` | number | `0` | `0`, or `poll_interval_seconds` to 31536000 | Maximum snapshot age before `/healthz` reports unhealthy ([HTTP API](http-api.md)). `0` derives the bound: 3 × `poll_interval_seconds` + 34 s. |
 
 #### `thresholds`
 
@@ -151,8 +151,8 @@ The values of this section are validated even while `alerts.enabled` is `false`.
 | `alerts.openhab_for_seconds` | number | `300` | 0 to 604800; `0` fires on the first crossing | Debounce window of the three `openhab_*` alerts, counted per openHAB poll ([Alerts](alerts.md)); with `openhab.enabled: true` on a host without openHAB, `openhab_down` fires once it has held that long. |
 | `alerts.webhooks` | list | empty | entries as below | Webhook destinations ([Notifications](notifications.md)). |
 | `alerts.notify_max_retries` | integer | `3` | ≥ 0; `0` means one attempt | Retries of a failed delivery ([Notifications](notifications.md)). |
-| `alerts.notify_retry_backoff_seconds` | number | `1` | ≥ 0 | Delay before the first retry ([Notifications](notifications.md)). |
-| `alerts.notify_min_interval_seconds` | number | `5` | ≥ 0; `0` turns rate limiting off | Rate-limit window ([Notifications](notifications.md)). |
+| `alerts.notify_retry_backoff_seconds` | number | `1` | 0 to 604800 | Delay before the first retry ([Notifications](notifications.md)). |
+| `alerts.notify_min_interval_seconds` | number | `5` | 0 to 604800; `0` turns rate limiting off | Rate-limit window ([Notifications](notifications.md)). |
 
 #### `alerts.webhooks[]`
 
@@ -162,7 +162,7 @@ The values of this section are validated even while `alerts.enabled` is `false`.
 | `min_level` | string | `""`, which means `warn` | `""`, `warn`, `crit` (lower case, exact) | Lowest severity delivered. |
 | `template` | string | `""`, which means the default payload | a template that parses; checked at startup | Request body template ([Notifications](notifications.md)). |
 | `content_type` | string | `""`, which means `application/json` | any | `Content-Type` of the request. |
-| `timeout_seconds` | number | `0`, which means 10 s | ≥ 0 | Timeout of one delivery attempt. |
+| `timeout_seconds` | number | `0`, which means 10 s | 0 to 604800 | Timeout of one delivery attempt. |
 
 ### Visibility to clients
 
@@ -181,6 +181,14 @@ The values of this section are validated even while `alerts.enabled` is `false`.
   file is read, before it is decoded: a non-finite value fails with the same message, a fractional one with
   `<option> must be a whole number (got <value>)`, for example
   `pimonitor: load config: processes_top_n must be a whole number (got 2.5)`.
+- The upper bounds follow the finiteness check and come before every other range check, so a value above its bound
+  fails with `<option> must be <= <bound> (got <value>)` even when it also breaks another rule: `poll_interval_seconds`,
+  `alerts.notify_retry_backoff_seconds`, `alerts.notify_min_interval_seconds` and
+  `alerts.webhooks[<i>].timeout_seconds` (`<i>` the first webhook above it) at most 604800, `updates_check_minutes` at
+  most 10080, `updates_stale_threshold_minutes` and `history_window_minutes` at most 525600,
+  `healthz_max_staleness_seconds` at most 31536000. The alert and webhook bounds are checked also while
+  `alerts.enabled` is `false`; the bounds keep the conversion to a duration from overflowing
+  ([0035](../decisions/0035-float-duration-options-capped-at-seven-or-365-days.md)).
 - The openHAB alert options fail with `thresholds.<key> must be >= 0 (got <value>)`,
   `thresholds.<warn key> (<value>) must be <= thresholds.<crit key> (<value>)` (only when both are non-zero) and
   `alerts.openhab_for_seconds must be >= 0 (got <value>)` or `alerts.openhab_for_seconds must be <= 604800 (got <value>)`,
@@ -217,6 +225,8 @@ The values of this section are validated even while `alerts.enabled` is `false`.
 ## Related decisions
 
 - [0013: openHAB requests go only to a loopback address over plain HTTP](../decisions/0013-openhab-requests-only-to-loopback-http.md) — why `openhab.base_url` is restricted.
+- [0034: Alert debounce windows are capped at seven days](../decisions/0034-alert-debounce-windows-capped-at-seven-days.md)
+- [0035: Float duration options are capped at seven or 365 days](../decisions/0035-float-duration-options-capped-at-seven-or-365-days.md)
 - [0008: Reject non-finite numbers, and fractional values of integer options while reading the file](../decisions/0008-reject-non-finite-and-fractional-config-numbers.md)
 
 ## Not here
