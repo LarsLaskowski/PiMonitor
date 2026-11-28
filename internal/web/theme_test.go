@@ -18,18 +18,22 @@ import (
 type themeEntry struct{ id, name string }
 
 var (
-	themeRegistryRE = regexp.MustCompile(`(?s)const PIMONITOR_THEMES = Object\.freeze\(\[(.*?)\]\);`)
-	themeEntryRE    = regexp.MustCompile(`Object\.freeze\(\{\s*id:\s*'([^']*)'\s*,\s*name:\s*'([^']*)'\s*\}\)`)
-	themeFallbackRE = regexp.MustCompile(`(?s)const DRAWING_FALLBACKS = Object\.freeze\(\{(.*?)\}\);`)
-	themeFallbackKV = regexp.MustCompile(`'(--[a-z-]+)'\s*:\s*'([^']*)'`)
-	themeReaderRE   = regexp.MustCompile(`theme(?:Color|Number)\(\s*'(--[a-z-]+)'`)
-	themeReturnRE   = regexp.MustCompile(`return '(--[a-z-]+)'`)
-	themeColorsRE   = regexp.MustCompile(`'openhab_[a-z_]+'\s*:\s*'(--[a-z-]+)'`)
-	themeEntryLitRE = regexp.MustCompile(`\{\s*id:\s*'[^']*'\s*,\s*name:`)
-	storageKeyRE    = regexp.MustCompile(`['"](pimonitor-[a-z-]+)['"]`)
-	ariaLabelHTMLRE = regexp.MustCompile(`aria-label="([^"]*)"`)
-	linkTagRE       = regexp.MustCompile(`<link\b[^>]*>`)
-	scriptHeadRE    = regexp.MustCompile(`<script\b[^>]*\bsrc="theme-init\.js"[^>]*>`)
+	themeRegistryRE  = regexp.MustCompile(`(?s)const PIMONITOR_THEMES = Object\.freeze\(\[(.*?)\]\);`)
+	themeEntryRE     = regexp.MustCompile(`Object\.freeze\(\{\s*id:\s*'([^']*)'\s*,\s*name:\s*'([^']*)'\s*\}\)`)
+	themeFallbackRE  = regexp.MustCompile(`(?s)const DRAWING_FALLBACKS = Object\.freeze\(\{(.*?)\}\);`)
+	themeFallbackKV  = regexp.MustCompile(`'(--[a-z-]+)'\s*:\s*'([^']*)'`)
+	themeReaderRE    = regexp.MustCompile(`theme(?:Color|Number)\(\s*'(--[a-z-]+)'`)
+	themeReturnRE    = regexp.MustCompile(`return '(--[a-z-]+)'`)
+	themeColorsRE    = regexp.MustCompile(`'openhab_[a-z_]+'\s*:\s*'(--[a-z-]+)'`)
+	themeEntryLitRE  = regexp.MustCompile(`\{\s*id:\s*'[^']*'\s*,\s*name:`)
+	storageKeyRE     = regexp.MustCompile("['\"`](pimonitor-[a-z-]+)['\"`]")
+	jsCommentRE      = regexp.MustCompile(`(?s:/\*.*?\*/)|(?m:^\s*//[^\n]*$)`)
+	styleKeyDeclRE   = regexp.MustCompile(`STYLE_KEY\s*=\s*'pimonitor-style'`)
+	scriptCreateRE   = regexp.MustCompile("createElement\\(\\s*['\"`](?:link|style)['\"`]")
+	linkStylesheetRE = regexp.MustCompile(`(?i)\brel\s*=\s*["']?stylesheet`)
+	ariaLabelHTMLRE  = regexp.MustCompile(`aria-label="([^"]*)"`)
+	linkTagRE        = regexp.MustCompile(`<link\b[^>]*>`)
+	scriptHeadRE     = regexp.MustCompile(`<script\b[^>]*\bsrc="theme-init\.js"[^>]*>`)
 )
 
 var storageKeys = []string{
@@ -452,6 +456,18 @@ func registryCopyProblems(src string, themes []themeEntry) []string {
 	return out
 }
 
+// scriptCopyProblems runs registryCopyProblems on each named asset.
+func scriptCopyProblems(t *testing.T, names []string, themes []themeEntry) []string {
+	t.Helper()
+	var out []string
+	for _, name := range names {
+		for _, p := range registryCopyProblems(readAsset(t, name), themes) {
+			out = append(out, name+": "+p)
+		}
+	}
+	return out
+}
+
 func TestThemeRegistry_SingleSource_AC9(t *testing.T) {
 	initJS := readAsset(t, "theme-init.js")
 	app := readAsset(t, "app.js")
@@ -466,6 +482,19 @@ func TestThemeRegistry_SingleSource_AC9(t *testing.T) {
 	t.Run("AC9 app.js holds no copy of the registry", func(t *testing.T) {
 		for _, p := range registryCopyProblems(app, themes) {
 			t.Error(p)
+		}
+	})
+
+	t.Run("AC9 no other script holds a copy of the registry", func(t *testing.T) {
+		for _, p := range scriptCopyProblems(t, []string{"chart.js", "gauge.js"}, themes) {
+			t.Error(p)
+		}
+	})
+
+	t.Run("AC9 the copy check reports an entry and an id literal", func(t *testing.T) {
+		got := registryCopyProblems("const T = [{ id: 'probe', name: 'Probe' }];", []themeEntry{{"probe", "Probe"}})
+		if len(got) != 2 {
+			t.Errorf("registryCopyProblems(copy fixture) = %v, want the entry and the id literal", got)
 		}
 	})
 
@@ -557,7 +586,8 @@ func TestAssets_StorageKeys_AC12(t *testing.T) {
 		if !strings.HasSuffix(e.Name(), ".js") {
 			continue
 		}
-		for _, m := range storageKeyRE.FindAllStringSubmatch(readAsset(t, e.Name()), -1) {
+		src := jsCommentRE.ReplaceAllString(readAsset(t, e.Name()), "")
+		for _, m := range storageKeyRE.FindAllStringSubmatch(src, -1) {
 			found[m[1]] = true
 			if !slices.Contains(storageKeys, m[1]) {
 				t.Errorf("%s: storage key %q is not one of %v", e.Name(), m[1], storageKeys)
@@ -569,6 +599,19 @@ func TestAssets_StorageKeys_AC12(t *testing.T) {
 			t.Errorf("assets: expected the storage key %q in a JS asset", k)
 		}
 	}
+	checkStyleKeyAgreement(t)
+}
+
+// checkStyleKeyAgreement pins the style key of both scripts and the extractor on a fixture.
+func checkStyleKeyAgreement(t *testing.T) {
+	t.Helper()
+	if !styleKeyDeclRE.MatchString(readAsset(t, "app.js")) || !strings.Contains(readAsset(t, "theme-init.js"), "getItem('pimonitor-style')") {
+		t.Error("app.js, theme-init.js: expected STYLE_KEY = 'pimonitor-style' and getItem('pimonitor-style') to agree on the key")
+	}
+	fixture := jsCommentRE.ReplaceAllString("// 'pimonitor-x'\nconst k = `pimonitor-y`;", "")
+	if got := storageKeyRE.FindAllStringSubmatch(fixture, -1); len(got) != 1 || got[0][1] != "pimonitor-y" {
+		t.Errorf("storage key extractor on fixture = %v, want only pimonitor-y (comments skipped, backticks read)", got)
+	}
 }
 
 func TestAppJS_ResetLayoutKeepsTheme_AC13(t *testing.T) {
@@ -576,9 +619,13 @@ func TestAppJS_ResetLayoutKeepsTheme_AC13(t *testing.T) {
 	if strings.TrimSpace(body) == "" {
 		t.Fatal("app.js: expected a function resetLayout()")
 	}
-	for _, bad := range []string{"STYLE_KEY", "applyStyle", "selectStyle", "dataset.style"} {
-		if strings.Contains(body, bad) {
-			t.Errorf("resetLayout: unexpected %s, resetting the layout leaves the theme alone", bad)
+	app := readAsset(t, "app.js")
+	for _, fn := range []string{"function resetLayout(", "function persistLayout(", "function normalizeLayout("} {
+		body := jsFunctionBody(app, fn)
+		for _, bad := range []string{"STYLE_KEY", "pimonitor-style", "applyStyle", "selectStyle", "dataset", "localStorage.clear", "removeItem", "storage.clear"} {
+			if strings.Contains(body, bad) {
+				t.Errorf("%s: unexpected %s, resetting the layout leaves the theme alone", fn, bad)
+			}
 		}
 	}
 }
@@ -614,6 +661,22 @@ func TestIndexHTML_ThemesLoadedStatically_AC16(t *testing.T) {
 		}
 	})
 
+	t.Run("AC16 neither the page nor style.css pulls in another stylesheet", func(t *testing.T) {
+		if strings.Contains(strings.ToLower(html), "<style") {
+			t.Error("index.html: unexpected <style> element, every theme ships in style.css")
+		}
+		if cssImportRE.MatchString(readAsset(t, "style.css")) {
+			t.Error("style.css: unexpected @import, every theme ships in style.css")
+		}
+	})
+
+	t.Run("AC16 the stylesheet scan sees single-quoted and unquoted rel", func(t *testing.T) {
+		got := stylesheetLinks("<link rel='stylesheet' href='a.css'><link REL=stylesheet href=b.css><link rel=\"icon\" href=\"x\">")
+		if len(got) != 2 {
+			t.Errorf("stylesheetLinks(fixture) = %v, want the two stylesheets", got)
+		}
+	})
+
 	t.Run("AC16 no script creates a stylesheet", func(t *testing.T) {
 		for _, name := range []string{"app.js", "theme-init.js", "chart.js", "gauge.js"} {
 			for _, bad := range scriptStylesheetCreation(readAsset(t, name)) {
@@ -627,7 +690,7 @@ func TestIndexHTML_ThemesLoadedStatically_AC16(t *testing.T) {
 func stylesheetLinks(html string) []string {
 	var sheets []string
 	for _, l := range linkTagRE.FindAllString(html, -1) {
-		if strings.Contains(l, `rel="stylesheet"`) {
+		if linkStylesheetRE.MatchString(l) {
 			sheets = append(sheets, l)
 		}
 	}
@@ -637,7 +700,10 @@ func stylesheetLinks(html string) []string {
 // scriptStylesheetCreation returns the ways src could add a stylesheet at runtime.
 func scriptStylesheetCreation(src string) []string {
 	var found []string
-	for _, bad := range []string{"createElement('link')", `createElement("link")`, "insertRule", "adoptedStyleSheets", "createElement('style')"} {
+	if m := scriptCreateRE.FindString(src); m != "" {
+		found = append(found, m)
+	}
+	for _, bad := range []string{"insertRule", "adoptedStyleSheets", "<link", "<style", "@import"} {
 		if strings.Contains(src, bad) {
 			found = append(found, bad)
 		}
