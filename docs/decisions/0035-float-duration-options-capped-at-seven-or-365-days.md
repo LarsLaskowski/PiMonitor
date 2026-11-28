@@ -39,14 +39,16 @@ rejects some configuration that starts today, so it should sit far above every r
 
 Each of the eight keys has an upper bound — 604800 s or 10080 min for the waits, 31536000 s or 525600 min for the ages
 and windows — checked right after the finiteness check, so a value above it fails startup with
-`<key> must be <= <bound> (got <value>)` before any other range check; the lower-bound texts are unchanged. The
+`<key> must be <= <bound> (got <value>)` before any other range check; the lower bounds of `poll_interval_seconds` and
+`updates_check_minutes` are set by [0036](0036-poll-and-updates-intervals-at-least-one-unit.md). The
 bounds are in [Configuration](../areas/configuration.md#validation-and-startup-failure).
 
 ## Consequences
 
 - A configuration with one of the keys above its bound, accepted until now, no longer starts.
-- The ratio check of `history_window_minutes` and `poll_interval_seconds` stays: a tiny poll interval still makes
-  the ratio huge.
+- The ratio check of `history_window_minutes` and `poll_interval_seconds` stays: at the minimum
+  `poll_interval_seconds` of 1 ([0036](0036-poll-and-updates-intervals-at-least-one-unit.md)), 525600 minutes still
+  make 31,536,000 points.
 - A larger bound needs a new record and a check that every derived duration still fits: the `/healthz` default
   (3 × `poll_interval_seconds` + 34 s), and the doubling retry backoff, which at 7 days wraps only after more than
   300 years of waiting.

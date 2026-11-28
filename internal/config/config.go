@@ -411,7 +411,7 @@ func (c Config) HistoryCapacity() int {
 // maxHistoryCapacity bounds HistoryCapacity(). NewRingBuffer allocates its
 // capacity eagerly for each of the 7 scalar history series, so an
 // unreasonably large window/interval ratio (e.g. a config typo like
-// history_window_minutes: 525600 with poll_interval_seconds: 0.05) would
+// history_window_minutes: 525600 with poll_interval_seconds: 1) would
 // otherwise allocate on the order of gigabytes at startup and OOM a Pi. One
 // million points per series (~7M points, well under 1 GiB total) is far more
 // than any real dashboard use case needs.
@@ -464,10 +464,28 @@ const (
 	maxAgeMinutes = 525600
 )
 
+// Lower bounds of the two collection intervals (decision 0036): a smaller
+// value truncates to a zero time.Duration or makes the collector tick
+// faster than anything reads it.
+const (
+	// minPollIntervalSeconds is the smallest accepted poll_interval_seconds.
+	minPollIntervalSeconds = 1
+	// minUpdatesCheckMinutes is the smallest accepted updates_check_minutes.
+	minUpdatesCheckMinutes = 1
+)
+
 // atMost returns an error naming key when value exceeds limit.
 func atMost(key string, value float64, limit int) error {
 	if value > float64(limit) {
 		return fmt.Errorf("%s must be <= %d (got %v)", key, limit, value)
+	}
+	return nil
+}
+
+// atLeast returns an error naming key when value is below limit.
+func atLeast(key string, value float64, limit int) error {
+	if value < float64(limit) {
+		return fmt.Errorf("%s must be >= %d (got %v)", key, limit, value)
 	}
 	return nil
 }
@@ -587,11 +605,11 @@ func isFinite(v float64) bool {
 
 // validateTiming checks the poll/update/history interval and window fields.
 func (c Config) validateTiming() error {
-	if c.PollIntervalSeconds <= 0 {
-		return fmt.Errorf("poll_interval_seconds must be > 0 (got %v)", c.PollIntervalSeconds)
+	if err := atLeast("poll_interval_seconds", c.PollIntervalSeconds, minPollIntervalSeconds); err != nil {
+		return err
 	}
-	if c.UpdatesCheckMinutes <= 0 {
-		return fmt.Errorf("updates_check_minutes must be > 0 (got %v)", c.UpdatesCheckMinutes)
+	if err := atLeast("updates_check_minutes", c.UpdatesCheckMinutes, minUpdatesCheckMinutes); err != nil {
+		return err
 	}
 	if c.UpdatesStaleThresholdMinutes < 0 {
 		return fmt.Errorf("updates_stale_threshold_minutes must be >= 0 (got %v)", c.UpdatesStaleThresholdMinutes)
