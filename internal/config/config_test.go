@@ -482,16 +482,7 @@ func TestValidate_RejectsBadValues(t *testing.T) {
 		{"memory warn above crit", func(c *Config) { c.Thresholds.MemoryWarnPercent = 99 }},
 		{"history capacity exceeds sanity cap", func(c *Config) {
 			c.HistoryWindowMinutes = 525600
-			c.PollIntervalSeconds = 0.05
-		}},
-		{"history capacity ratio overflows int64", func(c *Config) {
-			// Regression test: converting an out-of-range float64 to int is
-			// implementation-specific in Go and differs by architecture
-			// (amd64 wraps to a negative number, arm64 saturates to
-			// math.MaxInt64), so the cap must be checked on the float64
-			// ratio, not on HistoryCapacity()'s post-conversion int.
-			c.HistoryWindowMinutes = 525600
-			c.PollIntervalSeconds = 1e-300
+			c.PollIntervalSeconds = 1
 		}},
 		{"negative alerts for_seconds", func(c *Config) { c.Alerts.ForSeconds = -1 }},
 		{"negative notify max retries", func(c *Config) { c.Alerts.NotifyMaxRetries = -1 }},
@@ -1544,13 +1535,13 @@ func TestValidate_DurationUpperBounds(t *testing.T) {
 		{"AC1 poll_interval_seconds 1e12", func(c *Config) { c.PollIntervalSeconds = 1e12 },
 			over("poll_interval_seconds", 1e12, 604800)},
 		{"AC1 poll_interval_seconds 604800 passes", func(c *Config) { c.PollIntervalSeconds = 604800 }, ""},
-		{"AC1 poll_interval_seconds 0 keeps its text", func(c *Config) { c.PollIntervalSeconds = 0 },
-			"poll_interval_seconds must be > 0 (got 0)"},
+		{"AC1 poll_interval_seconds 0 is below the minimum", func(c *Config) { c.PollIntervalSeconds = 0 },
+			"poll_interval_seconds must be >= 1 (got 0)"},
 		{"AC2 updates_check_minutes 10080.5", func(c *Config) { c.UpdatesCheckMinutes = 10080.5 },
 			over("updates_check_minutes", 10080.5, 10080)},
 		{"AC2 updates_check_minutes 10080 passes", func(c *Config) { c.UpdatesCheckMinutes = 10080 }, ""},
-		{"AC2 updates_check_minutes 0 keeps its text", func(c *Config) { c.UpdatesCheckMinutes = 0 },
-			"updates_check_minutes must be > 0 (got 0)"},
+		{"AC2 updates_check_minutes 0 is below the minimum", func(c *Config) { c.UpdatesCheckMinutes = 0 },
+			"updates_check_minutes must be >= 1 (got 0)"},
 		{"AC3 updates_stale_threshold_minutes 525600.5", func(c *Config) { c.UpdatesStaleThresholdMinutes = 525600.5 },
 			over("updates_stale_threshold_minutes", 525600.5, 525600)},
 		{"AC3 updates_stale_threshold_minutes 525600 passes", func(c *Config) { c.UpdatesStaleThresholdMinutes = 525600 }, ""},
@@ -1617,6 +1608,77 @@ func TestValidate_DurationUpperBounds(t *testing.T) {
 			}
 			if err == nil || err.Error() != tt.want {
 				t.Fatalf("Validate() = %v, want %q", err, tt.want)
+			}
+		})
+	}
+}
+
+func TestValidate_IntervalLowerBounds(t *testing.T) {
+	below := func(key string, v float64) string {
+		return fmt.Sprintf("%s must be >= 1 (got %v)", key, v)
+	}
+	tests := []struct {
+		name   string
+		mutate func(*Config)
+		want   string // exact error text; empty means Validate must pass
+	}{
+		{"AC1 poll_interval_seconds 0.999", func(c *Config) { c.PollIntervalSeconds = 0.999 },
+			below("poll_interval_seconds", 0.999)},
+		{"AC1 poll_interval_seconds 0.001", func(c *Config) { c.PollIntervalSeconds = 0.001 },
+			below("poll_interval_seconds", 0.001)},
+		{"AC1 poll_interval_seconds 1e-10", func(c *Config) { c.PollIntervalSeconds = 1e-10 },
+			below("poll_interval_seconds", 1e-10)},
+		{"AC1 poll_interval_seconds 0", func(c *Config) { c.PollIntervalSeconds = 0 },
+			below("poll_interval_seconds", 0)},
+		{"AC1 poll_interval_seconds -1", func(c *Config) { c.PollIntervalSeconds = -1 },
+			below("poll_interval_seconds", -1)},
+		{"AC1 poll_interval_seconds 1 passes", func(c *Config) { c.PollIntervalSeconds = 1 }, ""},
+		{"AC2 updates_check_minutes 0.999", func(c *Config) { c.UpdatesCheckMinutes = 0.999 },
+			below("updates_check_minutes", 0.999)},
+		{"AC2 updates_check_minutes 0.001", func(c *Config) { c.UpdatesCheckMinutes = 0.001 },
+			below("updates_check_minutes", 0.001)},
+		{"AC2 updates_check_minutes 1e-12", func(c *Config) { c.UpdatesCheckMinutes = 1e-12 },
+			below("updates_check_minutes", 1e-12)},
+		{"AC2 updates_check_minutes 0", func(c *Config) { c.UpdatesCheckMinutes = 0 },
+			below("updates_check_minutes", 0)},
+		{"AC2 updates_check_minutes -1", func(c *Config) { c.UpdatesCheckMinutes = -1 },
+			below("updates_check_minutes", -1)},
+		{"AC2 updates_check_minutes 1 passes", func(c *Config) { c.UpdatesCheckMinutes = 1 }, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := Default()
+			tt.mutate(&c)
+			err := c.Validate()
+			if tt.want == "" {
+				if err != nil {
+					t.Fatalf("Validate() = %v, want nil", err)
+				}
+				return
+			}
+			if err == nil || err.Error() != tt.want {
+				t.Fatalf("Validate() = %v, want %q", err, tt.want)
+			}
+		})
+	}
+}
+
+func TestLoad_RejectsIntervalBelowMinimum(t *testing.T) {
+	tests := []struct {
+		name string
+		yaml string
+		want string
+	}{
+		{"AC3 poll_interval_seconds 0.001", "poll_interval_seconds: 0.001\n",
+			"poll_interval_seconds must be >= 1 (got 0.001)"},
+		{"AC3 updates_check_minutes 0.5", "updates_check_minutes: 0.5\n",
+			"updates_check_minutes must be >= 1 (got 0.5)"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := loadYAMLText(t, tt.yaml)
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("Load() error = %v, want it to contain %q", err, tt.want)
 			}
 		})
 	}
