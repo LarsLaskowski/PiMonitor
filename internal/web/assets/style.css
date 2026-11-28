@@ -201,12 +201,13 @@ header h1 {
   border: 1px solid var(--border);
   border-radius: var(--radius-control);
   box-shadow: var(--shadow);
+  transition: box-shadow 0.15s ease;
   cursor: pointer;
 }
 
 .theme-toggle:hover,
 .layout-toggle:hover {
-  border-color: var(--accent);
+  box-shadow: var(--shadow), 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
 }
 
 .theme-toggle:focus-visible,
