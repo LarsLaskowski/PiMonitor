@@ -187,7 +187,7 @@ func themeBlockProblemsFor(plain string, rules []cssRule, id string, isDefault b
 // themeFixtureCSS builds a stylesheet with Clear's three blocks and one block
 // set per extra id; a token listed in skip is left out of the extra theme's
 // light block.
-func themeFixtureCSS(tokens []string, extra []string, skip string) string {
+func themeFixtureCSS(skip string, tokens, extra []string) string {
 	decls := func(omit string) string {
 		var b strings.Builder
 		for _, k := range tokens {
@@ -531,14 +531,14 @@ func TestStyleCSS_ThemeTokenSets_AC10(t *testing.T) {
 
 	tokens := []string{"--bg", "--accent", "--track"}
 	t.Run("AC10 the checker accepts a complete probe theme", func(t *testing.T) {
-		fixture := themeFixtureCSS(tokens, []string{"probe"}, "")
+		fixture := themeFixtureCSS("", tokens, []string{"probe"})
 		if got := themeBlockProblems(fixture, []string{"clear", "probe"}, tokens); len(got) != 0 {
 			t.Errorf("themeBlockProblems(complete fixture) = %v, want none", got)
 		}
 	})
 
 	t.Run("AC10 the checker reports a probe theme missing a token", func(t *testing.T) {
-		fixture := themeFixtureCSS(tokens, []string{"probe"}, "--track")
+		fixture := themeFixtureCSS("--track", tokens, []string{"probe"})
 		got := strings.Join(themeBlockProblems(fixture, []string{"clear", "probe"}, tokens), "\n")
 		if !strings.Contains(got, "probe: dark block has extra --track") || !strings.Contains(got, "probe: light block lacks --track") {
 			t.Errorf("themeBlockProblems(fixture missing --track) = %q, want the missing token named for probe", got)
