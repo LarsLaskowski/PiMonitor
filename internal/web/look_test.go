@@ -333,7 +333,7 @@ func headingBtnFindings(css string) []string {
 	if c := normCSS(btn["color"]); c != "inherit" && c != "var(--muted)" {
 		out = append(out, fmt.Sprintf(".card-header-btn color = %q, want inherit or var(--muted)", btn["color"]))
 	}
-	if f := normCSS(btn["font"]); f != "inherit" {
+	if normCSS(btn["font"]) != "inherit" {
 		out = append(out, fmt.Sprintf(".card-header-btn font = %q, want inherit", btn["font"]))
 	}
 	for _, prop := range []string{"font-size", "font-weight"} {
