@@ -364,6 +364,27 @@ func TestRun_ConfigErrorNamesOption_AC1(t *testing.T) {
 	}
 }
 
+func TestRun_AlertWindowAboveBound_AC3(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	content := "listen_addr: 127.0.0.1:0\nalerts:\n  for_seconds: 1e12\n"
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	done := make(chan error, 1)
+
+	go func() { done <- run([]string{"-config", path}) }()
+
+	select {
+	case err := <-done:
+		want := "load config: alerts.for_seconds must be <= 604800 (got 1e+12)"
+		if err == nil || err.Error() != want {
+			t.Fatalf("run error = %v, want %q", err, want)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("run did not return: the config with alerts.for_seconds: 1e12 was accepted and the server started")
+	}
+}
+
 func TestServerConfig_OpenHABEnabled_AC9(t *testing.T) {
 	tests := []struct {
 		enabled string

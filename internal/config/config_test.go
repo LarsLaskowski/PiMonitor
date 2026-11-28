@@ -1450,3 +1450,71 @@ func TestValidate_OpenHABAlertOptions_AC7(t *testing.T) {
 		})
 	}
 }
+
+func TestValidate_AlertWindowUpperBound(t *testing.T) {
+	tests := []struct {
+		name   string
+		mutate func(*Config)
+		want   string // exact error text; empty means Validate must pass
+	}{
+		{"AC1 for_seconds 604800.5", func(c *Config) { c.Alerts.ForSeconds = 604800.5 },
+			"alerts.for_seconds must be <= 604800 (got 604800.5)"},
+		{"AC1 for_seconds 1e12", func(c *Config) { c.Alerts.ForSeconds = 1e12 },
+			"alerts.for_seconds must be <= 604800 (got 1e+12)"},
+		{"AC1 for_seconds -1 keeps its text", func(c *Config) { c.Alerts.ForSeconds = -1 },
+			"alerts.for_seconds must be >= 0 (got -1)"},
+		{"AC1 for_seconds NaN keeps its text", func(c *Config) { c.Alerts.ForSeconds = math.NaN() },
+			"alerts.for_seconds must be a finite number"},
+		{"AC1 for_seconds 604800 passes", func(c *Config) { c.Alerts.ForSeconds = 604800 }, ""},
+		{"AC2 openhab_for_seconds 604800.5", func(c *Config) { c.Alerts.OpenHABForSeconds = 604800.5 },
+			"alerts.openhab_for_seconds must be <= 604800 (got 604800.5)"},
+		{"AC2 openhab_for_seconds 604800.5 with alerts and openhab disabled", func(c *Config) {
+			c.Alerts.Enabled = false
+			c.OpenHAB.Enabled = "false"
+			c.Alerts.OpenHABForSeconds = 604800.5
+		}, "alerts.openhab_for_seconds must be <= 604800 (got 604800.5)"},
+		{"AC2 openhab_for_seconds -5 keeps its text", func(c *Config) { c.Alerts.OpenHABForSeconds = -5 },
+			"alerts.openhab_for_seconds must be >= 0 (got -5)"},
+		{"AC2 openhab_for_seconds -Inf keeps its text", func(c *Config) { c.Alerts.OpenHABForSeconds = math.Inf(-1) },
+			"alerts.openhab_for_seconds must be a finite number"},
+		{"AC2 openhab_for_seconds 604800 passes", func(c *Config) { c.Alerts.OpenHABForSeconds = 604800 }, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := Default()
+			tt.mutate(&c)
+			err := c.Validate()
+			if tt.want == "" {
+				if err != nil {
+					t.Fatalf("Validate() = %v, want nil", err)
+				}
+				return
+			}
+			if err == nil || err.Error() != tt.want {
+				t.Fatalf("Validate() = %v, want %q", err, tt.want)
+			}
+		})
+	}
+}
+
+func TestAlertFor_AtUpperBound_AC1(t *testing.T) {
+	c := Default()
+	c.Alerts.ForSeconds = 604800
+	if err := c.Validate(); err != nil {
+		t.Fatalf("Validate() with for_seconds 604800 = %v, want nil", err)
+	}
+	if got, want := c.AlertFor(), 168*time.Hour; got != want {
+		t.Fatalf("AlertFor() = %v, want %v", got, want)
+	}
+}
+
+func TestOpenHABAlertFor_AtUpperBound_AC2(t *testing.T) {
+	c := Default()
+	c.Alerts.OpenHABForSeconds = 604800
+	if err := c.Validate(); err != nil {
+		t.Fatalf("Validate() with openhab_for_seconds 604800 = %v, want nil", err)
+	}
+	if got, want := c.OpenHABAlertFor(), 168*time.Hour; got != want {
+		t.Fatalf("OpenHABAlertFor() = %v, want %v", got, want)
+	}
+}
