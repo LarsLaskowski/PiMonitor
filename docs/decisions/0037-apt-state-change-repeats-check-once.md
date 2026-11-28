@@ -59,7 +59,9 @@ before ([Metrics](../areas/metrics.md#available-apt-updates)).
   slow mirror, many sources) still leaves `failed` until the next slow tick; revisit with option 6 when that is
   reported.
 - On an upgrade the old process runs on during the refresh; a hanging refresh delays the new binary's start, and an
-  interrupted installer leaves the old process running with the new binary on disk until the next restart.
+  interrupted installer leaves the old process running with the new binary on disk until the next restart. The
+  installer says so before the refresh and names the recovery, `sudo systemctl restart pimonitor.service`; a re-run
+  of `install.sh` recovers too.
 - On a board where one `dumpavail` takes most of the 10 s, the repeat runs out of time and fails closed with the
   timeout; such a board was already at risk under 0028.
 - A successful repeat is not logged; only a failure that persists logs `updates collection failed`.

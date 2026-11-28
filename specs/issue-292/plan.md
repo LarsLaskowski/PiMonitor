@@ -53,6 +53,7 @@ The error text compared is `apt or dpkg state changed during the check` (unchang
 - AC6: `packaging/install.sh` runs `systemctl start pimonitor-apt-update.service` after enabling (and, when it was
   active, restarting) `pimonitor-apt-update.timer`, and before `systemctl enable --now pimonitor.service` and the
   restart of `pimonitor.service`; each of these five commands appears once, and a failed refresh still only warns.
+  An `echo` line before the refresh line contains `sudo systemctl restart pimonitor.service`.
 
 ## Tests per criterion
 
@@ -67,7 +68,7 @@ file, a touched list), never a line appended to the status file (fact 9).
 | AC3 | `TestUpdatesCollector_Collect_OtherFailureNotRepeated` / `AC3 apt-cache exits 1`, `AC3 empty dumpavail output` (assert 1 run, no `retryAfter` call) | `internal/collector/updates_test.go` |
 | AC4 | `TestUpdatesCollector_Collect_StateChangeRepeated` / `AC4 cancel during the pause` (`retryAfter` cancels the caller's context and returns a nil channel; asserts the state-change error, 1 run) and `AC4 deadline expires during the pause` (small `timeout`, as the existing `AC4 timeout` case does; `retryAfter` returns a channel that never fires; asserts the state-change error, 1 run); the single deadline: check, the Reviewer reads that `Collect` calls `context.WithTimeout` once, before the first attempt | `internal/collector/updates_test.go` |
 | AC5 | after merge: the Product Manager upgrades the Pi with `install.sh` from the first release with the fix and checks the journal and `/api/v1/metrics/updates` (linked verification issue, step 10) | — |
-| AC6 | `TestInstallScript_RefreshBeforeServiceStart_AC6`: reads `packaging/install.sh` (`\r\n` normalized as `timerLines` does), skips comment lines, asserts each of the five `systemctl` lines once and their order, and that the `start pimonitor-apt-update.service` line stays inside `if ! …; then` with the warning | `internal/packaging/install_test.go` |
+| AC6 | `TestInstallScript_RefreshBeforeServiceStart_AC6`: reads `packaging/install.sh` (`\r\n` normalized as `timerLines` does), skips comment lines, asserts each of the five `systemctl` lines once and their order, and that the `start pimonitor-apt-update.service` line stays inside `if ! …; then` with the warning, and that an `echo` line between the timer lines and that line contains `sudo systemctl restart pimonitor.service` (only that command text is pinned, the rest of the wording is free) | `internal/packaging/install_test.go` |
 
 Smoke substitute (`.squad/stack.md`, *Writing tests*): the script needs root and systemd (fact 13), so a stub run is
 not possible; the Tester runs `bash -n packaging/install.sh` and the *Analyzer gate* runs `shellcheck` on it. CI-only
@@ -94,7 +95,8 @@ not pasted lines.
   when it was active), then run the blocking refresh with its warning as today, then enable and start
   `pimonitor.service` (restart it when it was active). The `*_WAS_ACTIVE` checks stay before `daemon-reload`. The
   echo lines may be reworded; the one before the refresh says that `pimonitor.service` (re)starts only after it and that an interrupted run is completed with `sudo systemctl restart pimonitor.service`.
-- New user-visible output: the installer's echo lines only, layout free for the Dev, approved in step 9.
+- New user-visible output: the installer's echo lines only; beyond the pinned recovery command (AC6) layout free for
+  the Dev, approved in step 9.
 
 Early draft PR: no
 
@@ -145,7 +147,7 @@ Files of the change no unit test can cover: none.
 - `docs/areas/metrics.md (+45 words)` (3366 words now) — *Available apt updates*: the 10 s bound is for the whole check, the repeat
   included; a change of the status file or the lists fails the check only when it shows again in the one repeat
   that follows a 2 s pause, linked to 0037.
-- `docs/areas/deployment.md (+35 words)` (1620 words now) — *`install.sh`*
+- `docs/areas/deployment.md (+55 words)` (1620 words now) — *`install.sh`*
   steps 7-8: reload, enable/restart the timer, run the refresh and wait (so the service's first check does not
   overlap it), then enable/restart `pimonitor.service`; 0037 added under *Related decisions*.
 
@@ -153,7 +155,9 @@ Files of the change no unit test can cover: none.
 
 - `docs/areas/metrics.md` (Dev) — as under *Areas*: the first bullet's "a **10 s** timeout" and the sentence of the
   third bullet on a change while the check ran.
-- `docs/areas/deployment.md` (Dev) — as under *Areas*, steps 7 and 8 rewritten in the new order.
+- `docs/areas/deployment.md` (Dev) — as under *Areas*, steps 7 and 8 rewritten in the new order; the refresh step
+  says the installer prints, before it, that the service (re)starts only afterwards and that an interrupted run is
+  completed with `sudo systemctl restart pimonitor.service` (or a re-run of `install.sh`).
 - `docs/decisions/0037-apt-state-change-repeats-check-once.md` (Lead, done).
 - No changelog file exists; the PR carries its release-notes label (bug fix). `docs/API.md`, `README.md`,
   `docs/ARCHITECTURE.md`, `SECURITY.md`: no change (swept for `dumpavail`, `state change`, `10 s`, the slow tick and
@@ -173,7 +177,8 @@ changes.
   one at a time.
 - [x] No new failure reason reaches a user: the texts logged by `slowTick` are those of today.
 - [x] A refresh that hangs now delays the start of the new binary instead of running after it; an interrupted run
-  leaves the old process running with the new binary on disk until the next restart (0037, *Consequences*).
+  leaves the old process running with the new binary on disk until the next restart; the echo before the refresh
+  names the recovery command (AC6; 0037, *Consequences*).
 
 ## Decision records
 
@@ -195,6 +200,10 @@ changes.
 
 - `APPROVED`, no findings, on the plan before this revision. This revision adds the area *Privilege separation*
   (`install.sh`), which that review did not see.
+- Round 2 (delta), `APPROVED` with one *Security notes* finding, `fix now`: the echo before the refresh says the
+  service (re)starts only after it and names `sudo systemctl restart pimonitor.service` for an interrupted run.
+  Taken: the sentence is in *Approach*, AC6 and its test pin the command text (testable from the script text,
+  the rest of the wording is not pinned), `docs/areas/deployment.md` and 0037 *Consequences* name the recovery.
 
 ## Out of scope / follow-ups
 
