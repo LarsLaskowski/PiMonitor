@@ -23,3 +23,4 @@ are quoted in full.
 | 2026-11-28 08:31 | 7 Gate stamp | Orchestrator | PASS on 5469db1fc86069d14e55243b066fd112fa6eb704 (tier security, verbatim): Format check pass; decision-check.py pass; scope-check.py pass |
 | 2026-11-28 08:37 | 9 PR approval | Lead | RESULT: APPROVED. Fact 15 confirmed by Product Manager on a Pi (coreutils, Essential yes); decision 0032 unchanged. (opus/medium · 25,803 tokens · 5 tool uses · 21 s · 10 in · 1,548 out · 99,202 cache read · 19,266 cache write · 73,585 weighted) |
 | 2026-11-28 08:37 | 7 Gate stamp | Orchestrator | PASS on d1397c33c9f804591779e22187fd87b8bfc9699c (tier security, verbatim): Format check pass; decision-check.py pass; scope-check.py pass |
+| 2026-11-28 08:37 | 9 Open point | Product Manager | Asked to check plan fact 15 on a Pi; answer: dpkg -S /usr/bin/sha256sum printed coreutils: /usr/bin/sha256sum; Essential of coreutils: yes. |
