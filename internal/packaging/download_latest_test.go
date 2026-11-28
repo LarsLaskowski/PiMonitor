@@ -410,6 +410,27 @@ func TestDownloadLatest_VerifiedArchive_AC3(t *testing.T) {
 	}
 }
 
+func TestDownloadLatest_Syntax_AC4(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skipf("download-latest.sh targets Linux; skipped on %s", runtime.GOOS)
+	}
+	script, err := filepath.Abs(downloadLatestPath)
+	if err != nil {
+		t.Fatalf("resolve %s: %v", downloadLatestPath, err)
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), scriptTimeout)
+	defer cancel()
+	var stderr bytes.Buffer
+	cmd := exec.CommandContext(ctx, lookTool(t, "bash"), "-n", script)
+	cmd.Stderr = &stderr
+
+	err = cmd.Run()
+
+	if err != nil || stderr.Len() != 0 {
+		t.Errorf("bash -n %s: error %v, stderr %q; want no error and no output", script, err, stderr.String())
+	}
+}
+
 // assertVerifiedOutput checks that stdout starts with the download, verification and extraction lines, in order.
 func assertVerifiedOutput(t *testing.T, stdout, arch string) {
 	t.Helper()
