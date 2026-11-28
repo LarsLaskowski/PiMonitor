@@ -226,10 +226,12 @@ client of the [HTTP API](http-api.md) like any third-party integration and has n
 ### Look
 
 - The canvas renderers read exactly these custom properties through `themeColor`/`themeNumber` of `theme-init.js`:
-  `--accent`, `--muted`, `--card-bg`, `--track`, `--ok`, `--warn`, `--crit` and `--spark-fill-alpha`. An empty,
-  unparseable (colors) or out-of-range (`--spark-fill-alpha`, 0 to 1) value is replaced by Clear's light value.
+  `--accent`, `--muted`, `--card-bg`, `--track`, `--ok`, `--warn`, `--crit` and `--spark-fill-alpha`. An empty or
+  unparseable value, or a `--spark-fill-alpha` outside 0 to 1, is replaced by Clear's light value; any valid value,
+  `0` included, is used as is.
 - Every color comes from a token of the palette blocks of `style.css` (light, explicit dark and OS dark, the two
-  dark blocks identical); no rule outside them holds a color literal. Both the text and the fills of the page use
+  dark blocks identical); every palette block of every theme, Clear's three included, declares the same token keys,
+  and no rule outside them holds a color literal. Both the text and the fills of the page use
   these tokens, so a mode switch changes tokens only.
 - Status text (values, percentages, badges, the alert banner, the API-key error) uses the `*-ink` variant of
   `ok`/`warn`/`crit`; bar fills and the card border of an alerting card use the base color. Text on an accent fill
