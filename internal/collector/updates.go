@@ -29,6 +29,14 @@ const maxAptLineBytes = 1 << 20
 // updatesTimeout bounds one update check.
 const updatesTimeout = 10 * time.Second
 
+// updatesRetryDelay is the pause before the one repeat of a check whose apt or
+// dpkg state changed while it ran.
+const updatesRetryDelay = 2 * time.Second
+
+// errAptStateChanged reports that the apt lists or the dpkg status file
+// changed while a check ran.
+var errAptStateChanged = errors.New("apt or dpkg state changed during the check")
+
 // newestListModTime returns the newest modification time among the files
 // (not directories) of listsDir. It fails when the directory cannot be read
 // or holds no readable file.
@@ -86,6 +94,9 @@ type UpdatesCollector struct {
 	timeout        time.Duration
 	maxOutput      int64
 	now            func() time.Time
+	// retryAfter returns a channel that fires after the given pause; nil
+	// means time.After. Tests set it.
+	retryAfter func(time.Duration) <-chan time.Time
 }
 
 // NewUpdatesCollector creates an UpdatesCollector. staleThreshold should
@@ -127,7 +138,7 @@ func (c *UpdatesCollector) Collect(ctx context.Context) (Updates, error) {
 		return Updates{}, err
 	}
 	if aptStateStamp(c.listsDir, c.statusPath) != before {
-		return Updates{}, errors.New("apt or dpkg state changed during the check")
+		return Updates{}, errAptStateChanged
 	}
 
 	now := c.now()
