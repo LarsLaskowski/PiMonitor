@@ -35,6 +35,6 @@ the finiteness and `>= 0` checks, whose texts are unchanged. The rules are in
 ## Consequences
 
 - A configuration with either key above 7 days, accepted until now, no longer starts.
-- The other float seconds and minutes options still convert without an upper bound; that is a follow-up issue, not
-  part of this decision.
+- The other float seconds and minutes options got their bounds in a decision of their own
+  ([0035](0035-float-duration-options-capped-at-seven-or-365-days.md)).
 - A longer window would need a new record and a check that the larger product still fits a `time.Duration`.
