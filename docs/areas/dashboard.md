@@ -4,7 +4,7 @@
 
 The web UI served at `/`: how its assets are delivered, which API endpoints it reads and how often, how it handles
 a configured API key, failures and hidden tabs, how it renders server data, colors values and shows alerts, and the
-per-browser preferences (mode, card layout) it keeps. The user viewing the Pi in a browser relies on it; it is a
+per-browser preferences (mode, theme, card layout) it keeps. The user viewing the Pi in a browser relies on it; it is a
 client of the [HTTP API](http-api.md) like any third-party integration and has no server-side state of its own.
 
 ## Behavior
@@ -201,9 +201,33 @@ client of the [HTTP API](http-api.md) like any third-party integration and has n
   control to return to following the operating system.
 - A stored choice is applied before the first paint, so the page never flashes the other palette. Charts and gauges
   are redrawn in the new palette immediately on a switch.
+- The button's accessible name is "Switch to dark mode" in light mode and "Switch to light mode" in dark mode; the
+  word "theme" names the choice of [Theme](#theme), never the mode.
+
+### Theme
+
+- A theme is a named set of palette tokens, chosen independently of the mode. The registered themes are listed once,
+  in `PIMONITOR_THEMES` of `theme-init.js`; today only Clear exists, and it is the default (the first entry).
+- The default is the absence of the `data-style` attribute on `<html>`; any other theme sets `data-style` to its id.
+- The choice is stored in `localStorage` under `pimonitor-style` (the theme's id). A stored value that is no
+  registered id (unknown, differently cased, unreadable) means Clear; it is kept in storage unchanged, never
+  rewritten or removed.
+- A stored theme is applied before the first paint by the synchronous `theme-init.js`, together with the mode, and
+  is independent of it: switching the mode keeps the theme and choosing a theme keeps the mode.
+- The Customize dialog starts with a Theme group of radio buttons, one per registered theme in registry order, the
+  active one checked. Choosing one applies and stores it at once, redraws charts and gauges and leaves the dialog
+  open. With fewer than two registered themes the group is hidden. "Reset to default" does not touch the theme.
+- All themes are in the one `style.css`, one DOM. A theme other than Clear has three palette blocks
+  (`:root[data-style="<id>"]`, with `[data-theme="dark"]`, and inside `prefers-color-scheme: dark` with
+  `:not([data-theme])`), each with the same token set as Clear's.
+- Reasons: [0041](../decisions/0041-theme-choice-per-browser-as-pimonitor-style.md),
+  [0042](../decisions/0042-theme-registry-in-theme-init-js.md).
 
 ### Look
 
+- The canvas renderers read exactly these custom properties through `themeColor`/`themeNumber` of `theme-init.js`:
+  `--accent`, `--muted`, `--card-bg`, `--track`, `--ok`, `--warn`, `--crit` and `--spark-fill-alpha`. An empty,
+  unparseable (colors) or out-of-range (`--spark-fill-alpha`, 0 to 1) value is replaced by Clear's light value.
 - Every color comes from a token of the palette blocks of `style.css` (light, explicit dark and OS dark, the two
   dark blocks identical); no rule outside them holds a color literal. Both the text and the fills of the page use
   these tokens, so a mode switch changes tokens only.
@@ -239,12 +263,13 @@ client of the [HTTP API](http-api.md) like any third-party integration and has n
   hidden preference keeps it hidden in every state.
 - With `network_enabled` false the Network card's visibility checkbox is disabled and labelled "(disabled on
   server)"; the card can still be moved.
+- The dialog's first section is the Theme group of [Theme](#theme); the layout reset leaves it unchanged.
 - Cards flow in three columns, two at a viewport width of 1100 px or less and one at 720 px or less.
 
 ### Browser storage
 
-- The dashboard stores exactly four `localStorage` entries: `pimonitor-api-key`, `pimonitor-theme`,
-  `pimonitor-layout` and `pimonitor-openhab-things` (the value `open` while the openHAB card's list of not-online
+- The dashboard stores exactly five `localStorage` entries: `pimonitor-api-key`, `pimonitor-theme`,
+  `pimonitor-style`, `pimonitor-layout` and `pimonitor-openhab-things` (the value `open` while the openHAB card's list of not-online
   Things is expanded; the entry is absent otherwise). When storage is unavailable (private browsing, blocked storage) every feature keeps working
   for the current page with defaults, and nothing is stored.
 
@@ -263,6 +288,8 @@ client of the [HTTP API](http-api.md) like any third-party integration and has n
 - [0038](../decisions/0038-dashboard-mode-and-theme-as-token-overrides.md): mode and theme as token overrides
 - [0039](../decisions/0039-card-colour-only-on-icon-chip.md): card colour only on the icon chip
 - [0040](../decisions/0040-dashboard-icons-inline-svg.md): inline SVG icons
+- [0041](../decisions/0041-theme-choice-per-browser-as-pimonitor-style.md): theme choice per browser
+- [0042](../decisions/0042-theme-registry-in-theme-init-js.md): theme registry in `theme-init.js`
 
 ## Not here
 

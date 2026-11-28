@@ -23,7 +23,7 @@ under [`areas/`](areas/README.md); this document links them instead of repeating
 - [HTTP API](areas/http-api.md) — routes and when they are registered, authentication, compression, caching, the
   concurrency limit, security headers, `/healthz`, Prometheus, server stats, TLS and timeouts.
 - [Dashboard](areas/dashboard.md) — asset serving and caching, polling, the history merge, API key handling,
-  rendering, coloring, alert badges, layout, mode and look.
+  rendering, coloring, alert badges, layout, mode, theme and look.
 - [openHAB](areas/openhab.md) — detecting a local openHAB, its states and values, the poll cadence, the loopback-only
   requests and the handling of its API token.
 - [Configuration](areas/configuration.md) — sources and their precedence, every option with its default and valid
