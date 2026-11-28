@@ -1,7 +1,7 @@
 # Spec: Refresh the default look: theme Clear (light and dark)
 
 Source: Issue #217
-Status: Draft
+Status: Approved by Lead
 
 The issue text (sections 1–13, *Constraints*) is the binding design specification: token values, card colours, icon
 paths and sizes are taken from it and not restated here. The mockups in `docs/design/v1.5.0/` only illustrate it.
