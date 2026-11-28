@@ -164,11 +164,11 @@ func TestAssets_NoEmoji_AC1(t *testing.T) {
 
 // requireHiddenSVGs fails unless region holds at least min inline SVG icons
 // and each one has viewBox="0 0 24 24" and aria-hidden="true".
-func requireHiddenSVGs(t *testing.T, where, region string, min int) {
+func requireHiddenSVGs(t *testing.T, where, region string, minCount int) {
 	t.Helper()
 	tags := svgTagRE.FindAllString(region, -1)
-	if len(tags) < min {
-		t.Errorf("index.html: %s holds %d inline <svg>, want at least %d", where, len(tags), min)
+	if len(tags) < minCount {
+		t.Errorf("index.html: %s holds %d inline <svg>, want at least %d", where, len(tags), minCount)
 	}
 	for _, tag := range tags {
 		if !strings.Contains(tag, `viewBox="0 0 24 24"`) {
@@ -332,7 +332,7 @@ func checkModeIconCSS(t *testing.T, css string) {
 	if got := declsFor(rules, ".mode-icon-sun")["display"]; got != "none" {
 		t.Errorf(".mode-icon-sun { display } = %q, want none by default", got)
 	}
-	if got := declsFor(rules, ".mode-icon-moon")["display"]; got == "none" {
+	if declsFor(rules, ".mode-icon-moon")["display"] == "none" {
 		t.Error(".mode-icon-moon { display } = none, want it shown by default")
 	}
 	for _, root := range []string{selDark, selMediaDark} {

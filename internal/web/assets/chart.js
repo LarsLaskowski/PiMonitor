@@ -40,7 +40,7 @@ function drawSparkline(canvas, points, opts) {
   };
 
   const rootStyle = getComputedStyle(document.documentElement);
-  const fillAlpha = parseFloat(rootStyle.getPropertyValue('--spark-fill-alpha')) || 0.28;
+  const fillAlpha = Number.parseFloat(rootStyle.getPropertyValue('--spark-fill-alpha')) || 0.28;
   const cardBg = rootStyle.getPropertyValue('--card-bg').trim() || '#ffffff';
   const lastX = pad + (points.length - 1) * stepX;
   const lastY = yFor(points[points.length - 1].v);

@@ -139,7 +139,8 @@ body {
 
 header {
   display: flex;
-  align-items: flex-start;
+  flex-wrap: wrap;
+  align-items: center;
   justify-content: space-between;
   gap: 1rem;
   padding: 1.25rem 1.5rem 0.5rem;
@@ -147,6 +148,9 @@ header {
 
 .header-brand {
   min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
 }
 
 header h1 {
@@ -239,6 +243,7 @@ header .subtitle {
 
 .alert-banner-icon {
   flex-shrink: 0;
+  display: inline-flex;
 }
 
 /* A flat, CSS-multi-column layout rather than three explicit column <div>s:
@@ -532,9 +537,10 @@ main {
 }
 
 .bar-label .bar-pct {
-  color: var(--muted);
+  color: var(--text);
   flex-shrink: 0;
-  margin-left: 0.5rem;
+  margin-left: auto;
+  font-weight: 600;
 }
 
 .bar-label .bar-pct.metric-warn { color: var(--warn-ink); }
@@ -1001,29 +1007,8 @@ footer {
   }
 }
 
-.alert-banner-icon {
-  display: inline-flex;
-}
-
-.header-brand {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-}
-
 .header-title {
   min-width: 0;
-}
-
-header {
-  flex-wrap: wrap;
-  align-items: center;
-}
-
-.bar-label .bar-pct {
-  color: var(--text);
-  font-weight: 600;
-  margin-left: auto;
 }
 
 .bar-label .bar-bytes {
