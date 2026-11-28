@@ -1644,6 +1644,11 @@ func TestValidate_IntervalLowerBounds(t *testing.T) {
 		{"AC2 updates_check_minutes -1", func(c *Config) { c.UpdatesCheckMinutes = -1 },
 			below("updates_check_minutes", -1)},
 		{"AC2 updates_check_minutes 1 passes", func(c *Config) { c.UpdatesCheckMinutes = 1 }, ""},
+		// 525600 min * 60 s / 1 s = 3.1536e+07 samples (Go %v), above the ratio limit.
+		{"AC4 ratio at poll 1", func(c *Config) {
+			c.PollIntervalSeconds = 1
+			c.HistoryWindowMinutes = 525600
+		}, "history_window_minutes (525600) / poll_interval_seconds (1) implies 3.1536e+07 history points per series, exceeding the 1000000 limit; increase poll_interval_seconds or reduce history_window_minutes"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
