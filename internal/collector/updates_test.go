@@ -1106,6 +1106,32 @@ func TestUpdatesCollector_Collect_StateChangeRepeated(t *testing.T) {
 			t.Errorf("Updates = %+v on a failed check, want the zero value", updates)
 		}
 	})
+
+	t.Run("AC4 default pause ends at the deadline", func(t *testing.T) {
+		// retryAfter stays nil, so the pause is time.After(updatesRetryDelay)
+		// (2 s); the 200 ms deadline ends it first and the test never waits
+		// for the pause itself.
+		e := newAptTestEnv(t)
+		runs := filepath.Join(e.dir, "runs")
+		stub, _ := e.countingStub(t, e.addListOnRun(runs)+"; "+e.printFixture())
+		c := e.collector(stub)
+		c.timeout = 200 * time.Millisecond
+
+		start := time.Now()
+		updates, err := c.Collect(context.Background())
+		elapsed := time.Since(start)
+
+		checkErrorText(t, err, errStateChanged)
+		if got := countRuns(t, runs); got != 1 {
+			t.Errorf("apt-cache runs = %d, want 1 (no repeat after the deadline)", got)
+		}
+		if elapsed >= updatesRetryDelay {
+			t.Errorf("Collect took %v, want it to end at the deadline before the %v pause", elapsed, updatesRetryDelay)
+		}
+		if updates.Count != 0 || updates.Packages != nil {
+			t.Errorf("Updates = %+v on a failed check, want the zero value", updates)
+		}
+	})
 }
 
 func TestUpdatesCollector_Collect_OtherFailureNotRepeated(t *testing.T) {
